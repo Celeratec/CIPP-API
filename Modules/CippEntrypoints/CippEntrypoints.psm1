@@ -147,13 +147,11 @@ function Receive-CippHttpTrigger {
             Push-OutputBinding -Name Response -Value ([HttpResponseContext]$Response)
         } else {
             Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
-                    StatusCode = [HttpStatusCode]::InternalServerError
-                    Body       = @{
-                        error = @{
-                            code    = 'InternalServerError'
-                            message = 'An error occurred processing the request'
-                        }
-                    }
+                    StatusCode  = [HttpStatusCode]::InternalServerError
+                    ContentType = 'application/json'
+                    Body        = @{
+                        error = 'An error occurred processing the request - no response returned from handler'
+                    } | ConvertTo-Json -Compress
                 })
         }
     }

@@ -178,15 +178,26 @@ function New-CippCoreRequest {
                     }
                 }
             } catch {
-                Write-Warning "Exception occurred on HTTP trigger ($FunctionName): $($_.Exception.Message)"
+                $ErrorMessage = Get-CippException -Exception $_
+                Write-Warning "Exception occurred on HTTP trigger ($FunctionName): $($ErrorMessage.NormalizedError)"
                 $HttpTotalStopwatch.Stop()
                 $HttpTimings['Total'] = $HttpTotalStopwatch.Elapsed.TotalMilliseconds
                 $HttpTimingsRounded = [ordered]@{}
                 foreach ($Key in ($HttpTimings.Keys | Sort-Object)) { $HttpTimingsRounded[$Key] = [math]::Round($HttpTimings[$Key], 2) }
                 Write-Debug "#### HTTP Request Timings #### $($HttpTimingsRounded | ConvertTo-Json -Compress)"
                 return ([HttpResponseContext]@{
-                        StatusCode = [HttpStatusCode]::InternalServerError
-                        Body       = $_.Exception.Message
+                        StatusCode  = [HttpStatusCode]::InternalServerError
+                        ContentType = 'application/json'
+                        Body        = @{
+                            error   = $ErrorMessage.NormalizedError
+                            details = @{
+                                endpoint       = $Request.Params.CIPPEndpoint
+                                function       = $FunctionName
+                                innerException = $_.Exception.Message
+                                scriptName     = $_.InvocationInfo.ScriptName
+                                lineNumber     = $_.InvocationInfo.ScriptLineNumber
+                            }
+                        } | ConvertTo-Json -Depth 5 -Compress
                     })
             }
         } else {
