@@ -14,7 +14,7 @@ function Get-CIPPBackup {
     $Conditions.Add("PartitionKey eq '$($Type)Backup'")
 
     if ($Name) {
-        $Conditions.Add("RowKey eq '$($Name)' or OriginalEntityId eq '$($Name)'")
+        $Conditions.Add("(RowKey eq '$($Name)' or OriginalEntityId eq '$($Name)')")
     }
 
     if ($NameOnly.IsPresent) {

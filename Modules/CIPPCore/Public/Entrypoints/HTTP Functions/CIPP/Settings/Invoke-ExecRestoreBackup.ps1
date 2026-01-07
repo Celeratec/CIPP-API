@@ -13,7 +13,7 @@ function Invoke-ExecRestoreBackup {
 
         if ($Request.Body.BackupName -like 'CippBackup_*') {
             $Table = Get-CippTable -tablename 'CIPPBackup'
-            $Backup = Get-CippAzDataTableEntity @Table -Filter "RowKey eq '$($Request.Body.BackupName)' or OriginalEntityId eq '$($Request.Body.BackupName)'"
+            $Backup = Get-CippAzDataTableEntity @Table -Filter "PartitionKey eq 'CIPPBackup' and (RowKey eq '$($Request.Body.BackupName)' or OriginalEntityId eq '$($Request.Body.BackupName)')"
             if ($Backup) {
                 $BackupData = $Backup.Backup | ConvertFrom-Json -ErrorAction SilentlyContinue | Select-Object * -ExcludeProperty ETag, Timestamp
                 $BackupData | ForEach-Object {
