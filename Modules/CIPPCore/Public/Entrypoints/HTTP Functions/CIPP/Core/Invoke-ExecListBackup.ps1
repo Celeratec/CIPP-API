@@ -49,10 +49,19 @@ function Invoke-ExecListBackup {
                 Body       = @($Result)
             })
     } catch {
-        Write-LogMessage -API 'ExecListBackup' -message "Failed to list backups: $($_.Exception.Message)" -Sev 'Error' -LogData (Get-CippException -Exception $_)
+        $ErrorMessage = Get-CippException -Exception $_
+        Write-LogMessage -API 'ExecListBackup' -message "Failed to list backups: $($ErrorMessage.NormalizedError)" -Sev 'Error' -LogData $ErrorMessage
         return ([HttpResponseContext]@{
-                StatusCode = [HttpStatusCode]::InternalServerError
-                Body       = @{ error = "Failed to list backups: $($_.Exception.Message)" }
+                StatusCode  = [HttpStatusCode]::InternalServerError
+                ContentType = 'application/json'
+                Body        = @{
+                    error   = "Failed to list backups: $($ErrorMessage.NormalizedError)"
+                    details = @{
+                        operation      = 'ListBackups'
+                        type           = $Type ?? 'CIPP'
+                        innerException = $_.Exception.Message
+                    }
+                } | ConvertTo-Json -Depth 5 -Compress
             })
     }
 }

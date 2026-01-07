@@ -9,9 +9,10 @@ function Invoke-ExecRestoreBackup {
     param($Request, $TriggerMetadata)
 
     $APIName = $Request.Params.CIPPEndpoint
-    try {
+    $StatusCode = [HttpStatusCode]::OK
 
-        if ($Request.Body.BackupName -like 'CippBackup_*') {
+    try {
+        if ($Request.Body.BackupName -like 'CIPPBackup_*') {
             $Table = Get-CippTable -tablename 'CIPPBackup'
             $Backup = Get-CippAzDataTableEntity @Table -Filter "PartitionKey eq 'CIPPBackup' and (RowKey eq '$($Request.Body.BackupName)' or OriginalEntityId eq '$($Request.Body.BackupName)')"
             if ($Backup) {
@@ -24,13 +25,14 @@ function Invoke-ExecRestoreBackup {
                     Add-CIPPAzDataTableEntity @Table -Force
                 }
                 Write-LogMessage -headers $Request.Headers -API $APINAME -message "Restored backup $($Request.Body.BackupName)" -Sev 'Info'
-                $body = [pscustomobject]@{
+                $body = @{
                     'Results' = 'Successfully restored backup.'
-                }
+                } | ConvertTo-Json -Compress
             } else {
-                $body = [pscustomobject]@{
-                    'Results' = 'Backup not found.'
-                }
+                $StatusCode = [HttpStatusCode]::NotFound
+                $body = @{
+                    error = "Backup not found: $($Request.Body.BackupName)"
+                } | ConvertTo-Json -Compress
             }
         } else {
             foreach ($line in ($Request.body | Select-Object * -ExcludeProperty ETag, Timestamp)) {
@@ -42,19 +44,28 @@ function Invoke-ExecRestoreBackup {
             }
             Write-LogMessage -headers $Request.Headers -API $APINAME -message "Restored backup $($Request.Body.BackupName)" -Sev 'Info'
 
-            $body = [pscustomobject]@{
+            $body = @{
                 'Results' = 'Successfully restored backup.'
-            }
+            } | ConvertTo-Json -Compress
         }
     } catch {
-        Write-LogMessage -headers $Request.Headers -API $APINAME -message "Failed to restore backup: $($_.Exception.Message)" -Sev 'Error'
-        $body = [pscustomobject]@{'Results' = "Backup restore failed: $($_.Exception.Message)" }
+        $ErrorMessage = Get-CippException -Exception $_
+        Write-LogMessage -headers $Request.Headers -API $APINAME -message "Failed to restore backup: $($ErrorMessage.NormalizedError)" -Sev 'Error' -LogData $ErrorMessage
+        $StatusCode = [HttpStatusCode]::InternalServerError
+        $body = @{
+            error   = "Backup restore failed: $($ErrorMessage.NormalizedError)"
+            details = @{
+                operation      = 'RestoreBackup'
+                backupName     = $Request.Body.BackupName
+                innerException = $_.Exception.Message
+            }
+        } | ConvertTo-Json -Depth 5 -Compress
     }
 
-
     return ([HttpResponseContext]@{
-            StatusCode = [HttpStatusCode]::OK
-            Body       = $body
+            StatusCode  = $StatusCode
+            ContentType = 'application/json'
+            Body        = $body
         })
 
 }
