@@ -36,7 +36,7 @@ function Set-CIPPResetPassword {
 
         if ($UserDetails.onPremisesSyncEnabled -eq $true) {
             return [pscustomobject]@{
-                resultText = "Successfully reset the password for $DisplayName, $($UserID). User must change password is set to $forceChangePasswordNextSignIn. The new password is $password. WARNING: This user is AD synced. Please confirm passthrough or writeback is enabled."
+                resultText = "Successfully reset the password for $DisplayName ($UserID). User must change password is set to $forceChangePasswordNextSignIn. The new password is $password. WARNING: This user is AD Sync enabled. If password hash sync or passthrough authentication is not configured, the user will need to use their on-premises Active Directory password instead. To change passwords for synced users, reset the password on your local domain controller."
                 copyField  = $password
                 state      = 'warning'
             }

@@ -44,9 +44,9 @@ function Get-NormalizedError {
         '*Microsoft.Skype.Sync.Pstn.Tnm.Common.Http.HttpResponseException*' { 'Could not connect to Teams Admin center - Tenant might be missing a Teams license' }
         '*Provide valid credential.*' { 'Error 400: There is an issue with your Exchange Token configuration. Please perform an access check for this tenant' }
         '*This indicate that a subscription within the tenant has lapsed*' { 'There is no subscription for this service available, Check licensing information.' }
-        '*User was not found.*' { 'The relationship between this tenant and the partner has been dissolved from the tenant side.' }
-        '*AADSTS50020*' { 'AADSTS50020: The user you have used for your Secure Application Model is a guest in this tenant, or your are using GDAP and have not added the user to the correct group. Please delete the guest user to gain access to this tenant' }
-        '*AADSTS50177' { 'AADSTS50177: The user you have used for your Secure Application Model is a guest in this tenant, or your are using GDAP and have not added the user to the correct group. Please delete the guest user to gain access to this tenant' }
+        '*User was not found.*' { 'The partner relationship with this tenant has been removed. The customer may have terminated the relationship from their admin center, or the tenant no longer exists.' }
+        '*AADSTS50020*' { 'The SAM user is a guest in this tenant, or you are using GDAP without proper group membership. Solution: Either delete the guest user from the tenant, or ensure the user is added to the correct GDAP security group with appropriate role assignments.' }
+        '*AADSTS50177*' { 'The SAM user is a guest in this tenant, or you are using GDAP without proper group membership. Solution: Either delete the guest user from the tenant, or ensure the user is added to the correct GDAP security group with appropriate role assignments.' }
         '*invalid or malformed*' { 'The request is malformed. Have you finished the Setup Wizard' }
         '*Windows Store repository apps feature is not supported for this tenant*' { 'This tenant does not have WinGet support available' }
         '*AADSTS650051*' { 'The application does not exist yet. Try again in 30 seconds.' }
@@ -54,15 +54,15 @@ function Get-NormalizedError {
         '*One or more added object references already exist for the following modified properties:*' { 'This user is already a member of this group.' }
         '*Microsoft.Exchange.Management.Tasks.MemberAlreadyExistsException*' { 'This user is already a member of this group.' }
         '*The property value exceeds the maximum allowed size (64KB)*' { 'One of the values exceeds the maximum allowed size (64KB).' }
-        '*Unable to initialize the authorization context*' { 'Your GDAP configuration does not allow us to write to this tenant, please check your group mappings and tenant onboarding.' }
+        '*Unable to initialize the authorization context*' { 'GDAP authorization failed. Your GDAP security groups may not have the required role assignments for this tenant. Check: 1) GDAP relationship is active, 2) User is in the correct security group, 3) Security group has the required admin roles assigned.' }
         '*Providers.Common.V1.CoreException*' { '403 (Access Denied) - We cannot connect to this tenant.' }
         '*Authentication failed. MFA required*' { 'Authentication failed. MFA required' }
         '*Your tenant is not licensed for this feature.*' { 'Required license not available for this tenant' }
         '*AADSTS65001*' { 'We cannot access this tenant as consent has not been given, please try refreshing the CPV permissions in the application settings menu.' }
-        '*AADSTS700082*' { 'The CIPP user access token has expired. Run the Setup Wizard to refresh your tokens.' }
-        '*Account is not provisioned.' { 'The account is not provisioned. You do not the correct M365 license to access this information..' }
+        '*AADSTS700082*' { 'The refresh token has expired (tokens expire after 90 days of inactivity). Run the Setup Wizard to re-authenticate and generate new tokens.' }
+        '*Account is not provisioned.*' { 'The account is not provisioned. This user does not have the required Microsoft 365 license to access this service (e.g., Exchange Online, Teams, etc.).' }
         '*AADSTS5000224*' { 'This resource is not available - Has this tenant been deleted?' }
-        '*AADSTS53003*' { 'Access has been blocked by Conditional Access policies. Please check the Conditional Access configuration documentation' }
+        '*AADSTS53003*' { 'Access blocked by Conditional Access policies in this tenant. The tenant may have CA policies that block partner access. Contact the tenant administrator to create an exclusion, or check if the SAM user meets the CA policy requirements (MFA, device compliance, etc.).' }
         '*AADSTS900023*' { 'This tenant is not available for this operation. Please check the selected tenant and try again.' }
         '*AADSTS9002313*' { 'The credentials used to connect to the Graph API are not available, please retry. If this issue persists you may need to execute the SAM wizard.' }
         '*One or more platform(s) is/are not configured for the customer. Please configure the platform before trying to purchase a SKU.*' { 'One or more platform(s) is/are not configured for the customer. Please configure the platform before trying to purchase a SKU.' }

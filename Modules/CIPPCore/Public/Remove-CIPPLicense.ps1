@@ -60,8 +60,8 @@ function Remove-CIPPLicense {
                         Write-LogMessage -headers $Headers -API $APIName -message "Removed $($User.displayName) from license group $GroupName" -Sev 'Info' -tenant $TenantFilter
                         "Removed $($User.displayName) from license group $GroupName"
                     } else {
-                        Write-LogMessage -headers $Headers -API $APIName -message "Failed to remove $($User.displayName) from license group $GroupName. This is likely because its a Dynamic Group or synced with active directory." -Sev 'Error' -tenant $TenantFilter
-                        "Failed to remove $($User.displayName) from license group $GroupName. This is likely because its a Dynamic Group or synced with active directory."
+                        Write-LogMessage -headers $Headers -API $APIName -message "Failed to remove $($User.displayName) from license group $GroupName. If this is a Dynamic Group, update the membership rules. If it is AD Sync enabled, make this change on your local domain controller instead." -Sev 'Error' -tenant $TenantFilter
+                        "Failed to remove $($User.displayName) from license group $GroupName. If this is a Dynamic Group, update the membership rules. If it is AD Sync enabled, make this change on your local domain controller instead."
                     }
                 }
             }

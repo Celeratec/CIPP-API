@@ -45,8 +45,8 @@ function Remove-CIPPGroups {
             $Results.Add("Error: Could not remove $Username from group '$GroupName' because it is a Dynamic Group.")
             Write-LogMessage -headers $Headers -API $APIName -message "Could not remove $Username from group '$GroupName' because it is a Dynamic Group." -Sev 'Warning' -tenant $TenantFilter
         } elseif ($GroupInfo.onPremisesSyncEnabled) {
-            $Results.Add("Error: Could not remove $Username from group '$GroupName' because it is synced with Active Directory.")
-            Write-LogMessage -headers $Headers -API $APIName -message "Could not remove $Username from group '$GroupName' because it is synced with Active Directory." -Sev 'Warning' -tenant $TenantFilter
+            $Results.Add("Error: Could not remove $Username from group '$GroupName' because it is AD Sync enabled. To remove users from this group, make the change on your local domain controller instead.")
+            Write-LogMessage -headers $Headers -API $APIName -message "Could not remove $Username from group '$GroupName' because it is AD Sync enabled. Group membership must be managed on the local domain controller." -Sev 'Warning' -tenant $TenantFilter
         } else {
             if ($IsM365Group -or (-not $IsMailEnabled)) {
                 # Use Graph API for M365 Groups and Security Groups
@@ -91,7 +91,7 @@ function Remove-CIPPGroups {
                 $GraphError = $RawGraphRequest | Where-Object { $_.id -eq $GraphLog.id -and $_.status -notmatch '^2[0-9]+' }
                 if ($GraphError) {
                     $Message = Get-NormalizedError -message $GraphError.body.error
-                    $Results.Add("Could not remove $Username from group '$($GraphLog.groupName)': $Message. This is likely because it's a Dynamic Group or synced with Active Directory")
+                    $Results.Add("Could not remove $Username from group '$($GraphLog.groupName)': $Message. If this is a Dynamic Group, update the membership rules. If it is AD Sync enabled, make this change on your local domain controller instead.")
                     Write-LogMessage -headers $Headers -API $APIName -message "Could not remove $Username from group '$($GraphLog.groupName)': $Message" -Sev 'Error' -tenant $TenantFilter
                 } else {
                     $Results.Add("Successfully removed $Username from group '$($GraphLog.groupName)'")
@@ -122,7 +122,7 @@ function Remove-CIPPGroups {
                     $Results.Add("Successfully removed $Username from group $($ExoLog.groupName)")
                     Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message $ExoLog.message -Sev 'Info'
                 } else {
-                    $Results.Add("Could not remove $Username from $($ExoLog.groupName). This is likely because its a Dynamic Group or synched with active directory")
+                    $Results.Add("Could not remove $Username from $($ExoLog.groupName). If this is a Dynamic Group, update the membership rules. If it is AD Sync enabled, make this change on your local domain controller instead.")
                     Write-LogMessage -headers $Headers -API $APIName -message "Could not remove $Username from $($ExoLog.groupName)" -Sev 'Error' -tenant $TenantFilter
                 }
             }

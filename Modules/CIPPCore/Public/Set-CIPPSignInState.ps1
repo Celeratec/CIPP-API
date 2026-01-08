@@ -18,7 +18,8 @@ function Set-CIPPSignInState {
         Write-LogMessage -headers $Headers -API $APIName -message "Successfully set account enabled state to $AccountEnabled for $UserID" -Sev 'Info' -tenant $TenantFilter
 
         if ($UserDetails.onPremisesSyncEnabled -eq $true) {
-            throw "WARNING: User $UserID is AD Sync enabled. Please enable/disable in the local AD."
+            $State = if ($AccountEnabled) { 'enabled' } else { 'disabled' }
+            return "Sign-in $State for $UserID, but this user is AD Sync enabled. This change will be overwritten on the next sync. To make this change permanent, update the user account on your local domain controller instead."
         } else {
             return "Successfully set account enabled state to $AccountEnabled for $UserID"
         }
