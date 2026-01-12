@@ -75,7 +75,7 @@
     "Id": "9b0c8e50-f798-49db-9a8b-dbcc0fcadeea",
     "Command": "Start-StandardsOrchestrator",
     "Description": "Orchestrator to process standards",
-    "Cron": "0 15 0,4,8,12,16,20 * * *",
+    "Cron": "0 15 1,7,13,19 * * *",
     "Priority": 4,
     "RunOnProcessor": true,
     "PreferredProcessor": "standards"
@@ -84,7 +84,7 @@
     "Id": "4d80205c-674d-4fc1-abeb-a1ec37e0d796",
     "Command": "Start-DriftStandardsOrchestrator",
     "Description": "Orchestrator to process drift standards",
-    "Cron": "0 45 0,12 * * *",
+    "Cron": "0 45 2,14 * * *",
     "Priority": 5,
     "RunOnProcessor": true,
     "PreferredProcessor": "standards"
@@ -109,7 +109,7 @@
     "Id": "0967c860-3a57-4860-8f33-e5136eae7b4e",
     "Command": "Start-TenantDynamicGroupOrchestrator",
     "Description": "Orchestrator to update dynamic tenant groups",
-    "Cron": "0 30 0,4,8,12,16,20 * * *",
+    "Cron": "0 30 3,9,15,21 * * *",
     "Priority": 6,
     "RunOnProcessor": true
   },
@@ -172,7 +172,7 @@
     "Id": "80070b4f-95ed-4e5f-be4c-9e339306d4aa",
     "Command": "Start-BPAOrchestrator",
     "Description": "Orchestrator to process BPA reports",
-    "Cron": "0 0 3 * * *",
+    "Cron": "0 0 4 * * *",
     "Priority": 10,
     "RunOnProcessor": true
   },
