@@ -20,10 +20,18 @@ function Invoke-ListLogs {
             }
         }
     } elseif ($Request.Query.logentryid) {
-        # Return single log entry by RowKey
-        $Filter = "RowKey eq '{0}'" -f $Request.Query.logentryid
+        # Return single log entry by RowKey (and PartitionKey if provided for faster lookup)
         $AllowedTenants = Test-CIPPAccess -Request $Request -TenantList
-        Write-Host "Getting single log entry for RowKey: $($Request.Query.logentryid)"
+        
+        if ($Request.Query.datefilter) {
+            # Use point query with both PartitionKey and RowKey (fast)
+            $Filter = "PartitionKey eq '{0}' and RowKey eq '{1}'" -f $Request.Query.datefilter, $Request.Query.logentryid
+            Write-Host "Getting single log entry with PartitionKey: $($Request.Query.datefilter), RowKey: $($Request.Query.logentryid)"
+        } else {
+            # Fallback to RowKey only (slow - requires table scan)
+            $Filter = "RowKey eq '{0}'" -f $Request.Query.logentryid
+            Write-Host "WARNING: Getting single log entry without PartitionKey (slow) for RowKey: $($Request.Query.logentryid)"
+        }
 
         $Row = Get-AzDataTableEntity @Table -Filter $Filter
 
