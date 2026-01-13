@@ -160,22 +160,23 @@ function Invoke-ListLogs {
                     $Row.LogData | ConvertFrom-Json
                 } else { $Row.LogData }
                 [PSCustomObject]@{
-                    DateTime     = $Row.Timestamp
-                    Tenant       = $Row.Tenant
-                    API          = $Row.API
-                    Message      = $Row.Message
-                    User         = $Row.Username
-                    Severity     = $Row.Severity
-                    LogData      = $LogData
-                    TenantID     = if ($Row.TenantID -ne $null) {
+                    DateTime      = $Row.Timestamp
+                    PartitionKey  = $Row.PartitionKey
+                    Tenant        = $Row.Tenant
+                    API           = $Row.API
+                    Message       = $Row.Message
+                    User          = $Row.Username
+                    Severity      = $Row.Severity
+                    LogData       = $LogData
+                    TenantID      = if ($Row.TenantID -ne $null) {
                         $Row.TenantID
                     } else {
                         'None'
                     }
-                    AppId        = $Row.AppId
-                    IP           = $Row.IP
-                    RowKey       = $Row.RowKey
-                    StandardInfo = $StandardInfo
+                    AppId         = $Row.AppId
+                    IP            = $Row.IP
+                    RowKey        = $Row.RowKey
+                    StandardInfo  = $StandardInfo
                 }
             }
         }
