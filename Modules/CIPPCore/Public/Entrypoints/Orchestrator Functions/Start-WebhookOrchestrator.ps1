@@ -14,7 +14,7 @@ function Start-WebhookOrchestrator {
         }
 
         $WebhookIncomingTable = Get-CIPPTable -TableName WebhookIncoming
-        $WebhookIncoming = Get-CIPPAzDataTableEntity @WebhookIncomingTable -Property PartitionKey, RowKey
+        $WebhookIncoming = Get-CIPPAzDataTableEntity @WebhookIncomingTable -Property PartitionKey, RowKey -Filter "PartitionKey eq 'Webhook'"
         if (($WebhookIncoming | Measure-Object).Count -eq 0) {
             Write-Information 'No webhook incoming found. Exiting.'
             return

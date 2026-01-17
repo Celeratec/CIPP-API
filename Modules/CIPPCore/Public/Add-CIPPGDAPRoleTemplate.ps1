@@ -14,7 +14,7 @@ function Add-CIPPGDAPRoleTemplate {
     )
 
     $Table = Get-CIPPTable -TableName 'GDAPRoleTemplates'
-    $Templates = Get-CIPPAzDataTableEntity @Table
+    $Templates = Get-CIPPAzDataTableEntity @Table -Filter "PartitionKey eq 'RoleTemplate'"
     if ($Templates.RowKey -contains $TemplateId -and !$Overwrite.IsPresent) {
         $ExistingTemplate = $Templates | Where-Object -Property RowKey -EQ $RowKey
         try {

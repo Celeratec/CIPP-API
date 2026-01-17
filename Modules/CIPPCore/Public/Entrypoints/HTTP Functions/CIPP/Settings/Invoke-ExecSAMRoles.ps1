@@ -21,7 +21,7 @@ function Invoke-ExecSAMRoles {
             $Body = [pscustomobject]@{'Results' = 'Successfully updated SAM roles' }
         }
         default {
-            $SAMRoles = Get-CIPPAzDataTableEntity @SAMRolesTable
+            $SAMRoles = Get-CIPPAzDataTableEntity @SAMRolesTable -Filter "PartitionKey eq 'SAMRoles' and RowKey eq 'SAMRoles'"
             $Roles = @($SAMRoles.Roles | ConvertFrom-Json)
             $Tenants = @($SAMRoles.Tenants | ConvertFrom-Json)
             $Body = @{

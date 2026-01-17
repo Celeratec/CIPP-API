@@ -8,7 +8,7 @@ Function Invoke-ExecPasswordConfig {
     [CmdletBinding()]
     param($Request, $TriggerMetadata)
     $Table = Get-CIPPTable -TableName Settings
-    $PasswordType = (Get-CIPPAzDataTableEntity @Table)
+    $PasswordType = (Get-CIPPAzDataTableEntity @Table -Filter "PartitionKey eq 'settings' and RowKey eq 'settings'")
 
 
     $results = try {

@@ -16,15 +16,17 @@ function Get-CIPPDomainAnalyser {
     param([string]$TenantFilter)
     $DomainTable = Get-CIPPTable -Table 'Domains'
 
-    # Get all the things
+    # Get all the things - always filter by PartitionKey for performance
     #Transform the tenantFilter to the GUID.
     if ($TenantFilter -ne 'AllTenants' -and ![string]::IsNullOrEmpty($TenantFilter)) {
         $TenantFilter = (Get-Tenants -TenantFilter $tenantFilter).customerId
-        $DomainTable.Filter = "TenantGUID eq '{0}'" -f $TenantFilter
+        $DomainTable.Filter = "PartitionKey eq 'TenantDomains' and TenantGUID eq '{0}'" -f $TenantFilter
+        $Domains = Get-CIPPAzDataTableEntity @DomainTable
     } else {
         $Tenants = Get-Tenants -IncludeErrors
+        $DomainTable.Filter = "PartitionKey eq 'TenantDomains'"
+        $Domains = Get-CIPPAzDataTableEntity @DomainTable | Where-Object { $_.TenantGUID -in $Tenants.customerId }
     }
-    $Domains = Get-CIPPAzDataTableEntity @DomainTable | Where-Object { $_.TenantGUID -in $Tenants.customerId -or $TenantFilter -eq $_.TenantGUID }
     try {
         # Extract json from table results
         $Results = foreach ($DomainAnalyserResult in ($Domains).DomainAnalyser) {

@@ -178,9 +178,9 @@ function Invoke-ExecCustomRole {
             }
         }
         default {
-            $Body = Get-CIPPAzDataTableEntity @Table
-            $EntraRoleGroups = Get-CIPPAzDataTableEntity @AccessRoleGroupTable
-            $AccessIPRanges = Get-CIPPAzDataTableEntity @AccessIPRangeTable
+            $Body = Get-CIPPAzDataTableEntity @Table -Filter "PartitionKey eq 'CustomRoles'"
+            $EntraRoleGroups = Get-CIPPAzDataTableEntity @AccessRoleGroupTable -Filter "PartitionKey eq 'AccessRoleGroups'"
+            $AccessIPRanges = Get-CIPPAzDataTableEntity @AccessIPRangeTable -Filter "PartitionKey eq 'AccessIPRanges'"
             if (!$Body) {
                 $Body = @(
                     @{

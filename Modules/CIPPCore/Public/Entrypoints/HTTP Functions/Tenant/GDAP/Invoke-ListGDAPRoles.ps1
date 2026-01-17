@@ -8,7 +8,7 @@ Function Invoke-ListGDAPRoles {
     [CmdletBinding()]
     param($Request, $TriggerMetadata)
     $Table = Get-CIPPTable -TableName 'GDAPRoles'
-    $Groups = Get-CIPPAzDataTableEntity @Table
+    $Groups = Get-CIPPAzDataTableEntity @Table -Filter "PartitionKey eq 'Roles'"
 
     $MappedGroups = foreach ($Group in $Groups) {
         [PSCustomObject]@{

@@ -8,7 +8,7 @@ function Invoke-ListAlertsQueue {
     [CmdletBinding()]
     param($Request, $TriggerMetadata)
     $WebhookTable = Get-CIPPTable -TableName 'WebhookRules'
-    $WebhookRules = Get-CIPPAzDataTableEntity @WebhookTable
+    $WebhookRules = Get-CIPPAzDataTableEntity @WebhookTable -Filter "PartitionKey eq 'Webhookv2'"
 
     $ScheduledTasks = Get-CIPPTable -TableName 'ScheduledTasks'
     $ScheduledTasks = Get-CIPPAzDataTableEntity @ScheduledTasks | Where-Object { $_.hidden -eq $true -and $_.command -like 'Get-CippAlert*' }

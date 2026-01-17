@@ -13,7 +13,7 @@ function Invoke-ExecGDAPRoleTemplate {
 
 
     $Table = Get-CIPPTable -TableName 'GDAPRoleTemplates'
-    $Templates = Get-CIPPAzDataTableEntity @Table
+    $Templates = Get-CIPPAzDataTableEntity @Table -Filter "PartitionKey eq 'RoleTemplate'"
 
     if ($Request.Query.TemplateId) {
         $Template = $Templates | Where-Object -Property RowKey -EQ $Request.Query.TemplateId

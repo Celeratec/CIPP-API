@@ -12,10 +12,11 @@ Function Invoke-DomainAnalyser_List {
     param($Request, $TriggerMetadata)
     $DomainTable = Get-CIPPTable -Table 'Domains'
 
-    # Get all the things
-
+    # Get all the things - always filter by PartitionKey for performance
     if ($Request.Query.tenantFilter -ne 'AllTenants') {
-        $DomainTable.Filter = "TenantId eq '{0}'" -f $Request.Query.tenantFilter
+        $DomainTable.Filter = "PartitionKey eq 'TenantDomains' and TenantId eq '{0}'" -f $Request.Query.tenantFilter
+    } else {
+        $DomainTable.Filter = "PartitionKey eq 'TenantDomains'"
     }
 
     try {

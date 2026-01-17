@@ -9,13 +9,13 @@ function Invoke-ListCustomRole {
     param($Request, $TriggerMetadata)
     $DefaultRoles = @('readonly', 'editor', 'admin', 'superadmin')
     $Table = Get-CippTable -tablename 'CustomRoles'
-    $CustomRoles = Get-CIPPAzDataTableEntity @Table
+    $CustomRoles = Get-CIPPAzDataTableEntity @Table -Filter "PartitionKey eq 'CustomRoles'"
 
     $AccessRoleGroupTable = Get-CippTable -tablename 'AccessRoleGroups'
-    $RoleGroups = Get-CIPPAzDataTableEntity @AccessRoleGroupTable
+    $RoleGroups = Get-CIPPAzDataTableEntity @AccessRoleGroupTable -Filter "PartitionKey eq 'AccessRoleGroups'"
 
     $AccessIPRangeTable = Get-CippTable -tablename 'AccessIPRanges'
-    $AccessIPRanges = Get-CIPPAzDataTableEntity @AccessIPRangeTable
+    $AccessIPRanges = Get-CIPPAzDataTableEntity @AccessIPRangeTable -Filter "PartitionKey eq 'AccessIPRanges'"
 
     $TenantList = Get-Tenants -IncludeErrors
 

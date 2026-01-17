@@ -17,7 +17,7 @@ function Invoke-ListCommunityRepos {
     if ($Request.Query.WriteAccess -eq 'true') {
         $Filter = "PartitionKey eq 'CommunityRepos' and WriteAccess eq true"
     } else {
-        $Filter = ''
+        $Filter = "PartitionKey eq 'CommunityRepos'"
     }
 
     $Repos = Get-CIPPAzDataTableEntity @Table -Filter $Filter
@@ -49,7 +49,7 @@ function Invoke-ListCommunityRepos {
             }
         }
         if ($DefaultsMissing) {
-            $Repos = Get-CIPPAzDataTableEntity @Table
+            $Repos = Get-CIPPAzDataTableEntity @Table -Filter "PartitionKey eq 'CommunityRepos'"
         }
     }
 

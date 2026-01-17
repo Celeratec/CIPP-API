@@ -54,7 +54,7 @@ function Invoke-ExecPartnerMode {
     }
 
     if ($request.query.action -eq 'ListCurrent') {
-        $CurrentState = Get-CIPPAzDataTableEntity @Table
+        $CurrentState = Get-CIPPAzDataTableEntity @Table -Filter "PartitionKey eq 'Setting' and RowKey eq 'PartnerModeSetting'"
         $CurrentState = if (!$CurrentState) {
             [PSCustomObject]@{
                 TenantMode = 'default'
