@@ -13,6 +13,12 @@ function Write-LogMessage {
         $sev,
         $LogData = ''
     )
+    
+    # Early exit for Debug logs when not in debug mode - BEFORE any expensive operations
+    if ($sev -eq 'Debug' -and $env:DebugMode -ne $true) {
+        return
+    }
+    
     if ($Headers.'x-ms-client-principal-idp' -eq 'azureStaticWebApps' -or !$Headers.'x-ms-client-principal-idp') {
         $user = $headers.'x-ms-client-principal'
         $username = ([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($user)) | ConvertFrom-Json).userDetails
@@ -41,9 +47,6 @@ function Write-LogMessage {
 
     if (!$tenant) { $tenant = 'None' }
     if (!$username) { $username = 'CIPP' }
-    if ($sev -eq 'Debug' -and $env:DebugMode -ne $true) {
-        return
-    }
     $PartitionKey = (Get-Date -UFormat '%Y%m%d').ToString()
     $TableRow = @{
         'Tenant'       = [string]$tenant
