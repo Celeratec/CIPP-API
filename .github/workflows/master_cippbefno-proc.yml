@@ -14,17 +14,19 @@ env:
 
 jobs:
   deploy:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
     
     steps:
       - name: 'Checkout GitHub Action'
         uses: actions/checkout@v4
       
       - name: 'Run Azure Functions Action'
-        uses: Azure/functions-action@v1
+        uses: Azure/functions-action@v1.5.2
         id: fa
         with:
           app-name: 'cippbefno-proc'
           slot-name: 'Production'
           package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_C1466D31277B4663B2F29756DC88798C }}
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_CIPPBEFNO_PROC }}
