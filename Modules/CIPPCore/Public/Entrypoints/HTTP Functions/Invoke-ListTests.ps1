@@ -96,20 +96,30 @@ function Invoke-ListTests {
         $IdentityResults = $TestResultsData.TestResults | Where-Object { $_.TestType -eq 'Identity' }
         $DeviceResults = $TestResultsData.TestResults | Where-Object { $_.TestType -eq 'Devices' }
 
-        # Add descriptions from markdown files to each test result
-        foreach ($TestResult in $TestResultsData.TestResults) {
-            $MdFile = Get-ChildItem -Path 'Modules\CIPPCore\Public\Tests' -Filter "*$($TestResult.RowKey).md" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($MdFile) {
+        # Build a cached lookup of markdown files ONCE (not per test)
+        if (-not $global:CIPPTestDescriptionCache) {
+            $global:CIPPTestDescriptionCache = @{}
+            $AllMdFiles = Get-ChildItem -Path 'Modules\CIPPCore\Public\Tests' -Filter '*.md' -Recurse -ErrorAction SilentlyContinue
+            foreach ($MdFile in $AllMdFiles) {
+                # Extract test ID from filename (e.g., ZTNA21772.md -> ZTNA21772)
+                $TestId = $MdFile.BaseName
                 try {
                     $MdContent = Get-Content $MdFile.FullName -Raw -ErrorAction SilentlyContinue
                     if ($MdContent) {
                         $Description = ($MdContent -split '<!--- Results --->')[0].Trim()
                         $Description = ($Description -split '%TestResult%')[0].Trim()
-                        $TestResult | Add-Member -NotePropertyName 'Description' -NotePropertyValue $Description -Force
+                        $global:CIPPTestDescriptionCache[$TestId] = $Description
                     }
                 } catch {
-                    #Test
+                    # Skip files that can't be read
                 }
+            }
+        }
+
+        # Add descriptions from cache (fast O(1) lookup)
+        foreach ($TestResult in $TestResultsData.TestResults) {
+            if ($global:CIPPTestDescriptionCache.ContainsKey($TestResult.RowKey)) {
+                $TestResult | Add-Member -NotePropertyName 'Description' -NotePropertyValue $global:CIPPTestDescriptionCache[$TestResult.RowKey] -Force
             }
         }
 
