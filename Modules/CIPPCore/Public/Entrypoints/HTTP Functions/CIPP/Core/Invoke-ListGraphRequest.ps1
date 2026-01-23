@@ -16,6 +16,29 @@ function Invoke-ListGraphRequest {
 
     $CippLink = ([System.Uri]$TriggerMetadata.Headers.Referer).PathAndQuery
 
+    # Simple backend cache for common list endpoints (5 min TTL)
+    $CacheAllowlist = @('users', 'groups', 'devices', 'servicePrincipals', 'applications')
+    $CacheTtlMinutes = 5
+    $CacheKey = $null
+    $CacheTable = $null
+
+    function Get-CacheKey {
+        param(
+            [string]$TenantFilter,
+            [string]$Endpoint,
+            [hashtable]$Parameters
+        )
+        $raw = @{
+            TenantFilter = $TenantFilter
+            Endpoint     = $Endpoint
+            Parameters   = $Parameters
+        } | ConvertTo-Json -Depth 5 -Compress
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($raw)
+        $hash = $sha.ComputeHash($bytes)
+        return ($hash | ForEach-Object { $_.ToString('x2') }) -join ''
+    }
+
     $Parameters = @{}
     if ($Request.Query.'$filter') {
         $Parameters.'$filter' = $Request.Query.'$filter'
@@ -108,6 +131,21 @@ function Invoke-ListGraphRequest {
         $GraphRequestParams.SkipCache = [System.Boolean]$Request.Query.SkipCache
     }
 
+    # Backend cache: only for allowlisted endpoints and simple list queries
+    $ShouldUseBackendCache = $false
+    if ($Request.Query.TenantFilter -and $CacheAllowlist -contains $Request.Query.Endpoint) {
+        if (-not $Request.Query.nextLink `
+            -and -not $Request.Query.QueueId `
+            -and -not $Request.Query.ManualPagination `
+            -and -not $Request.Query.NoPagination `
+            -and -not $Request.Query.CountOnly `
+            -and -not $Request.Query.ListProperties `
+            -and -not $Request.Query.ReverseTenantLookup `
+            -and -not $Request.Query.SkipCache) {
+            $ShouldUseBackendCache = $true
+        }
+    }
+
     if ($Request.Query.ListProperties) {
         $GraphRequestParams.NoPagination = $true
         $GraphRequestParams.Parameters.'$select' = ''
@@ -123,6 +161,27 @@ function Invoke-ListGraphRequest {
     $Metadata = $GraphRequestParams
 
     try {
+        # Try backend cache first
+        if ($ShouldUseBackendCache) {
+            try {
+                $CacheTable = Get-CippTable -tablename 'CacheGraphRequest'
+                $CacheKey = Get-CacheKey -TenantFilter $Request.Query.TenantFilter -Endpoint $Request.Query.Endpoint -Parameters $Parameters
+                $CacheCutoff = (Get-Date).AddMinutes(-$CacheTtlMinutes).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+                $CacheFilter = "PartitionKey eq '$($Request.Query.TenantFilter)' and RowKey eq '$CacheKey' and CachedAt ge '$CacheCutoff'"
+                $Cached = Get-CIPPAzDataTableEntity @CacheTable -Filter $CacheFilter
+                if ($Cached -and $Cached.Data) {
+                    $CachedData = $Cached.Data | ConvertFrom-Json -Depth 10
+                    return ([HttpResponseContext]@{
+                        StatusCode = [HttpStatusCode]::OK
+                        Body       = $CachedData
+                        Headers    = @{ 'X-Cache' = 'HIT' }
+                    })
+                }
+            } catch {
+                Write-Information "GraphRequest cache lookup failed: $($_.Exception.Message)"
+            }
+        }
+
         $Results = Get-GraphRequestList @GraphRequestParams
 
         if ($script:LastGraphResponseHeaders) {
@@ -158,6 +217,21 @@ function Invoke-ListGraphRequest {
             Metadata = $Metadata
         }
         $StatusCode = [HttpStatusCode]::OK
+
+        # Store in backend cache
+        if ($ShouldUseBackendCache -and $CacheTable -and $CacheKey) {
+            try {
+                $Entity = @{
+                    PartitionKey = $Request.Query.TenantFilter
+                    RowKey       = $CacheKey
+                    Data         = [string]($GraphRequestData | ConvertTo-Json -Depth 10 -Compress)
+                    CachedAt     = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+                }
+                Add-CIPPAzDataTableEntity @CacheTable -Entity $Entity -Force | Out-Null
+            } catch {
+                Write-Information "GraphRequest cache write failed: $($_.Exception.Message)"
+            }
+        }
     } catch {
         $GraphRequestData = "Graph Error: $(Get-NormalizedError $_.Exception.Message) - Endpoint: $($Request.Query.Endpoint)"
         if ($Request.Query.IgnoreErrors) { $StatusCode = [HttpStatusCode]::OK }
