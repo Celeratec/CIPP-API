@@ -69,8 +69,24 @@ function Invoke-ExecSetUserPhoto {
                 $contentType = 'image/png'
             }
 
-            # Upload the photo using Graph API (PUT is required for photo upload)
-            $null = New-GraphPostRequest -uri "https://graph.microsoft.com/v1.0/users/$userId/photo/`$value" -tenantid $tenantFilter -type PUT -body $photoBytes -ContentType $contentType -NoAuthCheck $true
+            # Upload the photo using Graph API
+            # Use direct Invoke-RestMethod to avoid body corruption from text replacement in New-GraphPostRequest
+            $graphToken = Get-GraphToken -tenantid $tenantFilter
+            $uri = "https://graph.microsoft.com/v1.0/users/$userId/photo/`$value"
+
+            $null = Invoke-RestMethod -Uri $uri -Method PUT -Body $photoBytes -Headers $graphToken -ContentType $contentType
+
+            # Invalidate the photo cache for this user
+            try {
+                $Table = Get-CippTable -tablename 'CacheUserPhotos'
+                $Filter = "PartitionKey eq '$tenantFilter' and RowKey eq '$userId'"
+                $CachedEntry = Get-CIPPAzDataTableEntity @Table -Filter $Filter
+                if ($CachedEntry) {
+                    Remove-AzDataTableEntity @Table -Entity $CachedEntry -Force | Out-Null
+                }
+            } catch {
+                Write-Information "Failed to invalidate photo cache: $($_.Exception.Message)"
+            }
 
             $Results.Add('Successfully set user profile picture.')
             Write-LogMessage -API $APIName -tenant $tenantFilter -headers $Headers -message "Set profile picture for user $userId" -Sev Info
