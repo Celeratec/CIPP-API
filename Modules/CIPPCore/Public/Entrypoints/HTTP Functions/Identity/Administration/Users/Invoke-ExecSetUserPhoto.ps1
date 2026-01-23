@@ -63,8 +63,14 @@ function Invoke-ExecSetUserPhoto {
                 throw "Photo size exceeds 4MB limit. Current size: $([math]::Round($photoBytes.Length / 1MB, 2))MB"
             }
 
-            # Upload the photo using Graph API
-            $null = New-GraphPostRequest -uri "https://graph.microsoft.com/v1.0/users/$userId/photo/`$value" -tenantid $tenantFilter -type PATCH -body $photoBytes -ContentType 'image/jpeg' -NoAuthCheck $true
+            # Determine content type based on photo data
+            $contentType = 'image/jpeg'
+            if ($photoData -match '^data:image/png;base64,') {
+                $contentType = 'image/png'
+            }
+
+            # Upload the photo using Graph API (PUT is required for photo upload)
+            $null = New-GraphPostRequest -uri "https://graph.microsoft.com/v1.0/users/$userId/photo/`$value" -tenantid $tenantFilter -type PUT -body $photoBytes -ContentType $contentType -NoAuthCheck $true
 
             $Results.Add('Successfully set user profile picture.')
             Write-LogMessage -API $APIName -tenant $tenantFilter -headers $Headers -message "Set profile picture for user $userId" -Sev Info
