@@ -54,10 +54,18 @@ function Add-CIPPDbItem {
         }
 
         if ($Count) {
+            $DataCount = 0
+            if ($null -ne $Data) {
+                if ($Data -is [System.Collections.IDictionary] -and $Data.ContainsKey('Count')) {
+                    $DataCount = [int]$Data['Count']
+                } else {
+                    $DataCount = [int]$Data.Count
+                }
+            }
             $Entity = @{
                 PartitionKey = $TenantFilter
                 RowKey       = Format-RowKey "$Type-Count"
-                DataCount    = [int]$Data.Count
+                DataCount    = $DataCount
             }
 
             Add-CIPPAzDataTableEntity @Table -Entity $Entity -Force | Out-Null
