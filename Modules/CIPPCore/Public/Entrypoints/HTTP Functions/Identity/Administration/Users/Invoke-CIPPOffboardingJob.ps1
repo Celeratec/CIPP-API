@@ -11,6 +11,18 @@ function Invoke-CIPPOffboardingJob {
     if ($Options -is [string]) {
         $Options = $Options | ConvertFrom-Json
     }
+    $ReplaceValueWithLabel = {
+        param(
+            [string]$Message,
+            $Option
+        )
+        if (-not $Message) { return $Message }
+        if (-not $Option) { return $Message }
+        $Value = $Option.value
+        $Label = $Option.label
+        if ([string]::IsNullOrEmpty($Value) -or [string]::IsNullOrEmpty($Label)) { return $Message }
+        return ($Message -replace [regex]::Escape($Value), $Label)
+    }
     $User = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/users/$($Username)?`$select=id,displayName,onPremisesSyncEnabled,onPremisesImmutableId" -tenantid $TenantFilter
     $UserID = $User.id
     $DisplayName = $User.displayName
@@ -57,7 +69,8 @@ function Invoke-CIPPOffboardingJob {
         { $_.OnedriveAccess } {
             $Options.OnedriveAccess | ForEach-Object {
                 try {
-                    Set-CIPPSharePointPerms -tenantFilter $TenantFilter -userid $username -OnedriveAccessUser $_.value -Headers $Headers -APIName $APIName
+                    $Result = Set-CIPPSharePointPerms -tenantFilter $TenantFilter -userid $username -OnedriveAccessUser $_.value -Headers $Headers -APIName $APIName
+                    & $ReplaceValueWithLabel $Result $_
                 } catch {
                     $_.Exception.Message
                 }
@@ -66,7 +79,8 @@ function Invoke-CIPPOffboardingJob {
         { $_.AccessNoAutomap } {
             $Options.AccessNoAutomap | ForEach-Object {
                 try {
-                    Set-CIPPMailboxAccess -tenantFilter $TenantFilter -userid $username -AccessUser $_.value -Automap $false -AccessRights @('FullAccess') -Headers $Headers -APIName $APIName
+                    $Result = Set-CIPPMailboxAccess -tenantFilter $TenantFilter -userid $username -AccessUser $_.value -Automap $false -AccessRights @('FullAccess') -Headers $Headers -APIName $APIName
+                    & $ReplaceValueWithLabel $Result $_
                 } catch {
                     $_.Exception.Message
                 }
@@ -75,7 +89,8 @@ function Invoke-CIPPOffboardingJob {
         { $_.AccessAutomap } {
             $Options.AccessAutomap | ForEach-Object {
                 try {
-                    Set-CIPPMailboxAccess -tenantFilter $TenantFilter -userid $username -AccessUser $_.value -Automap $true -AccessRights @('FullAccess') -Headers $Headers -APIName $APIName
+                    $Result = Set-CIPPMailboxAccess -tenantFilter $TenantFilter -userid $username -AccessUser $_.value -Automap $true -AccessRights @('FullAccess') -Headers $Headers -APIName $APIName
+                    & $ReplaceValueWithLabel $Result $_
                 } catch {
                     $_.Exception.Message
                 }
@@ -91,14 +106,16 @@ function Invoke-CIPPOffboardingJob {
         { $_.forward } {
             if (!$Options.KeepCopy) {
                 try {
-                    Set-CIPPForwarding -userid $userid -username $username -tenantFilter $TenantFilter -Forward $Options.forward.value -Headers $Headers -APIName $APIName
+                    $Result = Set-CIPPForwarding -userid $userid -username $username -tenantFilter $TenantFilter -Forward $Options.forward.value -Headers $Headers -APIName $APIName
+                    & $ReplaceValueWithLabel $Result $Options.forward
                 } catch {
                     $_.Exception.Message
                 }
             } else {
                 $KeepCopy = [boolean]$Options.KeepCopy
                 try {
-                    Set-CIPPForwarding -userid $userid -username $username -tenantFilter $TenantFilter -Forward $Options.forward.value -KeepCopy $KeepCopy -Headers $Headers -APIName $APIName
+                    $Result = Set-CIPPForwarding -userid $userid -username $username -tenantFilter $TenantFilter -Forward $Options.forward.value -KeepCopy $KeepCopy -Headers $Headers -APIName $APIName
+                    & $ReplaceValueWithLabel $Result $Options.forward
                 } catch {
                     $_.Exception.Message
                 }
