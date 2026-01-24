@@ -7,7 +7,41 @@ function Invoke-ExecOffboardUser {
     #>
     [CmdletBinding()]
     param($Request, $TriggerMetadata)
-    $AllUsers = $Request.Body.user.value
+    $RawUsers = $Request.Body.user
+    $AllUsers = @()
+    if ($null -ne $RawUsers) {
+        if ($RawUsers -is [System.Collections.IEnumerable] -and -not ($RawUsers -is [string])) {
+            foreach ($UserItem in $RawUsers) {
+                if ($null -eq $UserItem) { continue }
+                if ($UserItem -is [string]) {
+                    $AllUsers += $UserItem
+                    continue
+                }
+                if ($UserItem.value) {
+                    $AllUsers += $UserItem.value
+                    continue
+                }
+                if ($UserItem.userPrincipalName) {
+                    $AllUsers += $UserItem.userPrincipalName
+                    continue
+                }
+            }
+        } else {
+            if ($RawUsers.value) {
+                $AllUsers += $RawUsers.value
+            } elseif ($RawUsers -is [string]) {
+                $AllUsers += $RawUsers
+            } elseif ($RawUsers.userPrincipalName) {
+                $AllUsers += $RawUsers.userPrincipalName
+            }
+        }
+    }
+    if (-not $AllUsers -or $AllUsers.Count -eq 0) {
+        return ([HttpResponseContext]@{
+                StatusCode = [HttpStatusCode]::BadRequest
+                Body       = [pscustomobject]@{ Results = @("No users were provided for offboarding.") }
+            })
+    }
     $TenantFilter = $request.Body.tenantFilter.value ? $request.Body.tenantFilter.value : $request.Body.tenantFilter
     $OffboardingOptions = $Request.Body | Select-Object * -ExcludeProperty user, tenantFilter, Scheduled
     $Results = foreach ($username in $AllUsers) {
