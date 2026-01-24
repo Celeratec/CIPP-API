@@ -54,7 +54,7 @@ Function Invoke-ListUserCounts {
             )
 
             # Execute bulk request
-            $BulkResults = New-GraphBulkRequest -Requests @($BulkRequests) -noPaginateIds @('LicUsers') -tenantid $TenantFilter @('Users', 'LicUsers', 'GAs', 'Guests')
+            $BulkResults = New-GraphBulkRequest -Requests @($BulkRequests) -NoPaginateIds @('Users', 'LicUsers', 'GAs', 'Guests') -tenantid $TenantFilter
 
             # Check if any requests failed
             $FailedRequests = $BulkResults | Where-Object { $_.status -ne 200 }
