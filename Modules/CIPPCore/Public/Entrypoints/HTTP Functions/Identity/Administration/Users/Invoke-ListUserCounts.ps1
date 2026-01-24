@@ -30,7 +30,7 @@ Function Invoke-ListUserCounts {
                 @{
                     id     = 'LicUsers'
                     method = 'GET'
-                    url    = "/users/`$count?`$top=1&`$filter=assignedLicenses/`$count ne 0"
+                    url    = "/users?`$count=true&`$filter=assignedLicenses/`$count ne 0&`$top=1"
                     headers = @{
                         'ConsistencyLevel' = 'eventual'
                     }
@@ -38,7 +38,7 @@ Function Invoke-ListUserCounts {
                 @{
                     id     = 'GAs'
                     method = 'GET'
-                    url    = "/directoryRoles/roleTemplateId=62e90394-69f5-4237-9190-012177145e10/members/`$count"
+                    url    = "/directoryRoles/roleTemplateId=62e90394-69f5-4237-9190-012177145e10/members?`$count=true&`$top=1"
                     headers = @{
                         'ConsistencyLevel' = 'eventual'
                     }
@@ -46,7 +46,7 @@ Function Invoke-ListUserCounts {
                 @{
                     id     = 'Guests'
                     method = 'GET'
-                    url    = "/users/`$count?`$top=1&`$filter=userType eq 'Guest'"
+                    url    = "/users?`$count=true&`$filter=userType eq 'Guest'&`$top=1"
                     headers = @{
                         'ConsistencyLevel' = 'eventual'
                     }
@@ -75,7 +75,13 @@ Function Invoke-ListUserCounts {
 
             # All requests succeeded, extract the counts
             $BulkResults | ForEach-Object {
-                $UsersCount = $_.body
+                # Users endpoint returns body directly as a number (/$count endpoint)
+                # Other endpoints use $count=true and return @odata.count in the body
+                $UsersCount = if ($_.id -eq 'Users') {
+                    $_.body
+                } else {
+                    $_.body.'@odata.count'
+                }
 
                 switch ($_.id) {
                     'Users' { $Users = $UsersCount }
