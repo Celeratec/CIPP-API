@@ -41,8 +41,17 @@ function New-CIPPGroup {
     )
 
     try {
+        # Extract groupType value - handle both string and object with .value property
+        $GroupTypeValue = if ($GroupObject.groupType.value) {
+            $GroupObject.groupType.value
+        } elseif ($GroupObject.groupType -is [string]) {
+            $GroupObject.groupType
+        } else {
+            [string]$GroupObject.groupType
+        }
+
         # Normalize group type for consistent handling (accept camelCase from templates)
-        $NormalizedGroupType = switch -Wildcard ($GroupObject.groupType.ToLower()) {
+        $NormalizedGroupType = switch -Wildcard ($GroupTypeValue.ToLower()) {
             'mail-enabled security' { 'Security'; break }
             '*dynamicdistribution*' { 'DynamicDistribution'; break }  # Check this first before *dynamic* and *distribution*
             '*dynamic*' { 'Dynamic'; break }

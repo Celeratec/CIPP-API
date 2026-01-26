@@ -81,8 +81,17 @@ function Invoke-CIPPStandardGroupTemplate {
                 } else {
                     $ActionType = 'update'
 
+                    # Extract groupType value - handle both string and object with .value property
+                    $GroupTypeValue = if ($groupobj.groupType.value) {
+                        $groupobj.groupType.value
+                    } elseif ($groupobj.groupType -is [string]) {
+                        $groupobj.groupType
+                    } else {
+                        [string]$groupobj.groupType
+                    }
+
                     # Normalize group type like New-CIPPGroup does
-                    $NormalizedGroupType = switch -Wildcard ($groupobj.groupType.ToLower()) {
+                    $NormalizedGroupType = switch -Wildcard ($GroupTypeValue.ToLower()) {
                         '*dynamicdistribution*' { 'DynamicDistribution'; break }
                         '*dynamic*' { 'Dynamic'; break }
                         '*generic*' { 'Generic'; break }

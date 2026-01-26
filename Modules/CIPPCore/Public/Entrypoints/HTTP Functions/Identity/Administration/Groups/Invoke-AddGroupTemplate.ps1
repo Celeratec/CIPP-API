@@ -14,9 +14,18 @@ function Invoke-AddGroupTemplate {
             throw 'You must enter a displayname'
         }
 
+        # Extract groupType value - handle both string and object with .value property
+        $GroupTypeInput = if ($Request.Body.groupType.value) {
+            $Request.Body.groupType.value
+        } elseif ($Request.Body.groupType -is [string]) {
+            $Request.Body.groupType
+        } else {
+            [string]$Request.Body.groupType
+        }
+
         # Normalize group type to match New-CIPPGroup expectations
         # Handle values from ListGroups calculatedGroupType and frontend form values
-        $groupType = switch -wildcard ($Request.Body.groupType.ToLower()) {
+        $groupType = switch -wildcard ($GroupTypeInput.ToLower()) {
             # Values from ListGroups calculatedGroupType
             '*mail-enabled security*' { 'security'; break }
             '*microsoft 365*' { 'm365'; break }
