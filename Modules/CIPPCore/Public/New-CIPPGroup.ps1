@@ -78,19 +78,30 @@ function New-CIPPGroup {
         }
 
         # Extract local part of username if exists and remove special characters for mailNickname
-        if ($GroupObject.username -like '*@*') {
-            $MailNickname = ($GroupObject.username -split '@')[0]
+        # If no username provided, fall back to displayName for the mailNickname (required by Graph API for all groups)
+        $SourceForNickname = if ($GroupObject.username) {
+            if ($GroupObject.username -like '*@*') {
+                ($GroupObject.username -split '@')[0]
+            } else {
+                $GroupObject.username
+            }
         } else {
-            $MailNickname = $GroupObject.username
+            # Use displayName as fallback for groups that don't need email (security groups)
+            $GroupObject.displayName
         }
 
         # Remove forbidden characters per Microsoft 365 mailNickname requirements:
         # ASCII 0-127 only, excluding: @ () / [] ' ; : <> , SPACE and any non-ASCII
-        $MailNickname = $MailNickname -replace "[@()\[\]/'`;:<>,\s]|[^\x00-\x7F]", ''
+        $MailNickname = $SourceForNickname -replace "[@()\[\]/'`;:<>,\s]|[^\x00-\x7F]", ''
 
         # Ensure max length of 64 characters
         if ($MailNickname.Length -gt 64) {
             $MailNickname = $MailNickname.Substring(0, 64)
+        }
+
+        # Ensure mailNickname is not empty (use a GUID suffix if displayName resulted in empty string)
+        if ([string]::IsNullOrWhiteSpace($MailNickname)) {
+            $MailNickname = "group-$(New-Guid)".Substring(0, 64)
         }
 
         Write-LogMessage -API $APIName -tenant $TenantFilter -message "Creating group $($GroupObject.displayName) of type $NormalizedGroupType$(if ($NeedsEmail) { " with email $Email" })" -Sev Info
