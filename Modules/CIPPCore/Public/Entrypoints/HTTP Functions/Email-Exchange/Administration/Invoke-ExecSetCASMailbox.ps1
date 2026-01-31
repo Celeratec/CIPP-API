@@ -13,8 +13,17 @@ Function Invoke-ExecSetCASMailbox {
 
         $Username = $Request.Body.user
         $TenantFilter = $Request.Body.tenantFilter
-        $Protocol = $Request.Body.protocol
         $Enable = [bool]$Request.Body.enable
+
+        # Support both single protocol and multiple protocols (comma-separated)
+        $ProtocolsInput = if ($Request.Body.protocols) {
+            $Request.Body.protocols
+        } else {
+            $Request.Body.protocol
+        }
+
+        # Split comma-separated protocols into array
+        $ProtocolList = @($ProtocolsInput -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 
         # Map protocol names to CAS mailbox parameters
         $ProtocolMap = @{
@@ -26,24 +35,32 @@ Function Invoke-ExecSetCASMailbox {
             'ActiveSync' = 'ActiveSyncEnabled'
         }
 
-        if (-not $ProtocolMap.ContainsKey($Protocol)) {
-            throw "Invalid protocol specified: $Protocol. Valid protocols are: $($ProtocolMap.Keys -join ', ')"
+        # Validate all protocols
+        foreach ($Protocol in $ProtocolList) {
+            if (-not $ProtocolMap.ContainsKey($Protocol)) {
+                throw "Invalid protocol specified: $Protocol. Valid protocols are: $($ProtocolMap.Keys -join ', ')"
+            }
         }
 
-        $ParamName = $ProtocolMap[$Protocol]
+        # Build command parameters for all protocols
         $CmdParams = @{
             Identity = $Username
-            $ParamName = $Enable
+        }
+        foreach ($Protocol in $ProtocolList) {
+            $ParamName = $ProtocolMap[$Protocol]
+            $CmdParams[$ParamName] = $Enable
         }
 
         $Results = try {
             $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Set-CASMailbox' -cmdParams $CmdParams
             $StatusText = if ($Enable) { 'enabled' } else { 'disabled' }
-            $Message = "Successfully $StatusText $Protocol for $Username"
+            $ProtocolNames = $ProtocolList -join ', '
+            $Message = "Successfully $StatusText $ProtocolNames for $Username"
             Write-LogMessage -headers $Request.Headers -API $APINAME -message $Message -Sev 'Info' -tenant $TenantFilter
             $Message
         } catch {
-            $ErrorMessage = "Failed to set $Protocol for $Username. Error: $($_.Exception.Message)"
+            $ProtocolNames = $ProtocolList -join ', '
+            $ErrorMessage = "Failed to set $ProtocolNames for $Username. Error: $($_.Exception.Message)"
             Write-LogMessage -headers $Request.Headers -API $APINAME -message $ErrorMessage -Sev 'Error' -tenant $TenantFilter
             throw $ErrorMessage
         }
