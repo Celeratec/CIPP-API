@@ -31,37 +31,49 @@ function Invoke-EditUser {
     #Edit the user
     try {
         Write-Host "$([boolean]$UserObj.MustChangePass)"
-        $UserPrincipalName = "$($UserObj.username)@$($UserObj.Domain ? $UserObj.Domain : $UserObj.primDomain.value)"
-        $BodyToship = [pscustomobject] @{
-            'givenName'         = $UserObj.givenName
-            'surname'           = $UserObj.surname
-            'displayName'       = $UserObj.displayName
-            'department'        = $UserObj.department
-            'mailNickname'      = $UserObj.username ? $UserObj.username : $UserObj.mailNickname
-            'userPrincipalName' = $UserPrincipalName
-            'usageLocation'     = $UserObj.usageLocation.value ? $UserObj.usageLocation.value : $UserObj.usageLocation
-            'jobTitle'          = $UserObj.jobTitle
-            'mobilePhone'       = $UserObj.mobilePhone
-            'streetAddress'     = $UserObj.streetAddress
-            'city'              = $UserObj.city
-            'state'             = $UserObj.state
-            'postalCode'        = $UserObj.postalCode
-            'country'           = $UserObj.country
-            'companyName'       = $UserObj.companyName
-            'businessPhones'    = $UserObj.businessPhones ? @($UserObj.businessPhones) : @()
-            'otherMails'        = $UserObj.otherMails ? @($UserObj.otherMails) : @()
-            'passwordProfile'   = @{
+        # Use provided userPrincipalName if username is not available (e.g., inline edits)
+        $UserPrincipalName = if ($UserObj.username) {
+            "$($UserObj.username)@$($UserObj.Domain ? $UserObj.Domain : $UserObj.primDomain.value)"
+        } else {
+            $UserObj.userPrincipalName
+        }
+        # Build the body with only properties that are explicitly provided
+        $BodyToship = @{}
+
+        # Only add properties that are explicitly set in the request
+        if ($null -ne $UserObj.givenName) { $BodyToship['givenName'] = $UserObj.givenName }
+        if ($null -ne $UserObj.surname) { $BodyToship['surname'] = $UserObj.surname }
+        if ($null -ne $UserObj.displayName) { $BodyToship['displayName'] = $UserObj.displayName }
+        if ($null -ne $UserObj.department) { $BodyToship['department'] = $UserObj.department }
+        if ($UserObj.username -or $UserObj.mailNickname) {
+            $BodyToship['mailNickname'] = $UserObj.username ? $UserObj.username : $UserObj.mailNickname
+        }
+        if ($UserPrincipalName -and $UserObj.username) {
+            $BodyToship['userPrincipalName'] = $UserPrincipalName
+        }
+        if ($UserObj.usageLocation) {
+            $BodyToship['usageLocation'] = $UserObj.usageLocation.value ? $UserObj.usageLocation.value : $UserObj.usageLocation
+        }
+        if ($null -ne $UserObj.jobTitle) { $BodyToship['jobTitle'] = $UserObj.jobTitle }
+        if ($null -ne $UserObj.mobilePhone) { $BodyToship['mobilePhone'] = $UserObj.mobilePhone }
+        if ($null -ne $UserObj.streetAddress) { $BodyToship['streetAddress'] = $UserObj.streetAddress }
+        if ($null -ne $UserObj.city) { $BodyToship['city'] = $UserObj.city }
+        if ($null -ne $UserObj.state) { $BodyToship['state'] = $UserObj.state }
+        if ($null -ne $UserObj.postalCode) { $BodyToship['postalCode'] = $UserObj.postalCode }
+        if ($null -ne $UserObj.country) { $BodyToship['country'] = $UserObj.country }
+        if ($null -ne $UserObj.companyName) { $BodyToship['companyName'] = $UserObj.companyName }
+        if ($null -ne $UserObj.businessPhones) { $BodyToship['businessPhones'] = @($UserObj.businessPhones) }
+        if ($null -ne $UserObj.otherMails) { $BodyToship['otherMails'] = @($UserObj.otherMails) }
+        if ($UserObj.MustChangePass) {
+            $BodyToship['passwordProfile'] = @{
                 'forceChangePasswordNextSignIn' = [bool]$UserObj.MustChangePass
             }
-        } | ForEach-Object {
-            $NonEmptyProperties = $_.PSObject.Properties | Select-Object -ExpandProperty Name
-            $_ | Select-Object -Property $NonEmptyProperties
         }
         if ($UserObj.defaultAttributes) {
             $UserObj.defaultAttributes | Get-Member -MemberType NoteProperty | ForEach-Object {
                 if (-not [string]::IsNullOrWhiteSpace($UserObj.defaultAttributes.$($_.Name).value)) {
                     Write-Host "Editing user and adding $($_.Name) with value $($UserObj.defaultAttributes.$($_.Name).value)"
-                    $BodyToShip | Add-Member -NotePropertyName $_.Name -NotePropertyValue $UserObj.defaultAttributes.$($_.Name).value -Force
+                    $BodyToShip[$_.Name] = $UserObj.defaultAttributes.$($_.Name).value
                 }
             }
         }
@@ -69,14 +81,22 @@ function Invoke-EditUser {
             $UserObj.customData | Get-Member -MemberType NoteProperty | ForEach-Object {
                 if (-not [string]::IsNullOrWhiteSpace($UserObj.customData.$($_.Name))) {
                     Write-Host "Editing user and adding custom data $($_.Name) with value $($UserObj.customData.$($_.Name))"
-                    $BodyToShip | Add-Member -NotePropertyName $_.Name -NotePropertyValue $UserObj.customData.$($_.Name) -Force
+                    $BodyToShip[$_.Name] = $UserObj.customData.$($_.Name)
                 }
             }
         }
-        $bodyToShip = ConvertTo-Json -Depth 10 -InputObject $BodyToship -Compress
-        $null = New-GraphPostRequest -uri "https://graph.microsoft.com/beta/users/$($UserObj.id)" -tenantid $UserObj.tenantFilter -type PATCH -body $BodyToship -verbose
-        $Results.Add( 'Success. The user has been edited.' )
-        Write-LogMessage -API $APIName -tenant ($UserObj.tenantFilter) -headers $Headers -message "Edited user $($UserObj.DisplayName) with id $($UserObj.id)" -Sev Info
+
+        # Only make the API call if there are properties to update
+        if ($BodyToShip.Count -gt 0) {
+            $bodyToShipJson = ConvertTo-Json -Depth 10 -InputObject $BodyToship -Compress
+            Write-Host "Updating user with body: $bodyToShipJson"
+            $null = New-GraphPostRequest -uri "https://graph.microsoft.com/beta/users/$($UserObj.id)" -tenantid $UserObj.tenantFilter -type PATCH -body $BodyToship -verbose
+            $Results.Add( 'Success. The user has been edited.' )
+            $UserDisplay = if ($UserObj.DisplayName) { $UserObj.DisplayName } else { $UserObj.userPrincipalName }
+            Write-LogMessage -API $APIName -tenant ($UserObj.tenantFilter) -headers $Headers -message "Edited user $UserDisplay with id $($UserObj.id)" -Sev Info
+        } else {
+            $Results.Add( 'No user properties to update.' )
+        }
         if ($UserObj.password) {
             $passwordProfile = [pscustomobject]@{'passwordProfile' = @{ 'password' = $UserObj.password; 'forceChangePasswordNextSignIn' = [boolean]$UserObj.MustChangePass } } | ConvertTo-Json
             $null = New-GraphPostRequest -uri "https://graph.microsoft.com/beta/users/$($UserObj.id)" -tenantid $UserObj.tenantFilter -type PATCH -body $PasswordProfile -Verbose
