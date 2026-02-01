@@ -15,6 +15,7 @@ function Invoke-AddUserBulk {
     $BulkUsers = $Request.Body.BulkUser
     $AssignedLicenses = $Request.Body.licenses
     $UsageLocation = $Request.Body.usageLocation
+    $DisableLegacyProtocols = $Request.Body.disableLegacyProtocols
 
     if (!$BulkUsers) {
         $Body = @{
@@ -127,6 +128,33 @@ function Invoke-AddUserBulk {
                         $GuidPattern = '([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})'
                         $LicenseSkus = $AssignedLicenses.value ?? $AssignedLicenses | Where-Object { $_ -match $GuidPattern }
                         Set-CIPPUserLicense -UserId $BulkResult.id -AddLicenses $LicenseSkus -TenantFilter $TenantFilter -APIName $APIName -Headers $Headers
+                    }
+                    # Schedule task to disable legacy protocols if requested
+                    if ($DisableLegacyProtocols -eq $true) {
+                        try {
+                            $taskObject = [PSCustomObject]@{
+                                TenantFilter  = $TenantFilter
+                                Name          = "Disable Legacy Protocols: $($BulkResult.id)"
+                                Command       = @{
+                                    value = 'Set-CIPPCASMailbox'
+                                }
+                                Parameters    = [pscustomobject]@{
+                                    Username     = $BulkResult.id
+                                    TenantFilter = $TenantFilter
+                                    ImapEnabled  = $false
+                                    PopEnabled   = $false
+                                }
+                                ScheduledTime = (Get-Date).AddMinutes(5).ToUniversalTime()
+                                PostExecution = @{
+                                    Webhook = $false
+                                    Email   = $false
+                                    PSA     = $false
+                                }
+                            }
+                            Add-CIPPScheduledTask -Task $taskObject -hidden $true -Headers $Request.Headers
+                        } catch {
+                            Write-LogMessage -headers $Request.Headers -API $APIName -tenant $TenantFilter -message "Failed to schedule legacy protocol disable task for $($BulkResult.id). Error: $($_.Exception.Message)" -Sev 'Warning'
+                        }
                     }
                     $Results.Add(@{
                             resultText = $Message.resultText

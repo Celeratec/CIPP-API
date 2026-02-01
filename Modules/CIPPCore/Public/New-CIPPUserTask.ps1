@@ -78,6 +78,38 @@ function New-CIPPUserTask {
         $Results.Add($SponsorResult)
     }
 
+    # Disable legacy protocols (IMAP/POP) if requested
+    if ($UserObj.disableLegacyProtocols -eq $true) {
+        try {
+            # Schedule this for 5 minutes later to allow mailbox provisioning
+            $taskObject = [PSCustomObject]@{
+                TenantFilter  = $UserObj.tenantFilter
+                Name          = "Disable Legacy Protocols: $($CreationResults.Username)"
+                Command       = @{
+                    value = 'Set-CIPPCASMailbox'
+                }
+                Parameters    = [pscustomobject]@{
+                    Username     = $CreationResults.Username
+                    TenantFilter = $UserObj.tenantFilter
+                    ImapEnabled  = $false
+                    PopEnabled   = $false
+                }
+                ScheduledTime = (Get-Date).AddMinutes(5).ToUniversalTime()
+                PostExecution = @{
+                    Webhook = $false
+                    Email   = $false
+                    PSA     = $false
+                }
+            }
+            Add-CIPPScheduledTask -Task $taskObject -hidden $true -Headers $Headers
+            $Results.Add('Scheduled task to disable IMAP and POP protocols (runs in 5 minutes to allow mailbox provisioning)')
+            Write-LogMessage -headers $Headers -API $APIName -tenant $($UserObj.tenantFilter) -message "Scheduled task to disable legacy protocols for $($CreationResults.Username)" -Sev 'Info'
+        } catch {
+            Write-LogMessage -headers $Headers -API $APIName -tenant $($UserObj.tenantFilter) -message "Failed to schedule legacy protocol disable task. Error: $($_.Exception.Message)" -Sev 'Warning'
+            $Results.Add("Note: Could not schedule legacy protocol disable task: $($_.Exception.Message)")
+        }
+    }
+
     return @{
         Results  = $Results
         Username = $CreationResults.Username
