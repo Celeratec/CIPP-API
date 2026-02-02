@@ -10,16 +10,39 @@ function Invoke-AddStandardsTemplate {
 
     $APIName = $Request.Params.CIPPEndpoint
     $Headers = $Request.Headers
+
+    # Clean up corrupted data - tenantFilter should be an array of tenants, not the literal string 'tenantFilter'
     if ($Request.Body.tenantFilter -eq 'tenantFilter') {
         throw 'Invalid Tenant Selection. A standard must be assigned to at least 1 tenant.'
     }
 
+    # Clean up excludedTenants if it contains corrupted data
+    if ($Request.Body.excludedTenants) {
+        if ($Request.Body.excludedTenants -eq 'excludedTenants') {
+            $Request.Body.excludedTenants = @()
+        } elseif ($Request.Body.excludedTenants -is [array]) {
+            $Request.Body.excludedTenants = @($Request.Body.excludedTenants | Where-Object {
+                $_ -and $_ -ne 'excludedTenants' -and $_ -ne 'tenantFilter'
+            })
+        }
+    }
+
     $GUID = $Request.body.GUID ? $request.body.GUID : (New-Guid).GUID
-    #updatedBy    = $request.headers.'x-ms-client-principal'
-    #updatedAt    = (Get-Date).ToUniversalTime()
+
     $request.body | Add-Member -NotePropertyName 'GUID' -NotePropertyValue $GUID -Force
     $request.body | Add-Member -NotePropertyName 'createdAt' -NotePropertyValue ($Request.body.createdAt ? $Request.body.createdAt : (Get-Date).ToUniversalTime()) -Force
-    $Request.body | Add-Member -NotePropertyName 'updatedBy' -NotePropertyValue ([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($request.headers.'x-ms-client-principal')) | ConvertFrom-Json).userDetails -Force
+
+    # Safely decode the user principal header
+    $updatedBy = 'Unknown'
+    try {
+        if ($request.headers.'x-ms-client-principal') {
+            $decodedPrincipal = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($request.headers.'x-ms-client-principal')) | ConvertFrom-Json
+            $updatedBy = $decodedPrincipal.userDetails
+        }
+    } catch {
+        Write-Host "Failed to decode client principal: $_"
+    }
+    $Request.body | Add-Member -NotePropertyName 'updatedBy' -NotePropertyValue $updatedBy -Force
     $Request.body | Add-Member -NotePropertyName 'updatedAt' -NotePropertyValue (Get-Date).ToUniversalTime() -Force
     $JSON = (ConvertTo-Json -Compress -Depth 100 -InputObject ($Request.body))
     $Table = Get-CippTable -tablename 'templates'
