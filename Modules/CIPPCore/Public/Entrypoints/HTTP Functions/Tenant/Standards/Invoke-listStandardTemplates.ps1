@@ -42,7 +42,7 @@ function Invoke-listStandardTemplates {
     if ($ID) { $Templates = $Templates | Where-Object GUID -EQ $ID }
     return ([HttpResponseContext]@{
             StatusCode = [HttpStatusCode]::OK
-            Body       = @($Templates)
+            Body       = @{ Results = @($Templates) }
         })
 
 }
