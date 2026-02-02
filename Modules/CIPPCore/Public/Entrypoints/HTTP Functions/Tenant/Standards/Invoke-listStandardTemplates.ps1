@@ -29,10 +29,14 @@ function Invoke-listStandardTemplates {
             if (!$Data.excludedTenants) {
                 $Data | Add-Member -NotePropertyName 'excludedTenants' -NotePropertyValue @() -Force
             } else {
-                if ($Data.excludedTenants -and $Data.excludedTenants -ne 'excludedTenants') {
-                    $Data.excludedTenants = @($Data.excludedTenants)
-                } else {
+                # Handle case where excludedTenants is the literal string 'excludedTenants' (data corruption)
+                if ($Data.excludedTenants -eq 'excludedTenants') {
                     $Data.excludedTenants = @()
+                } else {
+                    # Wrap in array and filter out any invalid entries
+                    $Data.excludedTenants = @($Data.excludedTenants) | Where-Object {
+                        $_ -and $_ -ne 'excludedTenants' -and $_ -ne 'tenantFilter'
+                    }
                 }
             }
             $Data
