@@ -18,12 +18,13 @@ function Invoke-ExecExpirePassword {
 
     try {
         # Set forceChangePasswordNextSignIn without changing the password
-        $Body = @{
+        $Body = [PSCustomObject]@{
             'passwordProfile' = @{
                 'forceChangePasswordNextSignIn' = $true
             }
-        } | ConvertTo-Json -Compress
+        } | ConvertTo-Json -Depth 5 -Compress
 
+        Write-Host "Expiring password for user: $UserID with body: $Body"
         $null = New-GraphPostRequest -uri "https://graph.microsoft.com/v1.0/users/$($UserID)" -tenantid $TenantFilter -type PATCH -body $Body -verbose
 
         $Result = @{
