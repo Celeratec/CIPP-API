@@ -63,10 +63,20 @@ function Invoke-ExecSetUserPhoto {
                 throw "Photo size exceeds 4MB limit. Current size: $([math]::Round($photoBytes.Length / 1MB, 2))MB"
             }
 
-            # Determine content type based on photo data
-            $contentType = 'image/jpeg'
-            if ($photoData -match '^data:image/png;base64,') {
+            # Determine content type based on photo data URL prefix
+            $contentType = 'image/jpeg'  # Default to JPEG
+            if ($photoData -match '^data:image/(png);base64,') {
                 $contentType = 'image/png'
+            } elseif ($photoData -match '^data:image/(jpeg|jpg);base64,') {
+                $contentType = 'image/jpeg'
+            }
+
+            # Also detect by magic bytes if no data URL prefix
+            if ($photoData -notmatch '^data:') {
+                # Check PNG magic bytes (89 50 4E 47)
+                if ($photoBytes[0] -eq 0x89 -and $photoBytes[1] -eq 0x50 -and $photoBytes[2] -eq 0x4E -and $photoBytes[3] -eq 0x47) {
+                    $contentType = 'image/png'
+                }
             }
 
             # Upload the photo using Graph API
@@ -74,7 +84,24 @@ function Invoke-ExecSetUserPhoto {
             $graphToken = Get-GraphToken -tenantid $tenantFilter
             $uri = "https://graph.microsoft.com/v1.0/users/$userId/photo/`$value"
 
-            $null = Invoke-RestMethod -Uri $uri -Method PUT -Body $photoBytes -Headers $graphToken -ContentType $contentType
+            Write-Host "Uploading photo for user $userId with content type $contentType and size $($photoBytes.Length) bytes"
+
+            try {
+                $null = Invoke-RestMethod -Uri $uri -Method PUT -Body $photoBytes -Headers $graphToken -ContentType $contentType
+            } catch {
+                $errorResponse = $_.ErrorDetails.Message | ConvertFrom-Json -ErrorAction SilentlyContinue
+                $errorCode = $errorResponse.error.code
+                $errorMessage = $errorResponse.error.message
+
+                # Provide more helpful error messages for common issues
+                if ($errorCode -eq 'ErrorNonExistentMailbox' -or $errorMessage -like '*mailbox*') {
+                    throw "Cannot set profile photo: User does not have an Exchange mailbox. Ensure the user has an Exchange Online license assigned."
+                } elseif ($errorCode -eq 'Request_BadRequest' -or $_.Exception.Response.StatusCode -eq 400) {
+                    throw "Invalid photo data or format. Ensure the image is a valid JPEG or PNG file under 4MB. Error: $errorMessage"
+                } else {
+                    throw $_
+                }
+            }
 
             # Invalidate the photo cache for this user
             try {
