@@ -90,7 +90,7 @@ function Invoke-EditUser {
         if ($BodyToShip.Count -gt 0) {
             $bodyToShipJson = ConvertTo-Json -Depth 10 -InputObject $BodyToship -Compress
             Write-Host "Updating user with body: $bodyToShipJson"
-            $null = New-GraphPostRequest -uri "https://graph.microsoft.com/beta/users/$($UserObj.id)" -tenantid $UserObj.tenantFilter -type PATCH -body $BodyToship -verbose
+            $null = New-GraphPostRequest -uri "https://graph.microsoft.com/beta/users/$($UserObj.id)" -tenantid $UserObj.tenantFilter -type PATCH -body $bodyToShipJson -verbose
             $Results.Add( 'Success. The user has been edited.' )
             $UserDisplay = if ($UserObj.DisplayName) { $UserObj.DisplayName } else { $UserObj.userPrincipalName }
             Write-LogMessage -API $APIName -tenant ($UserObj.tenantFilter) -headers $Headers -message "Edited user $UserDisplay with id $($UserObj.id)" -Sev Info
