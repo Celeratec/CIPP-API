@@ -7,12 +7,21 @@ function Invoke-CippGraphWebhookRenewal {
     } | ConvertTo-Json
 
     $Tenants = Get-Tenants -IncludeErrors
-    $TenantDomains = $Tenants.defaultDomainName
-    $TenantCustomerIds = $Tenants.customerId
+    # Use hashtables for O(1) lookup instead of O(n) array search
+    $TenantDomainsHash = @{}
+    $TenantCustomerIdsHash = @{}
+    foreach ($Tenant in $Tenants) {
+        if ($Tenant.defaultDomainName) { $TenantDomainsHash[$Tenant.defaultDomainName] = $true }
+        if ($Tenant.customerId) { $TenantCustomerIdsHash[$Tenant.customerId] = $true }
+    }
 
     $WebhookTable = Get-CIPPTable -TableName webhookTable
     try {
-        $WebhookData = Get-AzDataTableEntity @WebhookTable | Where-Object { $null -ne $_.SubscriptionID -and $_.SubscriptionID -ne '' -and ((Get-Date($_.Expiration)) -le ((Get-Date).AddHours(2))) }
+        # Use server-side filter for non-empty SubscriptionID, then filter expiration client-side
+        # (Date comparisons in Azure Table filters are limited)
+        $ExpirationCutoff = (Get-Date).AddHours(2)
+        $WebhookData = Get-AzDataTableEntity @WebhookTable -Filter "SubscriptionID ne ''" | 
+            Where-Object { $null -ne $_.SubscriptionID -and ((Get-Date($_.Expiration)) -le $ExpirationCutoff) }
     } catch {
         $WebhookData = @()
     }
@@ -38,7 +47,7 @@ function Invoke-CippGraphWebhookRenewal {
             $ProcessedCount++
             try {
                 $TenantFilter = $UpdateSub.PartitionKey
-                if ($TenantDomains -notcontains $TenantFilter -and $TenantCustomerIds -notcontains $TenantFilter) {
+                if (-not $TenantDomainsHash.ContainsKey($TenantFilter) -and -not $TenantCustomerIdsHash.ContainsKey($TenantFilter)) {
                     Write-LogMessage -API 'Renew_Graph_Subscriptions' -message "Removing Subscription Renewal for $($UpdateSub.SubscriptionID) as tenant $TenantFilter is not in the tenant list." -Sev 'Warning' -tenant $TenantFilter
                     try {
                         Remove-AzDataTableEntity -Force @WebhookTable -Entity $UpdateSub -ErrorAction Stop
