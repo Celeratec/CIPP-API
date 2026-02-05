@@ -19,13 +19,28 @@ function New-CIPPSharepointSite {
     The template to use for the site. Default is Communication
 
     .PARAMETER SiteDesign
-    The design to use for the site. Default is Topic
+    The design to use for the site (for Communication sites). Default is Blank
 
-    .PARAMETER WebTemplateExtensionId
-    The web template extension ID to use
+    .PARAMETER CustomSiteDesignId
+    Custom site design ID from tenant's site designs
 
     .PARAMETER SensitivityLabel
     The Purview sensitivity label to apply to the site
+
+    .PARAMETER Lcid
+    The language/locale ID for the site. Default is 1033 (English US)
+
+    .PARAMETER TimeZoneId
+    The time zone ID for the site. Default is 13 (UTC-08:00 Pacific Time)
+
+    .PARAMETER StorageQuota
+    Storage quota in MB. Default is determined by tenant settings
+
+    .PARAMETER ShareByEmailEnabled
+    Allow external sharing via email. Default is false
+
+    .PARAMETER HubSiteId
+    Associate the site with a hub site
 
     .PARAMETER TenantFilter
     The tenant associated with the site
@@ -43,21 +58,36 @@ function New-CIPPSharepointSite {
         [string]$SiteOwner,
 
         [Parameter(Mandatory = $false)]
-        [ValidateSet('Communication', 'Team')]
+        [ValidateSet('Communication', 'Team', 'TeamChannel')]
         [string]$TemplateName = 'Communication',
 
         [Parameter(Mandatory = $false)]
         [ValidateSet('Topic', 'Showcase', 'Blank', 'Custom')]
-        [string]$SiteDesign = 'Showcase',
+        [string]$SiteDesign = 'Blank',
 
         [Parameter(Mandatory = $false)]
-        [ValidatePattern('(\{|\()?[A-Za-z0-9]{4}([A-Za-z0-9]{4}\-?){4}[A-Za-z0-9]{12}(\}|\()?')]
-        [string]$WebTemplateExtensionId,
+        [string]$CustomSiteDesignId,
 
         [Parameter(Mandatory = $false)]
         [string]$SensitivityLabel,
 
+        [Parameter(Mandatory = $false)]
         [string]$Classification,
+
+        [Parameter(Mandatory = $false)]
+        [int]$Lcid = 1033,
+
+        [Parameter(Mandatory = $false)]
+        [int]$TimeZoneId,
+
+        [Parameter(Mandatory = $false)]
+        [int]$StorageQuota,
+
+        [Parameter(Mandatory = $false)]
+        [bool]$ShareByEmailEnabled = $false,
+
+        [Parameter(Mandatory = $false)]
+        [string]$HubSiteId,
 
         [Parameter(Mandatory = $true)]
         [string]$TenantFilter,
@@ -70,48 +100,54 @@ function New-CIPPSharepointSite {
     $SitePath = $SiteName -replace ' ' -replace '[^A-Za-z0-9-]'
     $SiteUrl = "https://$($SharePointInfo.TenantName).sharepoint.com/sites/$SitePath"
 
-    switch ($TemplateName) {
-        'Communication' {
-            $WebTemplate = 'SITEPAGEPUBLISHING#0'
-        }
-        'Team' {
-            $WebTemplate = 'STS#3'
-        }
+    # Map template name to SharePoint web template
+    $WebTemplate = switch ($TemplateName) {
+        'Communication' { 'SITEPAGEPUBLISHING#0' }
+        'Team' { 'STS#3' }
+        'TeamChannel' { 'TEAMCHANNEL#1' }
+        default { 'SITEPAGEPUBLISHING#0' }
     }
 
-    $WebTemplateExtensionId = '00000000-0000-0000-0000-000000000000'
-    $DefaultSiteDesignIds = @( '96c933ac-3698-44c7-9f4a-5fd17d71af9e', '6142d2a0-63a5-4ba0-aede-d9fefca2c767', 'f6cc5403-0d63-442e-96c0-285923709ffc')
+    # Default site design IDs (built-in Microsoft designs for Communication sites)
+    $DefaultSiteDesignIds = @{
+        'Topic'    = '96c933ac-3698-44c7-9f4a-5fd17d71af9e'
+        'Showcase' = '6142d2a0-63a5-4ba0-aede-d9fefca2c767'
+        'Blank'    = 'f6cc5403-0d63-442e-96c0-285923709ffc'
+    }
 
-    switch ($SiteDesign) {
-        'Topic' {
-            $SiteDesignId = '96c933ac-3698-44c7-9f4a-5fd17d71af9e'
-        }
-        'Showcase' {
-            $SiteDesignId = '6142d2a0-63a5-4ba0-aede-d9fefca2c767'
-        }
-        'Blank' {
-            $SiteDesignId = 'f6cc5403-0d63-442e-96c0-285923709ffc'
-        }
-        'Custom' {
-            if ($WebTemplateExtensionId -match '^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$') {
-                if ($WebTemplateExtensionId -notin $DefaultSiteDesignIds) {
-                    $WebTemplateExtensionId = $SiteDesign
-                    $SiteDesignId = '00000000-0000-0000-0000-000000000000'
+    # Determine site design ID
+    $SiteDesignId = '00000000-0000-0000-0000-000000000000'
+    $WebTemplateExtensionId = '00000000-0000-0000-0000-000000000000'
+
+    if ($TemplateName -eq 'Communication') {
+        if ($SiteDesign -eq 'Custom' -and $CustomSiteDesignId) {
+            # Use custom site design - validate it's a GUID
+            if ($CustomSiteDesignId -match '^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$') {
+                # Check if it's a default design ID or a custom one
+                if ($CustomSiteDesignId -in $DefaultSiteDesignIds.Values) {
+                    $SiteDesignId = $CustomSiteDesignId
                 } else {
-                    $SiteDesignId = $WebTemplateExtensionId
+                    # Custom site design uses WebTemplateExtensionId
+                    $WebTemplateExtensionId = $CustomSiteDesignId
                 }
             } else {
-                $SiteDesignId = '96c933ac-3698-44c7-9f4a-5fd17d71af9e'
+                Write-Warning "Invalid CustomSiteDesignId format, using Blank design"
+                $SiteDesignId = $DefaultSiteDesignIds['Blank']
             }
+        } elseif ($DefaultSiteDesignIds.ContainsKey($SiteDesign)) {
+            $SiteDesignId = $DefaultSiteDesignIds[$SiteDesign]
+        } else {
+            $SiteDesignId = $DefaultSiteDesignIds['Blank']
         }
     }
+    # Team sites don't use site designs in the same way
 
     # Create the request body
     $Request = @{
         Title                  = $SiteName
         Url                    = $SiteUrl
-        Lcid                   = 1033
-        ShareByEmailEnabled    = $false
+        Lcid                   = $Lcid
+        ShareByEmailEnabled    = $ShareByEmailEnabled
         Description            = $SiteDescription
         WebTemplate            = $WebTemplate
         SiteDesignId           = $SiteDesignId
@@ -119,12 +155,21 @@ function New-CIPPSharepointSite {
         WebTemplateExtensionId = $WebTemplateExtensionId
     }
 
-    # Set the sensitivity label if provided
+    # Add optional parameters
     if ($SensitivityLabel) {
         $Request.SensitivityLabel = $SensitivityLabel
     }
     if ($Classification) {
         $Request.Classification = $Classification
+    }
+    if ($TimeZoneId) {
+        $Request.TimeZoneId = $TimeZoneId
+    }
+    if ($StorageQuota -and $StorageQuota -gt 0) {
+        $Request.StorageMaximumLevel = $StorageQuota
+    }
+    if ($HubSiteId -and $HubSiteId -ne '00000000-0000-0000-0000-000000000000') {
+        $Request.HubSiteId = $HubSiteId
     }
 
     Write-Verbose (ConvertTo-Json -InputObject $Request -Compress -Depth 10)
@@ -172,12 +217,10 @@ function New-CIPPSharepointSite {
             throw $Result
         }
         '4' {
-            Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message $Result -sev Error
             $Result = "Failed to create new SharePoint site $SiteName with URL $SiteUrl. The site already exists."
+            Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message $Result -sev Error
             throw $Result
         }
         default {}
     }
-
-
 }
