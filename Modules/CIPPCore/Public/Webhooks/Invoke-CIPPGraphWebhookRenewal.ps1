@@ -40,7 +40,14 @@ function Invoke-CippGraphWebhookRenewal {
                 $TenantFilter = $UpdateSub.PartitionKey
                 if ($TenantDomains -notcontains $TenantFilter -and $TenantCustomerIds -notcontains $TenantFilter) {
                     Write-LogMessage -API 'Renew_Graph_Subscriptions' -message "Removing Subscription Renewal for $($UpdateSub.SubscriptionID) as tenant $TenantFilter is not in the tenant list." -Sev 'Warning' -tenant $TenantFilter
-                    Remove-AzDataTableEntity -Force @WebhookTable -Entity $UpdateSub
+                    try {
+                        Remove-AzDataTableEntity -Force @WebhookTable -Entity $UpdateSub -ErrorAction Stop
+                    } catch {
+                        # Ignore if entity was already deleted (404/ResourceNotFound)
+                        if ($_.Exception.Message -notmatch 'does not exist|ResourceNotFound') {
+                            throw
+                        }
+                    }
                     $SkippedCount++
                     continue
                 }
@@ -66,7 +73,14 @@ function Invoke-CippGraphWebhookRenewal {
                     $CreateResult = New-CIPPGraphSubscription -TenantFilter $TenantFilter -TypeofSubscription $TypeofSubscription -BaseURL $BaseURL -Resource $Resource -EventType $EventType -Headers 'GraphSubscriptionRenewal' -Recreate
 
                     if ($CreateResult -match 'Created Webhook subscription for') {
-                        Remove-AzDataTableEntity -Force @WebhookTable -Entity $UpdateSub
+                        try {
+                            Remove-AzDataTableEntity -Force @WebhookTable -Entity $UpdateSub -ErrorAction Stop
+                        } catch {
+                            # Ignore if entity was already deleted (404/ResourceNotFound)
+                            if ($_.Exception.Message -notmatch 'does not exist|ResourceNotFound') {
+                                throw
+                            }
+                        }
                         $SuccessCount++
                     } else {
                         $FailedCount++

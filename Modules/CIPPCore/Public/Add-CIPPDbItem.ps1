@@ -91,8 +91,18 @@ function Add-CIPPDbItem {
                 $gcStart = Get-Date
                 $BatchAccumulator.Clear()
 
-                # Single GC pass is sufficient - aggressive GC was causing slowdown
-                [System.GC]::Collect()
+                # Memory threshold check - use aggressive GC when approaching Azure Function limit (1536 MB)
+                $MemoryThresholdMB = 1200
+                $CurrentMemoryMB = [System.GC]::GetTotalMemory($false) / 1MB
+                if ($CurrentMemoryMB -gt $MemoryThresholdMB) {
+                    # Force aggressive garbage collection when memory is high
+                    [System.GC]::Collect(2, [System.GCCollectionMode]::Forced, $true)
+                    [System.GC]::WaitForPendingFinalizers()
+                    [System.GC]::Collect()
+                } else {
+                    # Single GC pass is sufficient for normal operations
+                    [System.GC]::Collect()
+                }
 
                 $flushEnd = Get-Date
                 $gcDuration = [math]::Round(($flushEnd - $gcStart).TotalSeconds, 2)
@@ -109,7 +119,14 @@ function Add-CIPPDbItem {
             $Filter = "PartitionKey eq '{0}' and RowKey ge '{1}-' and RowKey lt '{1}0'" -f $TenantFilter, $Type
             $ExistingEntities = Get-CIPPAzDataTableEntity @Table -Filter $Filter -Property PartitionKey, RowKey, ETag
             if ($ExistingEntities) {
-                Remove-AzDataTableEntity @Table -Entity $ExistingEntities -Force | Out-Null
+                try {
+                    Remove-AzDataTableEntity @Table -Entity $ExistingEntities -Force -ErrorAction Stop | Out-Null
+                } catch {
+                    # Ignore if entities were already deleted (404/ResourceNotFound) - can happen with concurrent operations
+                    if ($_.Exception.Message -notmatch 'does not exist|ResourceNotFound') {
+                        throw
+                    }
+                }
             }
             $AllocatedMemoryMB = [math]::Round([System.GC]::GetTotalMemory($false) / 1MB, 2)
             #Write-Debug "Starting $Type import for $TenantFilter | Allocated Memory: ${AllocatedMemoryMB}MB | Batch Size: 500"
