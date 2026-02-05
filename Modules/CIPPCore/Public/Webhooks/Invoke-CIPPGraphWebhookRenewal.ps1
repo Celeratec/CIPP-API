@@ -30,80 +30,116 @@ function Invoke-CippGraphWebhookRenewal {
     if ($WebhookCount -gt 0) {
         Write-LogMessage -API 'Scheduler_RenewGraphSubscriptions' -tenant 'none' -message "Starting Graph Subscription Renewal for $WebhookCount webhooks" -sev Info
 
+        # First pass: Filter out invalid tenants (sequential - fast operation)
+        $ValidWebhooks = [System.Collections.Generic.List[object]]::new()
+        $SkippedCount = 0
+        foreach ($UpdateSub in $WebhookData) {
+            $TenantFilter = $UpdateSub.PartitionKey
+            if (-not $TenantDomainsHash.ContainsKey($TenantFilter) -and -not $TenantCustomerIdsHash.ContainsKey($TenantFilter)) {
+                Write-LogMessage -API 'Renew_Graph_Subscriptions' -message "Removing Subscription Renewal for $($UpdateSub.SubscriptionID) as tenant $TenantFilter is not in the tenant list." -Sev 'Warning' -tenant $TenantFilter
+                try {
+                    Remove-AzDataTableEntity -Force @WebhookTable -Entity $UpdateSub -ErrorAction Stop
+                } catch {
+                    if ($_.Exception.Message -notmatch 'does not exist|ResourceNotFound') {
+                        Write-Warning "Failed to remove entity: $($_.Exception.Message)"
+                    }
+                }
+                $SkippedCount++
+            } else {
+                $ValidWebhooks.Add($UpdateSub)
+            }
+        }
+
+        # Second pass: Process valid webhooks in parallel batches
+        $BatchSize = 10  # Process 10 webhooks concurrently
+        $ThrottleLimit = 10
         $ProcessedCount = 0
         $SuccessCount = 0
         $FailedCount = 0
-        $SkippedCount = 0
 
-        foreach ($UpdateSub in $WebhookData) {
-            # Check if we're approaching the timeout
+        # Process in batches to allow timeout checking between batches
+        for ($i = 0; $i -lt $ValidWebhooks.Count; $i += $BatchSize) {
+            # Check timeout before each batch
             $ElapsedMinutes = ((Get-Date) - $StartTime).TotalMinutes
             if ($ElapsedMinutes -ge $MaxExecutionMinutes) {
-                $RemainingCount = $WebhookCount - $ProcessedCount
-                Write-LogMessage -API 'Scheduler_RenewGraphSubscriptions' -tenant 'none' -message "Stopping webhook renewal after $ProcessedCount of $WebhookCount - approaching timeout. $RemainingCount webhooks will be processed in next run." -sev Warning
+                $RemainingCount = $ValidWebhooks.Count - $ProcessedCount
+                Write-LogMessage -API 'Scheduler_RenewGraphSubscriptions' -tenant 'none' -message "Stopping webhook renewal after $ProcessedCount of $($ValidWebhooks.Count) - approaching timeout. $RemainingCount webhooks will be processed in next run." -sev Warning
                 break
             }
 
-            $ProcessedCount++
-            try {
-                $TenantFilter = $UpdateSub.PartitionKey
-                if (-not $TenantDomainsHash.ContainsKey($TenantFilter) -and -not $TenantCustomerIdsHash.ContainsKey($TenantFilter)) {
-                    Write-LogMessage -API 'Renew_Graph_Subscriptions' -message "Removing Subscription Renewal for $($UpdateSub.SubscriptionID) as tenant $TenantFilter is not in the tenant list." -Sev 'Warning' -tenant $TenantFilter
-                    try {
-                        Remove-AzDataTableEntity -Force @WebhookTable -Entity $UpdateSub -ErrorAction Stop
-                    } catch {
-                        # Ignore if entity was already deleted (404/ResourceNotFound)
-                        if ($_.Exception.Message -notmatch 'does not exist|ResourceNotFound') {
-                            throw
-                        }
-                    }
-                    $SkippedCount++
-                    continue
+            # Get current batch
+            $EndIndex = [Math]::Min($i + $BatchSize - 1, $ValidWebhooks.Count - 1)
+            $CurrentBatch = $ValidWebhooks[$i..$EndIndex]
+
+            # Process batch in parallel
+            $Results = $CurrentBatch | ForEach-Object -Parallel {
+                $UpdateSub = $_
+                $RenewalDate = $using:RenewalDate
+                $body = $using:body
+                $WebhookTable = $using:WebhookTable
+
+                $Result = @{
+                    Success = $false
+                    SubscriptionID = $UpdateSub.SubscriptionID
+                    TenantFilter = $UpdateSub.PartitionKey
+                    Error = $null
                 }
 
                 try {
-                    $null = New-GraphPostRequest -uri "https://graph.microsoft.com/beta/subscriptions/$($UpdateSub.SubscriptionID)" -tenantid $TenantFilter -type PATCH -body $body -Verbose
-                    $UpdateSub.Expiration = $RenewalDate
-                    $null = Add-AzDataTableEntity @WebhookTable -Entity $UpdateSub -Force
-                    $SuccessCount++
+                    $TenantFilter = $UpdateSub.PartitionKey
 
-                } catch {
-                    # Rebuild creation parameters
-                    $BaseURL = "$(([uri]($UpdateSub.WebhookNotificationUrl)).Host)"
-                    if ($UpdateSub.TypeofSubscription) {
-                        $TypeofSubscription = "$($UpdateSub.TypeofSubscription)"
-                    } else {
-                        $TypeofSubscription = 'updated'
-                    }
-                    $Resource = "$($UpdateSub.Resource)"
-                    $EventType = "$($UpdateSub.EventType)"
+                    try {
+                        $null = New-GraphPostRequest -uri "https://graph.microsoft.com/beta/subscriptions/$($UpdateSub.SubscriptionID)" -tenantid $TenantFilter -type PATCH -body $body
+                        $UpdateSub.Expiration = $RenewalDate
+                        $null = Add-AzDataTableEntity @WebhookTable -Entity $UpdateSub -Force
+                        $Result.Success = $true
+                    } catch {
+                        # Renewal failed - try to recreate
+                        $BaseURL = "$(([uri]($UpdateSub.WebhookNotificationUrl)).Host)"
+                        $TypeofSubscription = if ($UpdateSub.TypeofSubscription) { "$($UpdateSub.TypeofSubscription)" } else { 'updated' }
+                        $Resource = "$($UpdateSub.Resource)"
+                        $EventType = "$($UpdateSub.EventType)"
 
-                    Write-LogMessage -API 'Renew_Graph_Subscriptions' -message "Recreating: $($UpdateSub.SubscriptionID) as renewal failed." -Sev 'Info' -tenant $TenantFilter
-                    $CreateResult = New-CIPPGraphSubscription -TenantFilter $TenantFilter -TypeofSubscription $TypeofSubscription -BaseURL $BaseURL -Resource $Resource -EventType $EventType -Headers 'GraphSubscriptionRenewal' -Recreate
+                        Write-Information "Recreating: $($UpdateSub.SubscriptionID) as renewal failed for $TenantFilter"
+                        $CreateResult = New-CIPPGraphSubscription -TenantFilter $TenantFilter -TypeofSubscription $TypeofSubscription -BaseURL $BaseURL -Resource $Resource -EventType $EventType -Headers 'GraphSubscriptionRenewal' -Recreate
 
-                    if ($CreateResult -match 'Created Webhook subscription for') {
-                        try {
-                            Remove-AzDataTableEntity -Force @WebhookTable -Entity $UpdateSub -ErrorAction Stop
-                        } catch {
-                            # Ignore if entity was already deleted (404/ResourceNotFound)
-                            if ($_.Exception.Message -notmatch 'does not exist|ResourceNotFound') {
-                                throw
+                        if ($CreateResult -match 'Created Webhook subscription for') {
+                            try {
+                                Remove-AzDataTableEntity -Force @WebhookTable -Entity $UpdateSub -ErrorAction Stop
+                            } catch {
+                                if ($_.Exception.Message -notmatch 'does not exist|ResourceNotFound') {
+                                    throw
+                                }
                             }
+                            $Result.Success = $true
+                        } else {
+                            $Result.Error = "Recreation failed: $CreateResult"
                         }
-                        $SuccessCount++
-                    } else {
-                        $FailedCount++
+                    }
+                } catch {
+                    $Result.Error = $_.Exception.Message
+                }
+
+                $Result
+            } -ThrottleLimit $ThrottleLimit
+
+            # Aggregate results
+            foreach ($Result in $Results) {
+                $ProcessedCount++
+                if ($Result.Success) {
+                    $SuccessCount++
+                } else {
+                    $FailedCount++
+                    if ($Result.Error) {
+                        Write-LogMessage -API 'Renew_Graph_Subscriptions' -message "Failed to renew Webhook Subscription: $($Result.SubscriptionID). Error: $($Result.Error)" -Sev 'Error' -tenant $Result.TenantFilter
                     }
                 }
-            } catch {
-                Write-LogMessage -API 'Renew_Graph_Subscriptions' -message "Failed to renew Webhook Subscription: $($UpdateSub.SubscriptionID). Error: $($_.Exception.message)" -Sev 'Error' -tenant $TenantFilter
-                $FailedCount++
             }
 
-            # Log progress every 50 webhooks
-            if ($ProcessedCount % 50 -eq 0) {
+            # Log progress every batch
+            if ($ProcessedCount % 50 -lt $BatchSize) {
                 $ElapsedMinutes = [math]::Round(((Get-Date) - $StartTime).TotalMinutes, 2)
-                Write-LogMessage -API 'Scheduler_RenewGraphSubscriptions' -tenant 'none' -message "Webhook renewal progress: $ProcessedCount/$WebhookCount processed in $ElapsedMinutes minutes" -sev Info
+                Write-LogMessage -API 'Scheduler_RenewGraphSubscriptions' -tenant 'none' -message "Webhook renewal progress: $ProcessedCount/$($ValidWebhooks.Count) processed in $ElapsedMinutes minutes" -sev Info
             }
         }
 
