@@ -12,6 +12,7 @@ function Invoke-DeleteSharepointSite {
     $Headers = $Request.Headers
     $TenantFilter = $Request.Body.tenantFilter
     $SiteId = $Request.Body.SiteId
+    $DisplayName = $Request.Body.DisplayName
 
     try {
         if (-not $SiteId) {
@@ -25,7 +26,8 @@ function Invoke-DeleteSharepointSite {
         }
 
         # Offload deletion to background activity so the main app stays responsive and long-running deletes don't time out.
-        $Queue = New-CippQueueEntry -Name "Delete SharePoint Site - $SiteId" -TotalTasks 1
+        $QueueLabel = if ($DisplayName) { $DisplayName } else { $SiteId }
+        $Queue = New-CippQueueEntry -Name "Delete SharePoint Site - $QueueLabel" -TotalTasks 1
         $InputObject = [PSCustomObject]@{
             Batch            = @(
                 [PSCustomObject]@{
