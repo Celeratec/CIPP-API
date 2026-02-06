@@ -12,6 +12,7 @@ function Invoke-ExecRevokeOneDriveLink {
     $Headers = $Request.Headers
     $TenantFilter = $Request.Body.tenantFilter
     $DriveId = $Request.Body.DriveId
+    $SiteId = $Request.Body.SiteId
     $ItemId = $Request.Body.ItemId
     $PermissionId = $Request.Body.PermissionId
     $DisplayName = $Request.Body.DisplayName
@@ -21,8 +22,21 @@ function Invoke-ExecRevokeOneDriveLink {
         if (-not $TenantFilter) {
             throw 'TenantFilter is required'
         }
+
+        # Resolve DriveId from SiteId if not provided directly
+        if (-not $DriveId -and $SiteId) {
+            $Drives = New-GraphGetRequest `
+                -uri "https://graph.microsoft.com/v1.0/sites/$SiteId/drives" `
+                -tenantid $TenantFilter `
+                -asApp $true
+            $DriveId = ($Drives | Where-Object { $_.driveType -eq 'documentLibrary' } | Select-Object -First 1).id
+            if (-not $DriveId -and $Drives) {
+                $DriveId = $Drives[0].id
+            }
+        }
+
         if (-not $DriveId) {
-            throw 'DriveId is required'
+            throw 'DriveId or SiteId is required'
         }
 
         $SiteLabel = if ($DisplayName) { $DisplayName } else { $DriveId }
