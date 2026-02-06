@@ -21,50 +21,33 @@ Function Invoke-AddTeam {
             throw 'You have to add at least one owner to the team'
         }
 
-        # Build owners array
-        $OwnerMembers = @($Owners) | ForEach-Object {
-            $OwnerUPN = $_
-            @{
-                '@odata.type'     = '#microsoft.graph.aadUserConversationMember'
-                'roles'           = @('owner')
-                'user@odata.bind' = "https://graph.microsoft.com/v1.0/users('$OwnerUPN')"
-            }
+        # Build owner member - Graph API only allows ONE member during team creation
+        $OwnerUPN = @($Owners)[0]
+        $OwnerMember = @{
+            '@odata.type'     = '#microsoft.graph.aadUserConversationMember'
+            'roles'           = @('owner')
+            'user@odata.bind' = "https://graph.microsoft.com/v1.0/users('$OwnerUPN')"
         }
-
-        # Build additional members array (if provided)
-        $AdditionalMembers = @()
-        if ($TeamObj.additionalMembers) {
-            $AdditionalMembers = @($TeamObj.additionalMembers) | ForEach-Object {
-                $MemberUPN = $_
-                @{
-                    '@odata.type'     = '#microsoft.graph.aadUserConversationMember'
-                    'roles'           = @()
-                    'user@odata.bind' = "https://graph.microsoft.com/v1.0/users('$MemberUPN')"
-                }
-            }
-        }
-
-        $AllMembers = @($OwnerMembers) + @($AdditionalMembers)
 
         # Determine template
         $TemplateName = if ($TeamObj.templateName) { $TeamObj.templateName } else { 'standard' }
 
-        # Build team settings object
+        # Build team settings object - only include the owner during creation
         $TeamsSettings = [ordered]@{
             'template@odata.bind' = "https://graph.microsoft.com/v1.0/teamsTemplates('$TemplateName')"
             'visibility'          = $TeamObj.visibility
             'displayName'         = $TeamObj.displayName
             'description'         = $TeamObj.description
-            'members'             = @($AllMembers)
+            'members'             = @($OwnerMember)
         }
 
         # Add member settings if provided
-        if ($TeamObj.allowCreateUpdateChannels -ne $null -or
-            $TeamObj.allowDeleteChannels -ne $null -or
-            $TeamObj.allowAddRemoveApps -ne $null -or
-            $TeamObj.allowCreatePrivateChannels -ne $null -or
-            $TeamObj.allowCreateUpdateRemoveTabs -ne $null -or
-            $TeamObj.allowCreateUpdateRemoveConnectors -ne $null) {
+        if ($null -ne $TeamObj.allowCreateUpdateChannels -or
+            $null -ne $TeamObj.allowDeleteChannels -or
+            $null -ne $TeamObj.allowAddRemoveApps -or
+            $null -ne $TeamObj.allowCreatePrivateChannels -or
+            $null -ne $TeamObj.allowCreateUpdateRemoveTabs -or
+            $null -ne $TeamObj.allowCreateUpdateRemoveConnectors) {
 
             $MemberSettings = @{}
             if ($null -ne $TeamObj.allowCreateUpdateChannels) { $MemberSettings['allowCreateUpdateChannels'] = [bool]$TeamObj.allowCreateUpdateChannels }
@@ -114,8 +97,67 @@ Function Invoke-AddTeam {
         }
 
         $Body = $TeamsSettings | ConvertTo-Json -Depth 10
-        $null = New-GraphPostRequest -AsApp $true -uri 'https://graph.microsoft.com/v1.0/teams' -tenantid $TenantID -type POST -body $Body -Verbose
-        $Message = "Successfully created Team: '$($TeamObj.displayName)'"
+        # Create the team - the response Content-Location header contains the team ID
+        $CreateResponse = New-GraphPostRequest -AsApp $true -uri 'https://graph.microsoft.com/v1.0/teams' -tenantid $TenantID -type POST -body $Body -Verbose
+
+        # Add additional members after team creation (Graph API only allows 1 member during creation)
+        $AdditionalMemberUPNs = @()
+        if ($TeamObj.additionalMembers) {
+            $AdditionalMemberUPNs = @($TeamObj.additionalMembers) | Where-Object { $_ }
+        }
+
+        $MemberFailures = @()
+        if ($AdditionalMemberUPNs.Count -gt 0) {
+            # Extract Team ID from the creation response
+            $NewTeamID = $null
+            if ($CreateResponse -and $CreateResponse.'Content-Location') {
+                # Content-Location is like /teams('guid')
+                if ($CreateResponse.'Content-Location' -match "[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}") {
+                    $NewTeamID = $Matches[0]
+                }
+            }
+
+            if (-not $NewTeamID) {
+                # Fallback: look up the team by display name
+                Start-Sleep -Seconds 5
+                $LookupResult = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/groups?`$filter=displayName eq '$($TeamObj.displayName)' and resourceProvisioningOptions/Any(x:x eq 'Team')&`$select=id" -tenantid $TenantID -asapp $true
+                if ($LookupResult -and $LookupResult.Count -gt 0) {
+                    $NewTeamID = $LookupResult[0].id
+                }
+            }
+
+            if ($NewTeamID) {
+                # Wait a moment for team provisioning to complete
+                Start-Sleep -Seconds 5
+
+                foreach ($MemberUPN in $AdditionalMemberUPNs) {
+                    try {
+                        $MemberBody = @{
+                            '@odata.type'     = '#microsoft.graph.aadUserConversationMember'
+                            'roles'           = @()
+                            'user@odata.bind' = "https://graph.microsoft.com/v1.0/users('$MemberUPN')"
+                        } | ConvertTo-Json
+                        $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$NewTeamID/members" -tenantid $TenantID -type POST -body $MemberBody
+                    } catch {
+                        $MemberFailures += $MemberUPN
+                        Write-Host "Failed to add member $MemberUPN to team: $_"
+                    }
+                }
+            } else {
+                $MemberFailures = $AdditionalMemberUPNs
+                Write-Host "Could not determine new team ID to add additional members"
+            }
+        }
+
+        if ($MemberFailures.Count -gt 0) {
+            $Message = "Successfully created Team: '$($TeamObj.displayName)', but failed to add $($MemberFailures.Count) member(s): $($MemberFailures -join ', '). You can add them manually from the team details page."
+        } else {
+            $MembersAdded = $AdditionalMemberUPNs.Count
+            $Message = "Successfully created Team: '$($TeamObj.displayName)'"
+            if ($MembersAdded -gt 0) {
+                $Message += " with $MembersAdded additional member(s)"
+            }
+        }
         Write-LogMessage -headers $Headers -API $APINAME -tenant $TenantID -message $Message -Sev Info
         $StatusCode = [HttpStatusCode]::OK
 

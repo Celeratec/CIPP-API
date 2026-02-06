@@ -59,6 +59,17 @@ Function Invoke-ListTeams {
         $UserList = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/teams/$($TeamID)/Members" -tenantid $TenantFilter -asapp $true
         $AppsList = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/teams/$($TeamID)/installedApps?`$expand=teamsAppDefinition" -tenantid $TenantFilter -asapp $true
 
+        # Fetch the SharePoint site URL from the associated group
+        $SharePointUrl = $null
+        try {
+            $GroupSites = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/groups/$($TeamID)/sites/root?`$select=webUrl,name" -tenantid $TenantFilter -asapp $true
+            if ($GroupSites.webUrl) {
+                $SharePointUrl = $GroupSites.webUrl
+            }
+        } catch {
+            Write-Host "Warning: Could not fetch SharePoint site URL for team $TeamID`: $_"
+        }
+
         $Owners = $UserList | Where-Object -Property Roles -EQ 'Owner'
         $Members = $UserList | Where-Object -Property email -NotIn $owners.email
         $GraphRequest = [PSCustomObject]@{
@@ -68,6 +79,7 @@ Function Invoke-ListTeams {
             Members       = @($Members)
             Owners        = @($owners)
             InstalledApps = @($AppsList)
+            SharePointUrl = $SharePointUrl
         }
     }
 
