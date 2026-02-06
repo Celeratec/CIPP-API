@@ -34,30 +34,40 @@ function Invoke-ExecSetSiteProperty {
         $PropertiesToSet = @{}
         $ActionDescription = ''
 
+        # Helper: autoComplete fields may arrive as { label, value } objects — extract the value
+        function Get-FieldValue($Field) {
+            if ($Field -is [PSCustomObject] -and $null -ne $Field.value) {
+                return $Field.value
+            }
+            return $Field
+        }
+
         # Lock State
-        if ($Request.Body.LockState) {
+        $RawLockState = Get-FieldValue $Request.Body.LockState
+        if ($RawLockState) {
             $LockStateMap = @{
                 'Unlock'    = 0
                 'NoAccess'  = 1
                 'ReadOnly'  = 2
             }
-            $LockValue = $LockStateMap[$Request.Body.LockState]
+            $LockValue = $LockStateMap[$RawLockState]
             if ($null -eq $LockValue) {
-                throw "Invalid LockState '$($Request.Body.LockState)'. Valid values: Unlock, NoAccess, ReadOnly"
+                throw "Invalid LockState '$RawLockState'. Valid values: Unlock, NoAccess, ReadOnly"
             }
             $PropertiesToSet['LockState'] = $LockValue
-            $ActionDescription = "Set lock state to '$($Request.Body.LockState)'"
+            $ActionDescription = "Set lock state to '$RawLockState'"
         }
 
         # Sharing Capability
-        if ($null -ne $Request.Body.SharingCapability) {
+        $RawSharing = Get-FieldValue $Request.Body.SharingCapability
+        if ($null -ne $RawSharing -and '' -ne $RawSharing) {
             $SharingLabels = @{
                 0 = 'Disabled'
                 1 = 'ExternalUserSharingOnly'
                 2 = 'ExternalUserAndGuestSharing'
                 3 = 'ExistingExternalUserSharingOnly'
             }
-            $SharingValue = [int]$Request.Body.SharingCapability
+            $SharingValue = [int]$RawSharing
             if ($SharingValue -notin 0, 1, 2, 3) {
                 throw "Invalid SharingCapability '$SharingValue'. Valid values: 0 (Disabled), 1 (ExternalUserSharingOnly), 2 (ExternalUserAndGuestSharing), 3 (ExistingExternalUserSharingOnly)"
             }
@@ -65,25 +75,27 @@ function Invoke-ExecSetSiteProperty {
             $ActionDescription = "Set sharing capability to '$($SharingLabels[$SharingValue])'"
         }
 
-        # Storage Quota
-        if ($null -ne $Request.Body.StorageMaximumLevel) {
-            $MaxLevel = [long]$Request.Body.StorageMaximumLevel
-            if ($MaxLevel -le 0) {
-                throw 'StorageMaximumLevel must be a positive number (in MB)'
+        # Storage Quota (accepts GB, converts to MB for the API)
+        if ($null -ne $Request.Body.StorageMaximumLevelGB -and '' -ne $Request.Body.StorageMaximumLevelGB) {
+            $MaxGB = [double]$Request.Body.StorageMaximumLevelGB
+            if ($MaxGB -le 0) {
+                throw 'StorageMaximumLevelGB must be a positive number'
             }
+            $MaxLevel = [long]($MaxGB * 1024)
             $PropertiesToSet['StorageMaximumLevel'] = $MaxLevel
 
-            if ($null -ne $Request.Body.StorageWarningLevel) {
-                $WarnLevel = [long]$Request.Body.StorageWarningLevel
+            if ($null -ne $Request.Body.StorageWarningLevelGB -and '' -ne $Request.Body.StorageWarningLevelGB) {
+                $WarnGB = [double]$Request.Body.StorageWarningLevelGB
+                $WarnLevel = [long]($WarnGB * 1024)
                 if ($WarnLevel -lt 0 -or $WarnLevel -ge $MaxLevel) {
-                    throw 'StorageWarningLevel must be between 0 and StorageMaximumLevel'
+                    throw 'StorageWarningLevelGB must be between 0 and StorageMaximumLevelGB'
                 }
                 $PropertiesToSet['StorageWarningLevel'] = $WarnLevel
             } else {
                 # Default warning at 90% of max
                 $PropertiesToSet['StorageWarningLevel'] = [long]($MaxLevel * 0.9)
             }
-            $ActionDescription = "Set storage quota to $($MaxLevel) MB (warning at $($PropertiesToSet['StorageWarningLevel']) MB)"
+            $ActionDescription = "Set storage quota to $($MaxGB) GB (warning at $([math]::Round($PropertiesToSet['StorageWarningLevel'] / 1024, 2)) GB)"
         }
 
         if ($PropertiesToSet.Count -eq 0) {
