@@ -9,7 +9,9 @@ function Invoke-ListSiteLiveStorage {
     param($Request, $TriggerMetadata)
 
     $TenantFilter = $Request.Query.TenantFilter
+    if (-not $TenantFilter) { $TenantFilter = $Request.Body.TenantFilter }
     $SiteId = $Request.Query.SiteId
+    if (-not $SiteId) { $SiteId = $Request.Body.SiteId }
 
     if (-not $TenantFilter) {
         return ([HttpResponseContext]@{
