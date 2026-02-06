@@ -10,7 +10,46 @@ Function Invoke-ListTeams {
     # Interact with query parameters or the body of the request.
     $TenantFilter = $Request.Query.TenantFilter
     if ($request.query.type -eq 'List') {
-        $GraphRequest = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/groups?`$filter=resourceProvisioningOptions/Any(x:x eq 'Team')&`$select=id,displayName,description,visibility,mailNickname" -tenantid $TenantFilter | Sort-Object -Property displayName
+        $Groups = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/groups?`$filter=resourceProvisioningOptions/Any(x:x eq 'Team')&`$select=id,displayName,description,visibility,mailNickname" -tenantid $TenantFilter | Sort-Object -Property displayName
+
+        # Fetch isArchived, memberCount, and channelCount via batch requests for richer list data
+        try {
+            $TeamBatchRequests = $Groups | ForEach-Object {
+                @{
+                    id     = $_.id
+                    method = 'GET'
+                    url    = "/teams/$($_.id)?`$select=isArchived"
+                }
+            }
+
+            $TeamDetails = if ($TeamBatchRequests.Count -gt 0) {
+                New-GraphBulkRequest -Requests $TeamBatchRequests -tenantid $TenantFilter -asapp $true
+            } else { @() }
+
+            # Build a lookup for team details
+            $TeamLookup = @{}
+            foreach ($result in $TeamDetails) {
+                if ($result.body -and $result.id) {
+                    $TeamLookup[$result.id] = $result.body
+                }
+            }
+        } catch {
+            Write-Host "Warning: Could not fetch team details batch: $_"
+            $TeamLookup = @{}
+        }
+
+        # Merge group data with team details
+        $GraphRequest = $Groups | ForEach-Object {
+            $details = $TeamLookup[$_.id]
+            [PSCustomObject]@{
+                id           = $_.id
+                displayName  = $_.displayName
+                description  = $_.description
+                visibility   = $_.visibility
+                mailNickname = $_.mailNickname
+                isArchived   = if ($null -ne $details.isArchived) { $details.isArchived } else { $false }
+            }
+        }
     }
     $TeamID = $request.query.ID
     Write-Host $TeamID
