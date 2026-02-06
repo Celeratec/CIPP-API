@@ -13,6 +13,7 @@ function Invoke-ListOneDriveFiles {
     $SiteId = $Request.Query.SiteId
     $FolderId = $Request.Query.FolderId
     $DriveId = $Request.Query.DriveId
+    $UserId = $Request.Query.UserId
 
     if (-not $TenantFilter) {
         return ([HttpResponseContext]@{
@@ -21,10 +22,31 @@ function Invoke-ListOneDriveFiles {
         })
     }
 
+    # If UserId is provided, resolve to a DriveId
+    if ($UserId -and -not $DriveId -and -not $SiteId) {
+        try {
+            $UserDrive = New-GraphGetRequest `
+                -uri "https://graph.microsoft.com/v1.0/users/$UserId/drive?`$select=id" `
+                -tenantid $TenantFilter `
+                -asApp $true
+            if ($UserDrive.id) {
+                $DriveId = $UserDrive.id
+            } else {
+                throw "Could not resolve drive for user $UserId"
+            }
+        } catch {
+            $ErrorMessage = Get-NormalizedError -Message $_.Exception.Message
+            return ([HttpResponseContext]@{
+                StatusCode = [HttpStatusCode]::Forbidden
+                Body       = @{ Results = "Failed to resolve user's OneDrive: $ErrorMessage" }
+            })
+        }
+    }
+
     if (-not $SiteId -and -not $DriveId) {
         return ([HttpResponseContext]@{
             StatusCode = [HttpStatusCode]::BadRequest
-            Body       = 'SiteId or DriveId is required'
+            Body       = 'SiteId, DriveId, or UserId is required'
         })
     }
 
