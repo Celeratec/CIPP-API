@@ -59,12 +59,24 @@ Function Invoke-ListTeams {
         $UserList = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/teams/$($TeamID)/Members" -tenantid $TenantFilter -asapp $true
         $AppsList = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/teams/$($TeamID)/installedApps?`$expand=teamsAppDefinition" -tenantid $TenantFilter -asapp $true
 
-        # Fetch the SharePoint site URL from the associated group
+        # Fetch the SharePoint site details from the associated group
         $SharePointUrl = $null
+        $SharePointSiteId = $null
+        $SharePointName = $null
+        $SharePointCreated = $null
         try {
-            $GroupSites = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/groups/$($TeamID)/sites/root?`$select=webUrl,name" -tenantid $TenantFilter -asapp $true
+            $GroupSites = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/groups/$($TeamID)/sites/root?`$select=webUrl,name,sharepointIds,createdDateTime" -tenantid $TenantFilter -asapp $true
             if ($GroupSites.webUrl) {
                 $SharePointUrl = $GroupSites.webUrl
+            }
+            if ($GroupSites.sharepointIds.siteId) {
+                $SharePointSiteId = $GroupSites.sharepointIds.siteId
+            }
+            if ($GroupSites.name) {
+                $SharePointName = $GroupSites.name
+            }
+            if ($GroupSites.createdDateTime) {
+                $SharePointCreated = $GroupSites.createdDateTime
             }
         } catch {
             Write-Host "Warning: Could not fetch SharePoint site URL for team $TeamID`: $_"
@@ -73,13 +85,16 @@ Function Invoke-ListTeams {
         $Owners = $UserList | Where-Object -Property Roles -EQ 'Owner'
         $Members = $UserList | Where-Object -Property email -NotIn $owners.email
         $GraphRequest = [PSCustomObject]@{
-            Name          = $team.DisplayName
-            TeamInfo      = @($team)
-            ChannelInfo   = @($channels)
-            Members       = @($Members)
-            Owners        = @($owners)
-            InstalledApps = @($AppsList)
-            SharePointUrl = $SharePointUrl
+            Name               = $team.DisplayName
+            TeamInfo           = @($team)
+            ChannelInfo        = @($channels)
+            Members            = @($Members)
+            Owners             = @($owners)
+            InstalledApps      = @($AppsList)
+            SharePointUrl      = $SharePointUrl
+            SharePointSiteId   = $SharePointSiteId
+            SharePointName     = $SharePointName
+            SharePointCreated  = $SharePointCreated
         }
     }
 
