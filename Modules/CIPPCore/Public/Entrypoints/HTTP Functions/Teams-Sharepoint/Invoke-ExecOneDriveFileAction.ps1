@@ -58,6 +58,12 @@ function Invoke-ExecOneDriveFileAction {
         })
     }
 
+    # Ensure ItemId is a clean string (not an object, not whitespace-padded)
+    if ($ItemId -and $ItemId -isnot [string]) {
+        $ItemId = [string]$ItemId
+    }
+    if ($ItemId) { $ItemId = $ItemId.Trim() }
+
     $ItemLabel = if ($ItemName) { $ItemName } else { $ItemId }
 
     try {
@@ -145,9 +151,10 @@ function Invoke-ExecOneDriveFileAction {
             'Download' {
                 if (-not $ItemId) { throw 'ItemId is required for Download action' }
 
-                # Get the item metadata which includes the pre-authenticated download URL
+                # Get the item metadata - the @microsoft.graph.downloadUrl annotation
+                # is returned automatically and must NOT be included in $select
                 $Item = New-GraphGetRequest `
-                    -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId?`$select=id,name,@microsoft.graph.downloadUrl" `
+                    -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId" `
                     -tenantid $TenantFilter -asApp $true
 
                 $DownloadUrl = $Item.'@microsoft.graph.downloadUrl'
