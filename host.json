@@ -8,12 +8,29 @@
     "version": "[4.26.0, 5.0.0)"
   },
   "functionTimeout": "00:10:00",
+  "logging": {
+    "logLevel": {
+      "default": "Information",
+      "Host.Results": "Warning",
+      "Function": "Information",
+      "Host.Aggregator": "Warning",
+      "Microsoft.Azure.WebJobs.Script.WebHost.Middleware.SystemTraceMiddleware": "Warning",
+      "Worker": "Information"
+    },
+    "applicationInsights": {
+      "samplingSettings": {
+        "isEnabled": true,
+        "maxTelemetryItemsPerSecond": 20,
+        "excludedTypes": "Exception"
+      }
+    }
+  },
   "extensions": {
     "durableTask": {
-      "maxConcurrentActivityFunctions": 20,
-      "maxConcurrentOrchestratorFunctions": 10,
-      "maxQueuePollingInterval": "00:00:02",
-      "controlQueueBatchSize": 32,
+      "maxConcurrentActivityFunctions": 10,
+      "maxConcurrentOrchestratorFunctions": 5,
+      "maxQueuePollingInterval": "00:00:05",
+      "controlQueueBatchSize": 16,
       "tracing": {
         "distributedTracingEnabled": false,
         "version": "None"
