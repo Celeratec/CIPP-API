@@ -74,8 +74,17 @@ Function Invoke-ExecTeamAction {
                 $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels/$ChannelID" -tenantid $TenantFilter -type DELETE
                 $Message = "Successfully deleted channel '$ChannelLabel' from team '$TeamLabel'. All messages, files, and tabs in this channel have been permanently removed."
             }
+            'RemoveApp' {
+                $AppInstallationID = $Request.Body.AppInstallationID
+                $AppName = $Request.Body.AppName
+                if (-not $AppInstallationID) { throw 'AppInstallationID is required' }
+                $AppLabel = if ($AppName) { $AppName } else { $AppInstallationID }
+
+                $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/installedApps/$AppInstallationID" -tenantid $TenantFilter -type DELETE
+                $Message = "Successfully removed app '$AppLabel' from team '$TeamLabel'"
+            }
             default {
-                throw "Unknown action: $Action. Supported actions: Archive, Unarchive, Clone, CreateChannel, DeleteChannel"
+                throw "Unknown action: $Action. Supported actions: Archive, Unarchive, Clone, CreateChannel, DeleteChannel, RemoveApp"
             }
         }
 
