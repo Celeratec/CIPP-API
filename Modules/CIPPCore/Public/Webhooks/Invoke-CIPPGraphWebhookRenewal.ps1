@@ -78,6 +78,15 @@ function Invoke-CippGraphWebhookRenewal {
                 $body = $using:body
                 $WebhookTable = $using:WebhookTable
 
+                # Import required modules in parallel runspace - parallel threads
+                # do not inherit the parent's imported modules
+                try {
+                    Import-Module CIPPCore -Force
+                    Import-Module AzBobbyTables -Force -ErrorAction SilentlyContinue
+                } catch {
+                    Write-Warning "Failed to import modules in parallel runspace: $($_.Exception.Message)"
+                }
+
                 $Result = @{
                     Success = $false
                     SubscriptionID = $UpdateSub.SubscriptionID
