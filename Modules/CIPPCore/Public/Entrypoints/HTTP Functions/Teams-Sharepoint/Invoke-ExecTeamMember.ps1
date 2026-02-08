@@ -31,13 +31,13 @@ Function Invoke-ExecTeamMember {
                 $Role = $Request.Body.Role
                 if (-not $Role) { $Role = 'member' }
 
-                $Roles = if ($Role -eq 'owner') { @('owner') } else { @() }
+                [string[]]$Roles = if ($Role -eq 'owner') { @('owner') } else { @() }
 
                 $Body = @{
                     '@odata.type'     = '#microsoft.graph.aadUserConversationMember'
                     'roles'           = $Roles
                     'user@odata.bind' = "https://graph.microsoft.com/v1.0/users('$UserID')"
-                } | ConvertTo-Json
+                } | ConvertTo-Json -Depth 5
 
                 $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/members" -tenantid $TenantFilter -type POST -body $Body
                 $Message = "Successfully added user as $Role to team '$TeamLabel'"
@@ -60,11 +60,11 @@ Function Invoke-ExecTeamMember {
                 $Role = $Request.Body.Role
                 if (-not $Role) { $Role = 'member' }
 
-                $Roles = if ($Role -eq 'owner') { @('owner') } else { @() }
+                [string[]]$Roles = if ($Role -eq 'owner') { @('owner') } else { @() }
                 $Body = @{
                     '@odata.type' = '#microsoft.graph.aadUserConversationMember'
                     'roles'       = $Roles
-                } | ConvertTo-Json
+                } | ConvertTo-Json -Depth 5
 
                 $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/members/$MembershipID" -tenantid $TenantFilter -type PATCH -body $Body
                 $Message = "Successfully changed member role to '$Role' in team '$TeamLabel'"
