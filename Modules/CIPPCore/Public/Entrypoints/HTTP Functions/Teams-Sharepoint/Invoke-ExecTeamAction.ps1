@@ -49,8 +49,24 @@ Function Invoke-ExecTeamAction {
                 $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/clone" -tenantid $TenantFilter -type POST -body $Body
                 $Message = "Successfully started cloning team '$TeamLabel' as '$CloneDisplayName'. This may take a few minutes to complete."
             }
+            'CreateChannel' {
+                $ChannelName = $Request.Body.ChannelName
+                $ChannelDescription = $Request.Body.ChannelDescription
+                $ChannelType = $Request.Body.ChannelType
+                if (-not $ChannelName) { throw 'ChannelName is required' }
+                if (-not $ChannelType) { $ChannelType = 'standard' }
+
+                $ChannelBody = @{
+                    displayName    = $ChannelName
+                    description    = $ChannelDescription
+                    membershipType = $ChannelType
+                } | ConvertTo-Json -Depth 5
+
+                $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels" -tenantid $TenantFilter -type POST -body $ChannelBody
+                $Message = "Successfully created channel '$ChannelName' in team '$TeamLabel'"
+            }
             default {
-                throw "Unknown action: $Action. Supported actions: Archive, Unarchive, Clone"
+                throw "Unknown action: $Action. Supported actions: Archive, Unarchive, Clone, CreateChannel"
             }
         }
 
