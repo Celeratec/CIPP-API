@@ -65,8 +65,17 @@ Function Invoke-ExecTeamAction {
                 $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels" -tenantid $TenantFilter -type POST -body $ChannelBody
                 $Message = "Successfully created channel '$ChannelName' in team '$TeamLabel'"
             }
+            'DeleteChannel' {
+                $ChannelID = $Request.Body.ChannelID
+                $ChannelName = $Request.Body.ChannelName
+                if (-not $ChannelID) { throw 'ChannelID is required' }
+                $ChannelLabel = if ($ChannelName) { $ChannelName } else { $ChannelID }
+
+                $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels/$ChannelID" -tenantid $TenantFilter -type DELETE
+                $Message = "Successfully deleted channel '$ChannelLabel' from team '$TeamLabel'. All messages, files, and tabs in this channel have been permanently removed."
+            }
             default {
-                throw "Unknown action: $Action. Supported actions: Archive, Unarchive, Clone, CreateChannel"
+                throw "Unknown action: $Action. Supported actions: Archive, Unarchive, Clone, CreateChannel, DeleteChannel"
             }
         }
 
