@@ -387,27 +387,41 @@ function Receive-CippActivityTrigger {
                 $metadata['QueueName'] = $Item.QueueName
             }
 
-            try {
-                Write-Information "Activity starting Function: $FunctionName"
-                Invoke-Command -ScriptBlock { & $FunctionName -Item $Item }
-                $Status = 'Completed'
-
-                Write-Information "Activity completed Function: $FunctionName"
-                if ($TaskStatus) {
-                    $QueueTask.Status = 'Completed'
-                    $null = Set-CippQueueTask @QueueTask
-                }
-            } catch {
+            # Validate function exists before attempting to invoke
+            if (-not (Get-Command -Name $FunctionName -ErrorAction SilentlyContinue)) {
+                $ErrorMsg = "Function '$FunctionName' not found. The function may not be deployed or the module failed to load."
                 $Status = 'Failed'
-                $ExceptionDetails = Get-CippException -Exception $_
-                $ErrorMsg = $ExceptionDetails.Message
                 $TenantName = $Item.TenantFilter ?? $Item.Tenant ?? 'Unknown'
-                Write-LogMessage -API 'ActivityFunction' -tenant $TenantName -message "Activity function $FunctionName failed: $ErrorMsg" -Sev 'Error' -LogData $ExceptionDetails
-                Write-Error "Activity function $FunctionName failed: $ErrorMsg | StackTrace: $($ExceptionDetails.StackTrace) | ScriptName: $($ExceptionDetails.ScriptName):$($ExceptionDetails.LineNumber)"
+                Write-LogMessage -API 'ActivityFunction' -tenant $TenantName -message $ErrorMsg -Sev 'Error'
+                Write-Error $ErrorMsg
                 if ($TaskStatus) {
                     $QueueTask.Status = 'Failed'
                     $QueueTask.Message = $ErrorMsg
                     $null = Set-CippQueueTask @QueueTask
+                }
+            } else {
+                try {
+                    Write-Information "Activity starting Function: $FunctionName"
+                    Invoke-Command -ScriptBlock { & $FunctionName -Item $Item }
+                    $Status = 'Completed'
+
+                    Write-Information "Activity completed Function: $FunctionName"
+                    if ($TaskStatus) {
+                        $QueueTask.Status = 'Completed'
+                        $null = Set-CippQueueTask @QueueTask
+                    }
+                } catch {
+                    $Status = 'Failed'
+                    $ExceptionDetails = Get-CippException -Exception $_
+                    $ErrorMsg = $ExceptionDetails.Message
+                    $TenantName = $Item.TenantFilter ?? $Item.Tenant ?? 'Unknown'
+                    Write-LogMessage -API 'ActivityFunction' -tenant $TenantName -message "Activity function $FunctionName failed: $ErrorMsg" -Sev 'Error' -LogData $ExceptionDetails
+                    Write-Error "Activity function $FunctionName failed: $ErrorMsg | StackTrace: $($ExceptionDetails.StackTrace) | ScriptName: $($ExceptionDetails.ScriptName):$($ExceptionDetails.LineNumber)"
+                    if ($TaskStatus) {
+                        $QueueTask.Status = 'Failed'
+                        $QueueTask.Message = $ErrorMsg
+                        $null = Set-CippQueueTask @QueueTask
+                    }
                 }
             }
         } else {
