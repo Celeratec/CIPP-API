@@ -105,8 +105,68 @@ Function Invoke-ExecTeamAction {
                 $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/installedApps/$AppInstallationID" -tenantid $TenantFilter -type DELETE
                 $Message = "Successfully removed app '$AppLabel' from team '$TeamLabel'"
             }
+            'ListChannelMembers' {
+                $ChannelID = $Request.Body.ChannelID
+                if (-not $ChannelID) { throw 'ChannelID is required' }
+
+                $ChannelMembers = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels/$ChannelID/members" -tenantid $TenantFilter -AsApp $true
+                $MemberList = @($ChannelMembers | ForEach-Object {
+                    [PSCustomObject]@{
+                        id              = $_.id
+                        displayName     = $_.displayName
+                        email           = $_.email
+                        roles           = ($_.roles -join ', ')
+                        userId          = $_.userId
+                    }
+                })
+
+                return ([HttpResponseContext]@{
+                    StatusCode = [HttpStatusCode]::OK
+                    Body       = @{ Results = $MemberList }
+                })
+            }
+            'AddChannelMember' {
+                $ChannelID = $Request.Body.ChannelID
+                $ChannelName = $Request.Body.ChannelName
+                $UserID = $Request.Body.UserID
+                $ChannelRole = $Request.Body.ChannelRole
+                if (-not $ChannelID) { throw 'ChannelID is required' }
+                if (-not $UserID) { throw 'UserID is required' }
+
+                # Support autocomplete field format: { value: "userId", label: "..." }
+                if ($UserID -is [hashtable] -or $UserID -is [PSCustomObject]) {
+                    $UserID = $UserID.value
+                }
+
+                if (-not $ChannelRole) { $ChannelRole = 'member' }
+                $ChannelLabel = if ($ChannelName) { $ChannelName } else { $ChannelID }
+
+                [string[]]$Roles = if ($ChannelRole -eq 'owner') { @('owner') } else { @() }
+
+                $MemberBody = @{
+                    '@odata.type'     = '#microsoft.graph.aadUserConversationMember'
+                    'roles'           = $Roles
+                    'user@odata.bind' = "https://graph.microsoft.com/v1.0/users('$UserID')"
+                } | ConvertTo-Json -Depth 5
+
+                $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels/$ChannelID/members" -tenantid $TenantFilter -type POST -body $MemberBody
+                $Message = "Successfully added $ChannelRole to channel '$ChannelLabel' in team '$TeamLabel'"
+            }
+            'RemoveChannelMember' {
+                $ChannelID = $Request.Body.ChannelID
+                $ChannelName = $Request.Body.ChannelName
+                $MembershipID = $Request.Body.MembershipID
+                $MemberName = $Request.Body.MemberName
+                if (-not $ChannelID) { throw 'ChannelID is required' }
+                if (-not $MembershipID) { throw 'MembershipID is required' }
+                $ChannelLabel = if ($ChannelName) { $ChannelName } else { $ChannelID }
+                $MemberLabel = if ($MemberName) { $MemberName } else { $MembershipID }
+
+                $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels/$ChannelID/members/$MembershipID" -tenantid $TenantFilter -type DELETE
+                $Message = "Successfully removed '$MemberLabel' from channel '$ChannelLabel' in team '$TeamLabel'"
+            }
             default {
-                throw "Unknown action: $Action. Supported actions: Archive, Unarchive, Clone, CreateChannel, DeleteChannel, RemoveApp"
+                throw "Unknown action: $Action. Supported actions: Archive, Unarchive, Clone, CreateChannel, DeleteChannel, RemoveApp, ListChannelMembers, AddChannelMember, RemoveChannelMember"
             }
         }
 
