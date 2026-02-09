@@ -4,7 +4,7 @@ function Push-ExecScheduledCommand {
         Entrypoint
     #>
     param($Item)
-    $item = $Item | ConvertTo-Json -Depth 100 | ConvertFrom-Json
+    $item = $Item | ConvertTo-Json -Depth 20 | ConvertFrom-Json
     Write-Information "We are going to be running a scheduled task: $($Item.TaskInfo | ConvertTo-Json -Depth 10)"
 
     # Initialize AsyncLocal storage for thread-safe per-invocation context

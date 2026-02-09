@@ -71,7 +71,7 @@ function Invoke-EditJITAdminTemplate {
                     if ($data.tenantFilter -eq $TenantFilter -and $data.defaultForTenant -eq $true) {
                         # Unset the default flag
                         $data.defaultForTenant = $false
-                        $row.JSON = ($data | ConvertTo-Json -Depth 100 -Compress)
+                        $row.JSON = ($data | ConvertTo-Json -Depth 20 -Compress)
                         Add-CIPPAzDataTableEntity @Table -Entity $row -Force
                         Write-LogMessage -headers $Headers -API $APIName -message "Unset default flag for existing template: $($data.templateName)" -Sev 'Info'
                     }
@@ -135,7 +135,7 @@ function Invoke-EditJITAdminTemplate {
         }
 
         # Convert to JSON
-        $JSON = ConvertTo-Json -InputObject $TemplateObject -Depth 100 -Compress
+        $JSON = ConvertTo-Json -InputObject $TemplateObject -Depth 20 -Compress
 
         # Update in table
         $Table.Force = $true

@@ -29,7 +29,7 @@ function New-CippStandardsDriftClone {
                     }
                 }
             }
-            $Entity.JSON = "$(ConvertTo-Json -InputObject $data -Compress -Depth 100)"
+            $Entity.JSON = "$(ConvertTo-Json -InputObject $data -Compress -Depth 20)"
             $Entity.RowKey = "$($data.GUID)"
             $Entity.GUID = $data.GUID
             $update = Add-CIPPAzDataTableEntity @Table -Entity $Entity -Force

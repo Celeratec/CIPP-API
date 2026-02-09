@@ -32,7 +32,7 @@ function Invoke-ListExtensionCacheData {
 
     return ([HttpResponseContext]@{
             StatusCode = $StatusCode
-            Body       = $Body | ConvertTo-Json -Compress -Depth 100
+            Body       = $Body | ConvertTo-Json -Compress -Depth 20
             Headers    = @{
                 'Content-Type' = 'application/json'
             }

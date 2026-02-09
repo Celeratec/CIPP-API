@@ -11,9 +11,36 @@ if ($hasAppInsights) {
     Set-Location -Path $PSScriptRoot
     $SwAppInsights = [System.Diagnostics.Stopwatch]::StartNew()
     try {
-        $AppInsightsDllPath = Join-Path $PSScriptRoot 'Shared\AppInsights\Microsoft.ApplicationInsights.dll'
-        $null = [Reflection.Assembly]::LoadFile($AppInsightsDllPath)
-        Write-Debug 'Application Insights SDK loaded successfully'
+        # Check if Application Insights is already loaded by the Azure Functions runtime
+        # to avoid loading a conflicting version that causes CLR crashes (exit code 0xE0434352)
+        $aiLoaded = $false
+        try {
+            $loadedAssemblies = [System.AppDomain]::CurrentDomain.GetAssemblies()
+            foreach ($asm in $loadedAssemblies) {
+                try {
+                    if ($asm.GetName().Name -eq 'Microsoft.ApplicationInsights') {
+                        $aiLoaded = $true
+                        Write-Debug "Application Insights SDK already loaded by runtime (version $($asm.GetName().Version)). Skipping manual load to avoid assembly conflict."
+                        break
+                    }
+                } catch {
+                    # Some dynamic assemblies may throw on GetName(); skip them
+                    continue
+                }
+            }
+        } catch {
+            Write-Debug "Could not enumerate loaded assemblies: $($_.Exception.Message)"
+        }
+
+        if (-not $aiLoaded) {
+            $AppInsightsDllPath = Join-Path $PSScriptRoot 'Shared\AppInsights\Microsoft.ApplicationInsights.dll'
+            if (Test-Path $AppInsightsDllPath) {
+                $null = [Reflection.Assembly]::LoadFile($AppInsightsDllPath)
+                Write-Debug 'Application Insights SDK loaded successfully'
+            } else {
+                Write-Debug 'Application Insights DLL not found, skipping'
+            }
+        }
     } catch {
         Write-Warning "Failed to load Application Insights SDK: $($_.Exception.Message)"
     }

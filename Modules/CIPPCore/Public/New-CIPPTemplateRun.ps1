@@ -113,7 +113,7 @@ function New-CIPPTemplateRun {
                     Write-Information 'Creating templates for found Conditional Access Policies'
                     foreach ($policy in $policies) {
                         try {
-                            $Hash = Get-StringHash -String ($policy | ConvertTo-Json -Depth 100 -Compress)
+                            $Hash = Get-StringHash -String ($policy | ConvertTo-Json -Depth 20 -Compress)
                             $ExistingPolicy = $ExistingTemplates | Where-Object { $_.PartitionKey -eq 'CATemplate' -and $_.displayName -eq $policy.displayName -and $_.Source -eq $TenantFilter } | Select-Object -First 1
                             if ($ExistingPolicy -and $ExistingPolicy.SHA -eq $Hash) {
                                 "CA Policy $($policy.displayName) found, SHA matches, skipping template creation"
@@ -181,7 +181,7 @@ function New-CIPPTemplateRun {
                             Write-Information "Found $($Policies.Count) policies for $($Result.id)"
                             foreach ($Policy in $Policies) {
                                 try {
-                                    $Hash = Get-StringHash -String ($Policy | ConvertTo-Json -Depth 100 -Compress)
+                                    $Hash = Get-StringHash -String ($Policy | ConvertTo-Json -Depth 20 -Compress)
                                     $DisplayName = $Policy.displayName ?? $Policy.name
 
                                     $ExistingPolicy = $ExistingTemplates | Where-Object { $_.PartitionKey -eq 'IntuneTemplate' -and $_.displayName -eq $DisplayName -and $_.Source -eq $TenantFilter } | Select-Object -First 1
@@ -247,7 +247,7 @@ function New-CIPPTemplateRun {
                     Write-Information "Create Intune Compliance Policy Templates for $TenantFilter"
                     New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/deviceManagement/deviceCompliancePolicies?$top=999' -tenantid $TenantFilter | ForEach-Object {
                         $Policy = $_
-                        $Hash = Get-StringHash -String (ConvertTo-Json -Depth 100 -Compress -InputObject $_)
+                        $Hash = Get-StringHash -String (ConvertTo-Json -Depth 20 -Compress -InputObject $_)
                         $ExistingPolicy = $ExistingTemplates | Where-Object { $Policy.displayName -eq $_.DisplayName -and $_.Source -eq $TenantFilter } | Select-Object -First 1
                         if ($ExistingPolicy -and $ExistingPolicy.SHA -eq $Hash) {
                             "Intune Compliance Policy $($_.DisplayName) found, SHA matches, skipping template creation"
@@ -301,7 +301,7 @@ function New-CIPPTemplateRun {
                     Write-Information "Create Intune Protection Policy Templates for $TenantFilter"
                     New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/deviceAppManagement/managedAppPolicies?$top=999' -tenantid $TenantFilter | ForEach-Object {
                         $Policy = $_
-                        $Hash = Get-StringHash -String (ConvertTo-Json -Depth 100 -Compress -InputObject $_)
+                        $Hash = Get-StringHash -String (ConvertTo-Json -Depth 20 -Compress -InputObject $_)
                         $ExistingPolicy = $ExistingTemplates | Where-Object { $Policy.displayName -eq $_.DisplayName -and $_.Source -eq $TenantFilter } | Select-Object -First 1
                         if ($ExistingPolicy -and $ExistingPolicy.SHA -eq $Hash) {
                             "Intune Protection Policy $($_.DisplayName) found, SHA matches, skipping template creation"

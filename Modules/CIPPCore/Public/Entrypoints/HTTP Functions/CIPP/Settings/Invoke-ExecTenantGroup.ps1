@@ -45,7 +45,7 @@ function Invoke-ExecTenantGroup {
                 }
                 $GroupEntity | Add-Member -NotePropertyName 'GroupType' -NotePropertyValue $groupType -Force
                 if ($groupType -eq 'dynamic' -and $dynamicRules) {
-                    $GroupEntity | Add-Member -NotePropertyName 'DynamicRules' -NotePropertyValue "$($dynamicRules | ConvertTo-Json -Depth 100 -Compress)" -Force
+                    $GroupEntity | Add-Member -NotePropertyName 'DynamicRules' -NotePropertyValue "$($dynamicRules | ConvertTo-Json -Depth 20 -Compress)" -Force
                     $GroupEntity | Add-Member -NotePropertyName 'RuleLogic' -NotePropertyValue $ruleLogic -Force
                 } else {
                     $GroupEntity | Add-Member -NotePropertyName 'RuleLogic' -NotePropertyValue $null -Force
@@ -60,7 +60,7 @@ function Invoke-ExecTenantGroup {
                     GroupType    = $groupType
                 }
                 if ($groupType -eq 'dynamic' -and $dynamicRules) {
-                    $GroupEntity.DynamicRules = "$($dynamicRules | ConvertTo-Json -Depth 100 -Compress)"
+                    $GroupEntity.DynamicRules = "$($dynamicRules | ConvertTo-Json -Depth 20 -Compress)"
                     $GroupEntity.RuleLogic = $ruleLogic
                 }
                 Add-CIPPAzDataTableEntity @Table -Entity $GroupEntity -Force

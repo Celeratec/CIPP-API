@@ -62,7 +62,7 @@ function Import-CommunityTemplate {
             }
 
             # Re-compress JSON and save to table
-            $NewJSON = [string]($NewJSON | ConvertTo-Json -Depth 100 -Compress)
+            $NewJSON = [string]($NewJSON | ConvertTo-Json -Depth 20 -Compress)
             $Template.JSON = $NewJSON
             $Template | Add-Member -MemberType NoteProperty -Name SHA -Value $SHA -Force
             $Template | Add-Member -MemberType NoteProperty -Name Source -Value $Source -Force
@@ -81,7 +81,7 @@ function Import-CommunityTemplate {
                         username        = $Template.mailNickname
                         GUID            = $Template.id
                         groupType       = 'generic'
-                    } | ConvertTo-Json -Depth 100
+                    } | ConvertTo-Json -Depth 20
                     $entity = @{
                         JSON         = "$RawJsonObj"
                         PartitionKey = 'GroupTemplate'
@@ -116,7 +116,7 @@ function Import-CommunityTemplate {
                         }
                     }
 
-                    $RawJson = ConvertTo-Json -InputObject $Template -Depth 100 -Compress
+                    $RawJson = ConvertTo-Json -InputObject $Template -Depth 20 -Compress
                     #Replace the ids with the displayname by using the migration table, this is a simple find and replace each instance in the JSON.
                     $MigrationTable.objects | ForEach-Object {
                         if ($RawJson -match $_.ID) {
@@ -148,7 +148,7 @@ function Import-CommunityTemplate {
                     $id = $Template.id
                     $RawJson = $Template | Select-Object * -ExcludeProperty id, lastModifiedDateTime, 'assignments', '#microsoft*', '*@odata.navigationLink', '*@odata.associationLink', '*@odata.context', 'ScopeTagIds', 'supportsScopeTags', 'createdDateTime', '@odata.id', '@odata.editLink', 'lastModifiedDateTime@odata.type', 'roleScopeTagIds@odata.type', createdDateTime, 'createdDateTime@odata.type'
                     Remove-ODataProperties -Object $RawJson
-                    $RawJson = $RawJson | ConvertTo-Json -Depth 100 -Compress
+                    $RawJson = $RawJson | ConvertTo-Json -Depth 20 -Compress
 
                     #create a new template
                     $RawJsonObj = [PSCustomObject]@{
@@ -157,7 +157,7 @@ function Import-CommunityTemplate {
                         RAWJson     = $RawJson
                         Type        = $URLName
                         GUID        = $ID
-                    } | ConvertTo-Json -Depth 100 -Compress
+                    } | ConvertTo-Json -Depth 20 -Compress
 
                     $entity = @{
                         JSON         = "$RawJsonObj"

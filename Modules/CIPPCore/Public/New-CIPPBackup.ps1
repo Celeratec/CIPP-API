@@ -60,7 +60,7 @@ function New-CIPPBackup {
                         Get-AzDataTableEntity @Table | Select-Object * -ExcludeProperty DomainAnalyser, table, Timestamp, ETag, Results | Select-Object *, @{l = 'table'; e = { $CSVTable } }
                     }
                     $RowKey = 'CIPPBackup' + '_' + (Get-Date).ToString('yyyy-MM-dd-HHmm')
-                    $BackupData = [string]($CSVfile | ConvertTo-Json -Compress -Depth 100)
+                    $BackupData = [string]($CSVfile | ConvertTo-Json -Compress -Depth 20)
                     $TableName = 'CIPPBackup'
                     $PartitionKey = 'CIPPBackup'
                     $ContainerName = 'cipp-backups'
@@ -89,7 +89,7 @@ function New-CIPPBackup {
                             Write-Information "Failed to create backup for $ScheduledBackup - $($_.Exception.Message)"
                         }
                     }
-                    $BackupData = $entity | ConvertTo-Json -Compress -Depth 100
+                    $BackupData = $entity | ConvertTo-Json -Compress -Depth 20
                     $TableName = 'ScheduledBackup'
                     $PartitionKey = 'ScheduledBackup'
                     $ContainerName = 'scheduled-backups'

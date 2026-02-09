@@ -194,7 +194,7 @@ function Invoke-ListScheduledItemDetails {
     }
 
     # Combine task and results into one response
-    $Response = ConvertTo-Json -Depth 100 -InputObject @{
+    $Response = ConvertTo-Json -Depth 20 -InputObject @{
         Task    = $Task
         Details = $ProcessedResults
     }

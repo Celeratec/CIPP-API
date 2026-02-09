@@ -118,7 +118,7 @@ function Invoke-ExecCommunityRepo {
                 if ($Template.excludedTenants) {
                     $Template.excludedTenants = @()
                 }
-                $TemplateEntity.JSON = $Template | ConvertTo-Json -Compress -Depth 100
+                $TemplateEntity.JSON = $Template | ConvertTo-Json -Compress -Depth 20
 
                 $Basename = $DisplayName -replace '\s', '_' -replace '[^\w\d_]', ''
                 $Path = '{0}/{1}.json' -f $TemplateEntity.PartitionKey, $Basename

@@ -128,7 +128,7 @@ function New-CIPPRestoreTask {
                         if ($userObject.id -in $currentUsers.id -or $userObject.userPrincipalName -in $currentUsers.userPrincipalName) {
                             # Patch existing user - clean object to remove reference properties, nulls, and empty strings
                             $cleanedUser = Clean-GraphObject -Object $userObject
-                            $patchBody = $cleanedUser | ConvertTo-Json -Depth 100 -Compress
+                            $patchBody = $cleanedUser | ConvertTo-Json -Depth 20 -Compress
                             $null = New-GraphPOSTRequest -uri "https://graph.microsoft.com/beta/users/$($userObject.id)" -tenantid $TenantFilter -body $patchBody -type PATCH
                             Write-LogMessage -message "Restored $($UPN) from backup by patching the existing object." -Sev 'info'
                             $restorationStats['Users'].success++
@@ -142,7 +142,7 @@ function New-CIPPRestoreTask {
                                 'forceChangePasswordNextSignIn' = $true
                                 'password'                      = $tempPassword
                             }
-                            $JSON = $cleanedUser | ConvertTo-Json -Depth 100 -Compress
+                            $JSON = $cleanedUser | ConvertTo-Json -Depth 20 -Compress
 
                             $null = New-GraphPOSTRequest -uri 'https://graph.microsoft.com/beta/users' -tenantid $TenantFilter -body $JSON -type POST
                             # Try to wrap password in PwPush link
@@ -170,7 +170,7 @@ function New-CIPPRestoreTask {
                                 'forceChangePasswordNextSignIn' = $true
                                 'password'                      = $tempPassword
                             }
-                            $JSON = $cleanedUser | ConvertTo-Json -Depth 100 -Compress
+                            $JSON = $cleanedUser | ConvertTo-Json -Depth 20 -Compress
                             $null = New-GraphPOSTRequest -uri 'https://graph.microsoft.com/beta/users' -tenantid $TenantFilter -body $JSON -type POST
                             # Try to wrap password in PwPush link
                             $displayPassword = $tempPassword
@@ -201,7 +201,7 @@ function New-CIPPRestoreTask {
             $Groups = New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/groups?$top=999' -tenantid $TenantFilter
             $BackupGroups | ForEach-Object {
                 try {
-                    $JSON = $_ | ConvertTo-Json -Depth 100 -Compress
+                    $JSON = $_ | ConvertTo-Json -Depth 20 -Compress
                     $DisplayName = $_.displayName
                     if ($overwrite) {
                         if ($_.id -in $Groups.id) {

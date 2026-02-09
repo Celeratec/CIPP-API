@@ -41,7 +41,7 @@ function New-GraphBulkRequest {
                 $req = @{}
                 # Use select to create hashtables of id, method and url for each call
                 $req['requests'] = ($Requests[$i..($i + 19)])
-                $ReqBody = (ConvertTo-Json -InputObject $req -Compress -Depth 100)
+                $ReqBody = (ConvertTo-Json -InputObject $req -Compress -Depth 20)
                 $Return = Invoke-RestMethod -Uri $URL -Method POST -Headers $headers -ContentType 'application/json; charset=utf-8' -Body $ReqBody
                 if ($Return.headers.'retry-after') {
                     #Revist this when we are pushing this data into our custom schema instead.

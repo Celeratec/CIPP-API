@@ -109,7 +109,7 @@ function New-CIPPCATemplate {
     # Remove duplicates based on displayName to avoid Select-Object -Unique issues with complex objects
     $UniqueLocations = $AllLocations | Group-Object -Property displayName | ForEach-Object { $_.Group[0] }
     $JSON | Add-Member -NotePropertyName 'LocationInfo' -NotePropertyValue @($UniqueLocations) -Force
-    $JSON = (ConvertTo-Json -Compress -Depth 100 -InputObject $JSON)
+    $JSON = (ConvertTo-Json -Compress -Depth 20 -InputObject $JSON)
     return $JSON
 }
 

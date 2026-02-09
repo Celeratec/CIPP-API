@@ -33,7 +33,7 @@ function Invoke-ListCAtemplates {
     $Templates = (Get-CIPPAzDataTableEntity @Table -Filter $Filter) | ForEach-Object {
         try {
             $row = $_
-            $data = $row.JSON | ConvertFrom-Json -Depth 100 -ErrorAction Stop
+            $data = $row.JSON | ConvertFrom-Json -Depth 20 -ErrorAction Stop
             $data | Add-Member -NotePropertyName 'GUID' -NotePropertyValue $row.GUID -Force
             $data | Add-Member -NotePropertyName 'source' -NotePropertyValue $row.Source -Force
             $data | Add-Member -NotePropertyName 'isSynced' -NotePropertyValue (![string]::IsNullOrEmpty($row.SHA)) -Force
@@ -45,7 +45,7 @@ function Invoke-ListCAtemplates {
 
     if ($Request.query.ID) { $Templates = $Templates | Where-Object -Property GUID -EQ $Request.query.id }
 
-    $Templates = ConvertTo-Json -InputObject @($Templates) -Depth 100
+    $Templates = ConvertTo-Json -InputObject @($Templates) -Depth 20
     return ([HttpResponseContext]@{
             StatusCode = [HttpStatusCode]::OK
             Body       = $Templates

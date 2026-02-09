@@ -110,7 +110,7 @@ function Invoke-AddUserDefaults {
         $GUID = (New-Guid).GUID
 
         # Convert to JSON
-        $JSON = ConvertTo-Json -InputObject $TemplateObject -Depth 100 -Compress
+        $JSON = ConvertTo-Json -InputObject $TemplateObject -Depth 20 -Compress
 
         # Store in table
         $Table = Get-CippTable -tablename 'templates'

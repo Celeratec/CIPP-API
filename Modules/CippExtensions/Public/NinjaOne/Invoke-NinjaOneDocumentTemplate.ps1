@@ -25,7 +25,7 @@ function Invoke-NinjaOneDocumentTemplate {
         $NinjaDocumentTemplate = $DocumentTemplate
     } elseif ($MatchedCount -eq 0) {
         # Create a new Document Template
-        $Body = $Template | ConvertTo-Json -Depth 100
+        $Body = $Template | ConvertTo-Json -Depth 20
         Write-Host "Ninja Body: $body"
         $NinjaDocumentTemplate = (Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/document-templates/" -Method POST -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json' -Body $Body).content | ConvertFrom-Json -Depth 100
     } else {

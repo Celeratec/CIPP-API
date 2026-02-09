@@ -32,8 +32,8 @@ function Invoke-ListIntuneTemplates {
     if ($Request.query.View) {
         $Templates = $RawTemplates | ForEach-Object {
             try {
-                $JSONData = $_.JSON | ConvertFrom-Json -Depth 100 -ErrorAction SilentlyContinue
-                $data = $JSONData.RAWJson | ConvertFrom-Json -Depth 100 -ErrorAction SilentlyContinue
+                $JSONData = $_.JSON | ConvertFrom-Json -Depth 20 -ErrorAction SilentlyContinue
+                $data = $JSONData.RAWJson | ConvertFrom-Json -Depth 20 -ErrorAction SilentlyContinue
                 $data | Add-Member -NotePropertyName 'displayName' -NotePropertyValue $JSONData.Displayname -Force
                 $data | Add-Member -NotePropertyName 'description' -NotePropertyValue $JSONData.Description -Force
                 $data | Add-Member -NotePropertyName 'Type' -NotePropertyValue $JSONData.Type -Force
@@ -59,8 +59,8 @@ function Invoke-ListIntuneTemplates {
                     templateCount = ($RawTemplates | Where-Object { $_.Package -eq $package }).Count
                     templates     = @($RawTemplates | Where-Object { $_.Package -eq $package } | ForEach-Object {
                             try {
-                                $JSONData = $_.JSON | ConvertFrom-Json -Depth 100 -ErrorAction SilentlyContinue
-                                $data = $JSONData.RAWJson | ConvertFrom-Json -Depth 100 -ErrorAction SilentlyContinue
+                                $JSONData = $_.JSON | ConvertFrom-Json -Depth 20 -ErrorAction SilentlyContinue
+                                $data = $JSONData.RAWJson | ConvertFrom-Json -Depth 20 -ErrorAction SilentlyContinue
                                 $data | Add-Member -NotePropertyName 'displayName' -NotePropertyValue $JSONData.Displayname -Force
                                 $data | Add-Member -NotePropertyName 'description' -NotePropertyValue $JSONData.Description -Force
                                 $data | Add-Member -NotePropertyName 'Type' -NotePropertyValue $JSONData.Type -Force
@@ -76,7 +76,7 @@ function Invoke-ListIntuneTemplates {
                 }
             } | Sort-Object -Property label -Unique
         } else {
-            $Templates = $RawTemplates.JSON | ForEach-Object { try { ConvertFrom-Json -InputObject $_ -Depth 100 -ErrorAction SilentlyContinue } catch {} }
+            $Templates = $RawTemplates.JSON | ForEach-Object { try { ConvertFrom-Json -InputObject $_ -Depth 20 -ErrorAction SilentlyContinue } catch {} }
 
         }
     }
@@ -88,7 +88,7 @@ function Invoke-ListIntuneTemplates {
 
     return ([HttpResponseContext]@{
             StatusCode = [HttpStatusCode]::OK
-            Body       = ConvertTo-Json -Depth 100 -InputObject @($Templates)
+            Body       = ConvertTo-Json -Depth 20 -InputObject @($Templates)
         })
 
 }

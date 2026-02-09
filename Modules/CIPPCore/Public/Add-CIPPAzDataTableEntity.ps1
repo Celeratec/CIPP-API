@@ -96,7 +96,7 @@ function Add-CIPPAzDataTableEntity {
                     $entitySize = 0
 
                     if ($SingleEnt -is [System.Management.Automation.PSCustomObject]) {
-                        $SingleEnt = $SingleEnt | ConvertTo-Json -Depth 100 -Compress | ConvertFrom-Json -AsHashtable
+                        $SingleEnt = $SingleEnt | ConvertTo-Json -Depth 20 -Compress | ConvertFrom-Json -AsHashtable
                     }
 
                     foreach ($key in $SingleEnt.Keys) {

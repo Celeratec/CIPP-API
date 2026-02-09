@@ -62,7 +62,7 @@ function Invoke-ListNewUserDefaults {
         $Templates = $Templates | Where-Object -Property GUID -eq $Request.query.ID
     }
 
-    $Templates = ConvertTo-Json -InputObject @($Templates) -Depth 100
+    $Templates = ConvertTo-Json -InputObject @($Templates) -Depth 20
 
     return ([HttpResponseContext]@{
             StatusCode = [HttpStatusCode]::OK

@@ -60,7 +60,7 @@ function Invoke-NinjaOneTenantSync {
         Write-LogMessage -tenant $Customer.defaultDomainName -API 'NinjaOneSync' -message "Processing NinjaOne Synchronization for $($Customer.displayName) - Queued for $((New-TimeSpan -Start $StartQueueTime -End $StartTime).TotalSeconds)" -Sev 'Info'
 
         if (($Customer | Measure-Object).count -ne 1) {
-            throw "Unable to match the received ID to a tenant QueueItem: $($QueueItem | ConvertTo-Json -Depth 100 | Out-String) Matched Customer: $($Customer| ConvertTo-Json -Depth 100 | Out-String)"
+            throw "Unable to match the received ID to a tenant QueueItem: $($QueueItem | ConvertTo-Json -Depth 20 | Out-String) Matched Customer: $($Customer| ConvertTo-Json -Depth 20 | Out-String)"
         }
 
         $TenantFilter = $Customer.defaultDomainName
@@ -581,7 +581,7 @@ function Invoke-NinjaOneTenantSync {
             Add-CIPPAzDataTableEntity @DeviceTable -Entity @{
                 PartitionKey = $Customer.CustomerId
                 RowKey       = $device.AzureADDeviceId
-                RawDevice    = "$($ParsedDevice | ConvertTo-Json -Depth 100 -Compress)"
+                RawDevice    = "$($ParsedDevice | ConvertTo-Json -Depth 20 -Compress)"
             } -Force
 
             $ParsedDevices.add($ParsedDevice)
@@ -710,7 +710,7 @@ function Invoke-NinjaOneTenantSync {
 
             # Update Device
             if ($MappedFields.DeviceSummary -or $MappedFields.DeviceLinks -or $MappedFields.DeviceCompliance) {
-                $Result = Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/device/$($MatchedNinjaDevice.id)/custom-fields" -Method PATCH -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json; charset=utf-8' -Body ($NinjaDeviceUpdate | ConvertTo-Json -Depth 100)
+                $Result = Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/device/$($MatchedNinjaDevice.id)/custom-fields" -Method PATCH -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json; charset=utf-8' -Body ($NinjaDeviceUpdate | ConvertTo-Json -Depth 20)
             }
         }
 
@@ -1172,7 +1172,7 @@ function Invoke-NinjaOneTenantSync {
                             documentId   = $NinjaOneUser.documentId
                             documentName = "$($User.displayName) ($($User.userPrincipalName))"
                             fields       = $UserFields
-                        } | ConvertTo-Json -Depth 100)"
+                        } | ConvertTo-Json -Depth 20)"
                         }
                         $NinjaUserUpdates.Add($UpdateObject)
                         Add-CIPPAzDataTableEntity @UsersUpdateTable -Entity $UpdateObject -Force
@@ -1187,7 +1187,7 @@ function Invoke-NinjaOneTenantSync {
                             documentTemplateId = ($NinjaOneUsersTemplate.id)
                             organizationId     = [int]$NinjaOneOrg
                             fields             = $UserFields
-                        } | ConvertTo-Json -Depth 100)"
+                        } | ConvertTo-Json -Depth 20)"
                         }
                         $NinjaUserCreation.Add($CreateObject)
                         Add-CIPPAzDataTableEntity @UsersUpdateTable -Entity $CreateObject -Force
@@ -1251,7 +1251,7 @@ function Invoke-NinjaOneTenantSync {
                                     Add-CIPPAzDataTableEntity @UsersMapTable -Entity $MappedUser -Force
                                 }
                             } else {
-                                Write-Error "Unmatched Doc: $($UserDoc | ConvertTo-Json -Depth 100)"
+                                Write-Error "Unmatched Doc: $($UserDoc | ConvertTo-Json -Depth 20)"
                             }
 
                         }
@@ -1328,7 +1328,7 @@ function Invoke-NinjaOneTenantSync {
                             Add-CIPPAzDataTableEntity @UsersMapTable -Entity $MappedUser -Force
                         }
                     } else {
-                        Write-Error "Unmatched Doc: $($UserDoc | ConvertTo-Json -Depth 100)"
+                        Write-Error "Unmatched Doc: $($UserDoc | ConvertTo-Json -Depth 20)"
                     }
 
                 }
@@ -1360,7 +1360,7 @@ function Invoke-NinjaOneTenantSync {
                     # Update Relations
                     if (($Relations | Measure-Object).count -ge 1) {
                         Write-Information 'Updating Relations'
-                        $Null = Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/related-items/entity/NODE/$($LinkDevice.NinjaDevice.id)/relations" -Method POST -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json' -Body ($Relations | ConvertTo-Json -Depth 100 -AsArray) -EA Stop
+                        $Null = Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/related-items/entity/NODE/$($LinkDevice.NinjaDevice.id)/relations" -Method POST -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json' -Body ($Relations | ConvertTo-Json -Depth 20 -AsArray) -EA Stop
                         Write-Information 'Completed Update'
                     }
                 } catch {
@@ -1472,7 +1472,7 @@ function Invoke-NinjaOneTenantSync {
                 # Create New Subscriptions
                 if (($NinjaLicenseCreation | Measure-Object).count -ge 1) {
                     Write-Information 'Creating NinjaOne Licenses'
-                    [System.Collections.Generic.List[PSCustomObject]]$CreatedLicenses = (Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/organization/documents" -Method POST -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json; charset=utf-8' -Body ($NinjaLicenseCreation | ConvertTo-Json -Depth 100 -AsArray) -EA Stop).content | ConvertFrom-Json -Depth 100
+                    [System.Collections.Generic.List[PSCustomObject]]$CreatedLicenses = (Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/organization/documents" -Method POST -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json; charset=utf-8' -Body ($NinjaLicenseCreation | ConvertTo-Json -Depth 20 -AsArray) -EA Stop).content | ConvertFrom-Json -Depth 100
                 }
             } catch {
                 Write-Information "Bulk Creation Error, but may have been successful as only 1 record with an issue could have been the cause: $_"
@@ -1482,7 +1482,7 @@ function Invoke-NinjaOneTenantSync {
                 # Update Subscriptions
                 if (($NinjaLicenseUpdates | Measure-Object).count -ge 1) {
                     Write-Information 'Updating NinjaOne Licenses'
-                    [System.Collections.Generic.List[PSCustomObject]]$UpdatedLicenses = (Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/organization/documents" -Method PATCH -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json; charset=utf-8' -Body ($NinjaLicenseUpdates | ConvertTo-Json -Depth 100 -AsArray) -EA Stop).content | ConvertFrom-Json -Depth 100
+                    [System.Collections.Generic.List[PSCustomObject]]$UpdatedLicenses = (Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/organization/documents" -Method PATCH -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json; charset=utf-8' -Body ($NinjaLicenseUpdates | ConvertTo-Json -Depth 20 -AsArray) -EA Stop).content | ConvertFrom-Json -Depth 100
                     Write-Information 'Completed Update'
                 }
             } catch {
@@ -1516,7 +1516,7 @@ function Invoke-NinjaOneTenantSync {
                             # Update Relations
                             if (($Relations | Measure-Object).count -ge 1) {
                                 Write-Information 'Updating Relations'
-                                $Null = Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/related-items/entity/DOCUMENT/$($($MatchedLicDoc.documentId))/relations" -Method POST -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json' -Body ($Relations | ConvertTo-Json -Depth 100 -AsArray) -EA Stop
+                                $Null = Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/related-items/entity/DOCUMENT/$($($MatchedLicDoc.documentId))/relations" -Method POST -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json' -Body ($Relations | ConvertTo-Json -Depth 20 -AsArray) -EA Stop
                                 Write-Information 'Completed Update'
                             }
                         } catch {
@@ -2195,8 +2195,8 @@ function Invoke-NinjaOneTenantSync {
 
         $Token = Get-NinjaOneToken -configuration $Configuration
 
-        Write-Information "Ninja Body: $($NinjaOrgUpdate | ConvertTo-Json -Depth 100)"
-        $Result = Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/organization/$($MappedTenant.IntegrationId)/custom-fields" -Method PATCH -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json; charset=utf-8' -Body ($NinjaOrgUpdate | ConvertTo-Json -Depth 100)
+        Write-Information "Ninja Body: $($NinjaOrgUpdate | ConvertTo-Json -Depth 20)"
+        $Result = Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/organization/$($MappedTenant.IntegrationId)/custom-fields" -Method PATCH -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json; charset=utf-8' -Body ($NinjaOrgUpdate | ConvertTo-Json -Depth 20)
 
 
         Write-Information 'Cleaning Users Cache'

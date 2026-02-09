@@ -12,7 +12,7 @@ function Invoke-ExecEditTemplate {
     try {
         $Table = Get-CippTable -tablename 'templates'
         $guid = $request.Body.id ? $request.Body.id : $request.Body.GUID
-        $JSON = ConvertTo-Json -Compress -Depth 100 -InputObject ($request.Body | Select-Object * -ExcludeProperty GUID)
+        $JSON = ConvertTo-Json -Compress -Depth 20 -InputObject ($request.Body | Select-Object * -ExcludeProperty GUID)
         $Type = $request.Query.Type ?? $Request.Body.Type
 
         if ($Type -eq 'IntuneTemplate') {
@@ -29,7 +29,7 @@ function Invoke-ExecEditTemplate {
                 $NewGuid = $GUID
             }
             if ($Request.Body.parsedRAWJson) {
-                $RawJSON = ConvertTo-Json -Compress -Depth 100 -InputObject $Request.Body.parsedRAWJson
+                $RawJSON = ConvertTo-Json -Compress -Depth 20 -InputObject $Request.Body.parsedRAWJson
             } else {
                 $RawJSON = $OriginalJSON
             }

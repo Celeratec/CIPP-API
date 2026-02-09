@@ -1,4 +1,4 @@
-﻿#Region './Private/ArgumentCompleters/AssetLayoutCompleter.ps1' -1
+#Region './Private/ArgumentCompleters/AssetLayoutCompleter.ps1' -1
 
 $AssetLayoutCompleter = {
     param (
@@ -2419,7 +2419,7 @@ function New-HuduRelation {
         $Relation.relation.add('is_inverse', $ISInverse)
     }
 
-    $JSON = $Relation | ConvertTo-Json -Depth 100
+    $JSON = $Relation | ConvertTo-Json -Depth 20
 
     if ($PSCmdlet.ShouldProcess($FromableType)) {
         Invoke-HuduRequest -Method post -Resource '/api/v1/relations' -Body $JSON

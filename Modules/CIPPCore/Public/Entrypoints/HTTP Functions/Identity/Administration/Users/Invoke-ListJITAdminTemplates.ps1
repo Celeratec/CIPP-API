@@ -63,7 +63,7 @@ function Invoke-ListJITAdminTemplates {
         $Templates = $Templates | Where-Object -Property GUID -EQ $Request.query.GUID
     }
 
-    $Templates = ConvertTo-Json -InputObject @($Templates) -Depth 100
+    $Templates = ConvertTo-Json -InputObject @($Templates) -Depth 20
 
     return ([HttpResponseContext]@{
             StatusCode = [HttpStatusCode]::OK
