@@ -273,8 +273,15 @@ function Compare-CIPPIntuneObject {
                 [Parameter(Mandatory = $true)]
                 [string]$Source,
                 [Parameter(Mandatory = $true)]
-                $IntuneCollection
+                $IntuneCollection,
+                [int]$CurrentDepth = 0,
+                [int]$MaxDepth = 25
             )
+
+            if ($CurrentDepth -ge $MaxDepth) {
+                Write-Warning "Process-GroupSettingChildren: Maximum recursion depth ($MaxDepth) reached. Stopping to prevent stack overflow."
+                return
+            }
 
             $results = [System.Collections.Generic.List[PSCustomObject]]::new()
 
@@ -291,7 +298,7 @@ function Compare-CIPPIntuneObject {
                         if ($child.groupSettingCollectionValue) {
                             foreach ($groupValue in $child.groupSettingCollectionValue) {
                                 if ($groupValue.children) {
-                                    $nestedResults = Process-GroupSettingChildren -Children $groupValue.children -Source $Source -IntuneCollection $IntuneCollection
+                                    $nestedResults = Process-GroupSettingChildren -Children $groupValue.children -Source $Source -IntuneCollection $IntuneCollection -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth
                                     $results.AddRange($nestedResults)
                                 }
                             }
@@ -377,7 +384,7 @@ function Compare-CIPPIntuneObject {
 
                 # Also process any children within choice setting values
                 if ($child.choiceSettingValue?.children) {
-                    $nestedResults = Process-GroupSettingChildren -Children $child.choiceSettingValue.children -Source $Source -IntuneCollection $IntuneCollection
+                    $nestedResults = Process-GroupSettingChildren -Children $child.choiceSettingValue.children -Source $Source -IntuneCollection $IntuneCollection -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth
                     $results.AddRange($nestedResults)
                 }
             }

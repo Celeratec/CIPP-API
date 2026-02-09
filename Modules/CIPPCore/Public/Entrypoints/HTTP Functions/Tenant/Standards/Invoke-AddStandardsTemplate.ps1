@@ -44,7 +44,7 @@ function Invoke-AddStandardsTemplate {
     }
     $Request.body | Add-Member -NotePropertyName 'updatedBy' -NotePropertyValue $updatedBy -Force
     $Request.body | Add-Member -NotePropertyName 'updatedAt' -NotePropertyValue (Get-Date).ToUniversalTime() -Force
-    $JSON = (ConvertTo-Json -Compress -Depth 100 -InputObject ($Request.body))
+    $JSON = (ConvertTo-Json -Compress -Depth 20 -InputObject ($Request.body))
     $Table = Get-CippTable -tablename 'templates'
     $Table.Force = $true
     Add-CIPPAzDataTableEntity @Table -Entity @{

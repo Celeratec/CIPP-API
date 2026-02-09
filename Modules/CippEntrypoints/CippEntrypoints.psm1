@@ -38,7 +38,10 @@ function Receive-CippHttpTrigger {
     }
 
     # Convert the request to a PSCustomObject because the httpContext is case sensitive since 7.3
-    $Request = $Request | ConvertTo-Json -Depth 100 | ConvertFrom-Json
+    # NOTE: Depth must be kept low (<=20). High depths (e.g. 100) cause stack overflow crashes
+    # (exit code 0xC00000FD) because the Azure Functions request context contains circular/deeply
+    # nested .NET framework objects that exhaust the thread stack during JSON serialization.
+    $Request = $Request | ConvertTo-Json -Depth 20 | ConvertFrom-Json
     
     # Set working directory for relative path operations
     try {
