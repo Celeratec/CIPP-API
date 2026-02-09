@@ -24,9 +24,11 @@ Function Invoke-ExecTeamMember {
         switch ($Action) {
             'Add' {
                 $UserID = $Request.Body.UserID
-                # Support autocomplete field format: { value: "userId", label: "..." }
+                # Support autocomplete/select field format: { value: "...", label: "..." }
                 if ($UserID -is [hashtable] -or $UserID -is [PSCustomObject]) {
                     $UserID = $UserID.value
+                } elseif ($UserID -is [System.Collections.IDictionary]) {
+                    $UserID = $UserID['value']
                 }
                 $Role = $Request.Body.Role
                 if (-not $Role) { $Role = 'member' }
@@ -44,9 +46,11 @@ Function Invoke-ExecTeamMember {
             }
             'Remove' {
                 $MembershipID = $Request.Body.MembershipID
-                # Support autocomplete field format
+                # Support autocomplete/select field format
                 if ($MembershipID -is [hashtable] -or $MembershipID -is [PSCustomObject]) {
                     $MembershipID = $MembershipID.value
+                } elseif ($MembershipID -is [System.Collections.IDictionary]) {
+                    $MembershipID = $MembershipID['value']
                 }
 
                 $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/members/$MembershipID" -tenantid $TenantFilter -type DELETE
@@ -56,6 +60,8 @@ Function Invoke-ExecTeamMember {
                 $MembershipID = $Request.Body.MembershipID
                 if ($MembershipID -is [hashtable] -or $MembershipID -is [PSCustomObject]) {
                     $MembershipID = $MembershipID.value
+                } elseif ($MembershipID -is [System.Collections.IDictionary]) {
+                    $MembershipID = $MembershipID['value']
                 }
                 $Role = $Request.Body.Role
                 if (-not $Role) { $Role = 'member' }

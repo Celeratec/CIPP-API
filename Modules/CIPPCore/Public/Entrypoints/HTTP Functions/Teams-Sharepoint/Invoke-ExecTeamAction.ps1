@@ -57,9 +57,11 @@ Function Invoke-ExecTeamAction {
                 if (-not $ChannelName) { throw 'ChannelName is required' }
                 if (-not $ChannelType) { $ChannelType = 'standard' }
 
-                # Support autocomplete field format: { value: "userId", label: "..." }
+                # Support autocomplete/select field format: { value: "...", label: "..." }
                 if ($ChannelOwnerID -is [hashtable] -or $ChannelOwnerID -is [PSCustomObject]) {
                     $ChannelOwnerID = $ChannelOwnerID.value
+                } elseif ($ChannelOwnerID -is [System.Collections.IDictionary]) {
+                    $ChannelOwnerID = $ChannelOwnerID['value']
                 }
 
                 $ChannelBody = @{
@@ -133,9 +135,17 @@ Function Invoke-ExecTeamAction {
                 if (-not $ChannelID) { throw 'ChannelID is required' }
                 if (-not $UserID) { throw 'UserID is required' }
 
-                # Support autocomplete field format: { value: "userId", label: "..." }
+                # Support autocomplete/select field format: { value: "...", label: "..." }
                 if ($UserID -is [hashtable] -or $UserID -is [PSCustomObject]) {
                     $UserID = $UserID.value
+                } elseif ($UserID -is [System.Collections.IDictionary]) {
+                    $UserID = $UserID['value']
+                }
+
+                if ($ChannelRole -is [hashtable] -or $ChannelRole -is [PSCustomObject]) {
+                    $ChannelRole = $ChannelRole.value
+                } elseif ($ChannelRole -is [System.Collections.IDictionary]) {
+                    $ChannelRole = $ChannelRole['value']
                 }
 
                 if (-not $ChannelRole) { $ChannelRole = 'member' }
