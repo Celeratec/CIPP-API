@@ -53,16 +53,38 @@ Function Invoke-ExecTeamAction {
                 $ChannelName = $Request.Body.ChannelName
                 $ChannelDescription = $Request.Body.ChannelDescription
                 $ChannelType = $Request.Body.ChannelType
+                $ChannelOwnerID = $Request.Body.ChannelOwnerID
                 if (-not $ChannelName) { throw 'ChannelName is required' }
                 if (-not $ChannelType) { $ChannelType = 'standard' }
+
+                # Support autocomplete field format: { value: "userId", label: "..." }
+                if ($ChannelOwnerID -is [hashtable] -or $ChannelOwnerID -is [PSCustomObject]) {
+                    $ChannelOwnerID = $ChannelOwnerID.value
+                }
 
                 $ChannelBody = @{
                     displayName    = $ChannelName
                     description    = $ChannelDescription
                     membershipType = $ChannelType
-                } | ConvertTo-Json -Depth 5
+                }
 
-                $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels" -tenantid $TenantFilter -type POST -body $ChannelBody
+                # Private and Shared channels require at least one owner when using app permissions
+                if ($ChannelType -in @('private', 'shared')) {
+                    if (-not $ChannelOwnerID) {
+                        throw "A channel owner is required when creating a $ChannelType channel. Please select a channel owner."
+                    }
+                    $ChannelBody['members'] = @(
+                        @{
+                            '@odata.type'     = '#microsoft.graph.aadUserConversationMember'
+                            'user@odata.bind' = "https://graph.microsoft.com/v1.0/users('$ChannelOwnerID')"
+                            'roles'           = [string[]]@('owner')
+                        }
+                    )
+                }
+
+                $ChannelJson = $ChannelBody | ConvertTo-Json -Depth 10
+
+                $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels" -tenantid $TenantFilter -type POST -body $ChannelJson
                 $Message = "Successfully created channel '$ChannelName' in team '$TeamLabel'"
             }
             'DeleteChannel' {
