@@ -62,8 +62,16 @@ function Invoke-EditUser {
         if ($null -ne $UserObj.postalCode) { $BodyToship['postalCode'] = $UserObj.postalCode }
         if ($null -ne $UserObj.country) { $BodyToship['country'] = $UserObj.country }
         if ($null -ne $UserObj.companyName) { $BodyToship['companyName'] = $UserObj.companyName }
-        if ($null -ne $UserObj.businessPhones) { $BodyToship['businessPhones'] = @($UserObj.businessPhones) }
-        if ($null -ne $UserObj.otherMails) { $BodyToship['otherMails'] = @($UserObj.otherMails) }
+        if ($null -ne $UserObj.businessPhones) {
+            $filteredPhones = @($UserObj.businessPhones) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+            $BodyToship['businessPhones'] = @($filteredPhones)
+        }
+        if ($null -ne $UserObj.otherMails) {
+            $filteredMails = @($UserObj.otherMails) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+            if ($filteredMails.Count -gt 0) {
+                $BodyToship['otherMails'] = @($filteredMails)
+            }
+        }
         if ($UserObj.MustChangePass) {
             $BodyToship['passwordProfile'] = @{
                 'forceChangePasswordNextSignIn' = [bool]$UserObj.MustChangePass
