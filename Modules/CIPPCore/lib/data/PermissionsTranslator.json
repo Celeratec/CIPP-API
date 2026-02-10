@@ -5371,5 +5371,19 @@
     "userConsentDescription": "Allows the app to read your tenant's acquired telephone number details, without a signed-in user. Acquired telephone numbers may include attributes related to assigned object, emergency location, network site, etc.",
     "userConsentDisplayName": "Allows the app to read your tenant's acquired telephone number details, without a signed-in user. Acquired telephone numbers may include attributes related to assigned object, emergency location, network site, etc.",
     "value": "TeamsTelephoneNumber.ReadWrite.All"
+  },
+  {
+    "description": "Allows the app to access Dynamics CRM / Dataverse Web API on behalf of the signed-in user.",
+    "displayName": "Dynamics CRM user_impersonation",
+    "id": "78ce3f0f-a1ce-49c2-8cde-64b5c0896db4",
+    "origin": "Delegated (Dynamics CRM)",
+    "value": "user_impersonation"
+  },
+  {
+    "description": "Allows the app to read Power Platform application packages on behalf of the signed-in user.",
+    "displayName": "Power Platform API - Read Application Packages",
+    "id": "9dafb9c1-c236-48b1-b142-20dcaab58675",
+    "origin": "Delegated (Power Platform API)",
+    "value": "AppManagement.ApplicationPackages.Read"
   }
 ]

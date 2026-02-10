@@ -630,6 +630,24 @@
           "type": "Scope"
         }
       ]
+    },
+    {
+      "resourceAppId": "00000007-0000-0000-c000-000000000000",
+      "resourceAccess": [
+        {
+          "id": "78ce3f0f-a1ce-49c2-8cde-64b5c0896db4",
+          "type": "Scope"
+        }
+      ]
+    },
+    {
+      "resourceAppId": "8578e004-a5c6-46e7-913e-12f58912df43",
+      "resourceAccess": [
+        {
+          "id": "9dafb9c1-c236-48b1-b142-20dcaab58675",
+          "type": "Scope"
+        }
+      ]
     }
   ]
 }
