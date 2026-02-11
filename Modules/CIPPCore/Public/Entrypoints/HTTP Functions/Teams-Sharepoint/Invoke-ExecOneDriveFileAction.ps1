@@ -20,6 +20,11 @@ function Invoke-ExecOneDriveFileAction {
     $SiteId = $Request.Body.SiteId
     $ItemName = $Request.Body.ItemName
 
+    # Cross-drive destination parameters
+    $DestinationDriveId = $Request.Body.DestinationDriveId
+    $DestinationUserId = $Request.Body.DestinationUserId
+    $DestinationSiteId = $Request.Body.DestinationSiteId
+
     if (-not $TenantFilter) {
         return ([HttpResponseContext]@{
             StatusCode = [HttpStatusCode]::BadRequest
@@ -196,8 +201,146 @@ function Invoke-ExecOneDriveFileAction {
                 $Message = "Successfully created folder '$FolderName'"
             }
 
+            'CrossCopy' {
+                if (-not $ItemId) { throw 'ItemId is required for CrossCopy action' }
+
+                # Resolve destination drive
+                $DestDriveId = $DestinationDriveId
+                if (-not $DestDriveId) {
+                    if ($DestinationUserId) {
+                        $DestUserDrive = New-GraphGetRequest `
+                            -uri "https://graph.microsoft.com/v1.0/users/$DestinationUserId/drive?`$select=id" `
+                            -tenantid $TenantFilter -asApp $true
+                        $DestDriveId = $DestUserDrive.id
+                    } elseif ($DestinationSiteId) {
+                        $DestDrives = New-GraphGetRequest `
+                            -uri "https://graph.microsoft.com/v1.0/sites/$DestinationSiteId/drives" `
+                            -tenantid $TenantFilter -asApp $true
+                        $DestDriveId = ($DestDrives | Where-Object { $_.driveType -eq 'documentLibrary' } | Select-Object -First 1).id
+                        if (-not $DestDriveId) { $DestDriveId = $DestDrives[0].id }
+                    }
+                }
+                if (-not $DestDriveId) { throw 'DestinationDriveId, DestinationUserId, or DestinationSiteId is required for CrossCopy' }
+
+                $DestinationFolderId = $Request.Body.DestinationFolderId
+                if ($DestinationFolderId -is [hashtable] -or $DestinationFolderId -is [PSCustomObject]) {
+                    $DestinationFolderId = $DestinationFolderId.value
+                }
+
+                # Build the parent reference for the destination drive
+                $CopyBody = @{
+                    parentReference = @{
+                        driveId = $DestDriveId
+                    }
+                }
+                if ($DestinationFolderId) {
+                    $CopyBody['parentReference']['id'] = $DestinationFolderId
+                } else {
+                    # Resolve root folder id of destination drive
+                    $DestRoot = New-GraphGetRequest `
+                        -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/root?`$select=id" `
+                        -tenantid $TenantFilter -asApp $true
+                    $CopyBody['parentReference']['id'] = $DestRoot.id
+                }
+
+                $Body = $CopyBody | ConvertTo-Json -Depth 3
+                $null = New-GraphPostRequest -AsApp $true `
+                    -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId/copy" `
+                    -tenantid $TenantFilter -type POST -body $Body
+                $Message = "Cross-drive copy of '$ItemLabel' has been initiated. This may take a moment to complete."
+            }
+
+            'CrossMove' {
+                if (-not $ItemId) { throw 'ItemId is required for CrossMove action' }
+
+                # Resolve destination drive
+                $DestDriveId = $DestinationDriveId
+                if (-not $DestDriveId) {
+                    if ($DestinationUserId) {
+                        $DestUserDrive = New-GraphGetRequest `
+                            -uri "https://graph.microsoft.com/v1.0/users/$DestinationUserId/drive?`$select=id" `
+                            -tenantid $TenantFilter -asApp $true
+                        $DestDriveId = $DestUserDrive.id
+                    } elseif ($DestinationSiteId) {
+                        $DestDrives = New-GraphGetRequest `
+                            -uri "https://graph.microsoft.com/v1.0/sites/$DestinationSiteId/drives" `
+                            -tenantid $TenantFilter -asApp $true
+                        $DestDriveId = ($DestDrives | Where-Object { $_.driveType -eq 'documentLibrary' } | Select-Object -First 1).id
+                        if (-not $DestDriveId) { $DestDriveId = $DestDrives[0].id }
+                    }
+                }
+                if (-not $DestDriveId) { throw 'DestinationDriveId, DestinationUserId, or DestinationSiteId is required for CrossMove' }
+
+                $DestinationFolderId = $Request.Body.DestinationFolderId
+                if ($DestinationFolderId -is [hashtable] -or $DestinationFolderId -is [PSCustomObject]) {
+                    $DestinationFolderId = $DestinationFolderId.value
+                }
+
+                # Build the parent reference for the destination drive
+                $CopyBody = @{
+                    parentReference = @{
+                        driveId = $DestDriveId
+                    }
+                }
+                if ($DestinationFolderId) {
+                    $CopyBody['parentReference']['id'] = $DestinationFolderId
+                } else {
+                    $DestRoot = New-GraphGetRequest `
+                        -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/root?`$select=id" `
+                        -tenantid $TenantFilter -asApp $true
+                    $CopyBody['parentReference']['id'] = $DestRoot.id
+                }
+
+                # Step 1: Copy to destination drive
+                $Body = $CopyBody | ConvertTo-Json -Depth 3
+                $CopyResponse = New-GraphPostRequest -AsApp $true `
+                    -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId/copy" `
+                    -tenantid $TenantFilter -type POST -body $Body
+
+                # Step 2: Poll the copy monitor URL until complete, then delete source
+                # The Graph copy API returns a Location header with a monitor URL.
+                # We attempt to wait for completion before deleting the source.
+                $MonitorUrl = $null
+                if ($CopyResponse -and $CopyResponse.'Location') {
+                    $MonitorUrl = $CopyResponse.'Location'
+                }
+
+                $CopyComplete = $false
+                if ($MonitorUrl) {
+                    for ($i = 0; $i -lt 30; $i++) {
+                        Start-Sleep -Seconds 2
+                        try {
+                            $Status = Invoke-RestMethod -Uri $MonitorUrl -Method GET -ErrorAction Stop
+                            if ($Status.status -eq 'completed') {
+                                $CopyComplete = $true
+                                break
+                            } elseif ($Status.status -eq 'failed') {
+                                throw "Copy operation failed: $($Status.error.message)"
+                            }
+                        } catch {
+                            # If we can't reach the monitor URL, wait and retry
+                            if ($_.Exception.Message -match 'Copy operation failed') { throw }
+                        }
+                    }
+                } else {
+                    # No monitor URL - wait a fixed period for small files
+                    Start-Sleep -Seconds 5
+                    $CopyComplete = $true
+                }
+
+                if ($CopyComplete) {
+                    # Delete the source item
+                    $null = New-GraphPostRequest -AsApp $true `
+                        -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId" `
+                        -tenantid $TenantFilter -type DELETE -body '{}'
+                    $Message = "Successfully moved '$ItemLabel' to the destination. The source has been removed."
+                } else {
+                    $Message = "Copy of '$ItemLabel' was initiated but is still in progress. The source item was NOT deleted. Please verify the copy completed and remove the source manually if needed."
+                }
+            }
+
             default {
-                throw "Unknown action: $Action. Supported actions: Rename, Move, Copy, Delete, Download, CreateFolder"
+                throw "Unknown action: $Action. Supported actions: Rename, Move, Copy, Delete, Download, CreateFolder, CrossCopy, CrossMove"
             }
         }
 
