@@ -19,8 +19,13 @@ function Push-PublicWebhookProcess {
         Write-Host "Webhook Exception: $($_.Exception.Message)"
     } finally {
         if ($Webhook) {
-            $Entity = $Webhook | Select-Object -Property RowKey, PartitionKey
-            Remove-AzDataTableEntity -Force @Table -Entity $Entity
+            try {
+                $Entity = $Webhook | Select-Object -Property RowKey, PartitionKey
+                Remove-AzDataTableEntity -Force @Table -Entity $Entity
+            } catch {
+                # Row may have already been deleted by a concurrent execution - this is expected
+                Write-Information "Webhook cleanup for RowKey '$($Item.RowKey)': $($_.Exception.Message)"
+            }
         } else {
             Write-Warning "Webhook row not found for RowKey '$($Item.RowKey)' - skipping cleanup"
         }
