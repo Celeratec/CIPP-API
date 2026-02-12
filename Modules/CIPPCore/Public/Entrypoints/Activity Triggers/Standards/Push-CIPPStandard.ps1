@@ -105,8 +105,8 @@ function Push-CIPPStandard {
         $result = 'Failed'
         $err = $_.Exception.Message
 
-        Write-LogMessage -API 'Standards' -tenant $Tenant -message "Error running standard $($Standard) for tenant $($Tenant) - $($_.Exception.Message)" -sev Error -LogData (Get-CippException -Exception $_)
-        Write-Warning "Error running standard $($Standard) for tenant $($Tenant) - $($_.Exception.Message)"
+        Write-LogMessage -API 'Standards' -tenant $Tenant -message "Error running standard $($Standard) ($FunctionName) for tenant $($Tenant) - $($_.Exception.Message)" -sev Error -LogData (Get-CippException -Exception $_)
+        Write-Warning "Error running standard $($Standard) ($FunctionName) for tenant $($Tenant) - $($_.Exception.Message)"
         Write-Information $_.InvocationInfo.PositionMessage
         throw $_.Exception.Message
     } finally {
