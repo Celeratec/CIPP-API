@@ -39,6 +39,13 @@ function Invoke-listStandardTemplates {
                     }
                 }
             }
+
+            # Ensure standards key always exists (prevents frontend crash on missing property)
+            if (!$Data.standards) {
+                $Data | Add-Member -NotePropertyName 'standards' -NotePropertyValue @{} -Force
+                Write-Host "Template '$($Data.templateName)' ($RowKey) was missing 'standards' key - auto-initialized"
+            }
+
             $Data
         }
     } | Sort-Object -Property templateName
