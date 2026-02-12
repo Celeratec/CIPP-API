@@ -45,7 +45,9 @@ function Invoke-NinjaOneTenantSync {
         if ($Null -ne $CurrentItem.lastEndTime -and $CurrentItem.lastEndTime -ne '' ) {
             $CurrentItem.lastEndTime = ([string]$(($CurrentItem.lastEndTime).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')))
         }
-        Add-CIPPAzDataTableEntity @MappingTable -Entity $CurrentItem -Force
+        # Convert to hashtable to strip PSObject wrappers that AzBobbyTables cannot serialize
+        $CleanEntity = $CurrentItem | ConvertTo-Json -Depth 5 -Compress | ConvertFrom-Json -AsHashtable
+        Add-CIPPAzDataTableEntity @MappingTable -Entity $CleanEntity -Force
 
 
         # Fetch Custom NinjaOne Settings
@@ -2215,7 +2217,9 @@ function Invoke-NinjaOneTenantSync {
         # Set Last End Time
         $CurrentItem | Add-Member -NotePropertyName lastEndTime -NotePropertyValue ([string]$((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ'))) -Force
         $CurrentItem | Add-Member -NotePropertyName lastStatus -NotePropertyValue 'Completed' -Force
-        Add-CIPPAzDataTableEntity @MappingTable -Entity $CurrentItem -Force
+        # Convert to hashtable to strip PSObject wrappers that AzBobbyTables cannot serialize
+        $CleanEntity = $CurrentItem | ConvertTo-Json -Depth 5 -Compress | ConvertFrom-Json -AsHashtable
+        Add-CIPPAzDataTableEntity @MappingTable -Entity $CleanEntity -Force
 
         Write-LogMessage -tenant $Customer.defaultDomainName -API 'NinjaOneSync' -message "Completed NinjaOne Sync for $($Customer.displayName). Queued for $((New-TimeSpan -Start $StartQueueTime -End $StartTime).TotalSeconds) seconds. Data fetched in $((New-TimeSpan -Start $StartTime -End $FetchEnd).TotalSeconds) seconds. Total processing time $((New-TimeSpan -Start $StartTime -End (Get-Date)).TotalSeconds) seconds" -Sev 'info'
 
@@ -2230,7 +2234,9 @@ function Invoke-NinjaOneTenantSync {
         Write-LogMessage -tenant $Customer.defaultDomainName -API 'NinjaOneSync' -message "Failed NinjaOne Processing for $($Customer.displayName) Linenumber: $($_.InvocationInfo.ScriptLineNumber) Error: $Message" -Sev 'Error'
         $CurrentItem | Add-Member -NotePropertyName lastEndTime -NotePropertyValue ([string]$((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ'))) -Force
         $CurrentItem | Add-Member -NotePropertyName lastStatus -NotePropertyValue 'Failed' -Force
-        Add-CIPPAzDataTableEntity @MappingTable -Entity $CurrentItem -Force
+        # Convert to hashtable to strip PSObject wrappers that AzBobbyTables cannot serialize
+        $CleanEntity = $CurrentItem | ConvertTo-Json -Depth 5 -Compress | ConvertFrom-Json -AsHashtable
+        Add-CIPPAzDataTableEntity @MappingTable -Entity $CleanEntity -Force
     }
     return $true
 }
