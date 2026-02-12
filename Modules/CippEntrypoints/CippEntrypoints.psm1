@@ -540,10 +540,8 @@ function Receive-CIPPTimerTrigger {
                 }
             }
 
-            # Wrap the timer function execution with telemetry
-
-            Invoke-Command -ScriptBlock { & $Function.Command @Parameters }
-
+            # Execute the timer function and capture the result
+            $Results = Invoke-Command -ScriptBlock { & $Function.Command @Parameters }
 
             if ($Results -match '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') {
                 $FunctionStatus.OrchestratorId = $Results -join ','
@@ -567,6 +565,13 @@ function Receive-CIPPTimerTrigger {
         $FunctionStatus.Status = $Status
 
         Add-CIPPAzDataTableEntity @Table -Entity $FunctionStatus -Force
+
+        # Release memory from this timer function before running the next one
+        $Results = $null
+        $Parameters = $null
+        $metadata = $null
+        $ExceptionDetails = $null
+        [System.GC]::Collect()
     }
     return $true
 }
