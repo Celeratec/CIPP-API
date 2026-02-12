@@ -312,6 +312,9 @@ function Invoke-NinjaOneTenantSync {
         $RawDomains = $ExtensionCache.Domains
         $AllConditionalAccessPolicies = $ExtensionCache.ConditionalAccess
 
+        # Release the wrapper object - sub-collections are now held by individual variables
+        $ExtensionCache = $null
+
         $CurrentSecureScore = ($SecureScore | Sort-Object createDateTime -Descending | Select-Object -First 1)
         $MaxSecureScoreRank = ($SecureScoreProfiles.rank | Measure-Object -Maximum).maximum
 
@@ -374,6 +377,9 @@ function Invoke-NinjaOneTenantSync {
                 DeviceStatuses = $DeviceStatuses
             }
         }
+
+        # DeviceCompliancePolicies has been processed into DeviceComplianceDetails - release source
+        $DeviceCompliancePolicies = $null
 
         Write-Verbose "$(Get-Date) - Parsing Groups"
 
@@ -457,6 +463,9 @@ function Invoke-NinjaOneTenantSync {
         } else {
             [System.Collections.Generic.List[PSCustomObject]]$ParsedDevices = $RawParsedDevices.RawDevice | ForEach-Object { $_ | ConvertFrom-Json -Depth 100 }
         }
+
+        # Release raw table entities - ParsedDevices now holds the deserialized data
+        $RawParsedDevices = $null
 
         [System.Collections.Generic.List[PSCustomObject]]$DeviceMap = Get-CIPPAzDataTableEntity @DeviceMapTable -Filter $DeviceFilter
         if (($DeviceMap | Measure-Object).count -eq 0) {
@@ -722,6 +731,13 @@ function Invoke-NinjaOneTenantSync {
         }
 
         Write-Information 'Processed Devices'
+
+        # Memory cleanup: release device-phase data no longer needed
+        # Matched NinjaDevice objects are still referenced via $ParsedDevices[].NinjaDevice
+        $NinjaDevices = $null
+        $DeviceComplianceDetails = $null
+        $DeviceMap = $null
+        [System.GC]::Collect()
 
         ########## Create / Update User Objects
 
@@ -1371,6 +1387,22 @@ function Invoke-NinjaOneTenantSync {
             }
         }
 
+        # Memory cleanup: release user-phase data no longer needed
+        $CASFull = $null
+        $MailboxDetailedFull = $null
+        $MailboxStatsFull = $null
+        $Permissions = $null
+        $OneDriveDetails = $null
+        $ConditionalAccessMembers = $null
+        $NinjaOneUserDocs = $null
+        $NinjaUserCache = $null
+        $NinjaUserUpdates = $null
+        $NinjaUserCreation = $null
+        $Groups = $null
+        $Roles = $null
+        $AllConditionalAccessPolicies = $null
+        [System.GC]::Collect()
+
         ### License Document Details
         if ($Configuration.LicenseDocumentsEnabled -eq $True) {
 
@@ -1541,7 +1573,17 @@ function Invoke-NinjaOneTenantSync {
 
         #######################################################################
 
-
+        # Memory cleanup: release license-phase data no longer needed
+        $NinjaOneLicenseDocs = $null
+        $NinjaLicenseUpdates = $null
+        $NinjaLicenseCreation = $null
+        $LicenseDetails = $null
+        $Subscriptions = $null
+        $Licenses = $null
+        $UsersMap = $null
+        $SecureScore = $null
+        $SecureScoreProfiles = $null
+        [System.GC]::Collect()
 
         ### M365 Links Section
         if ($MappedFields.TenantLinks) {
@@ -1859,7 +1901,7 @@ function Invoke-NinjaOneTenantSync {
                 $StandardTemplates = Get-CIPPAzDataTableEntity @Templates -Filter "PartitionKey eq 'StandardsTemplateV2'"
 
                 $ParsedStandards = foreach ($Standard in $AppliedStandards) {
-                    Write-Information "Processing Standard: $($Standard | ConvertTo-Json -Depth 10)"
+                    Write-Information "Processing Standard: $($Standard.Standard)"
                     if ($Standard.TemplateId.Count -gt 1) {
                         $TemplateListTemplates = foreach ($TemplateId in $Standard.TemplateId) {
                             if ($TemplateId) {
@@ -1887,7 +1929,7 @@ function Invoke-NinjaOneTenantSync {
                                     $TemplateName = $null
                                     $TemplateActions = @()
 
-                                    Write-Information "Processing Template Item: $($TemplateItem | ConvertTo-Json -Depth 10)"
+                                    Write-Information "Processing Template Item: $($TemplateItem.TemplateList.label ?? $TemplateItem.TemplateList.displayName ?? 'Unknown')"
                                     # Get template name
                                     if ($TemplateItem.TemplateList.label) {
                                         $TemplateName = $TemplateItem.TemplateList.label
@@ -2197,8 +2239,12 @@ function Invoke-NinjaOneTenantSync {
 
         $Token = Get-NinjaOneToken -configuration $Configuration
 
-        Write-Information "Ninja Body: $($NinjaOrgUpdate | ConvertTo-Json -Depth 20)"
-        $Result = Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/organization/$($MappedTenant.IntegrationId)/custom-fields" -Method PATCH -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json; charset=utf-8' -Body ($NinjaOrgUpdate | ConvertTo-Json -Depth 20)
+        # Serialize once for both logging and API call to avoid doubling memory
+        $NinjaOrgUpdateBody = $NinjaOrgUpdate | ConvertTo-Json -Depth 20
+        $NinjaOrgUpdate = $null
+        Write-Information "Ninja Body: $NinjaOrgUpdateBody"
+        $Result = Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/organization/$($MappedTenant.IntegrationId)/custom-fields" -Method PATCH -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json; charset=utf-8' -Body $NinjaOrgUpdateBody
+        $NinjaOrgUpdateBody = $null
 
 
         Write-Information 'Cleaning Users Cache'

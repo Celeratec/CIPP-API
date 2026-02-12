@@ -10,8 +10,8 @@
   "functionTimeout": "00:10:00",
   "extensions": {
     "durableTask": {
-      "maxConcurrentActivityFunctions": 2,
-      "maxConcurrentOrchestratorFunctions": 3,
+      "maxConcurrentActivityFunctions": 5,
+      "maxConcurrentOrchestratorFunctions": 5,
       "maxQueuePollingInterval": "00:00:02",
       "controlQueueBatchSize": 32,
       "tracing": {
