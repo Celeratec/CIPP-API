@@ -39,6 +39,7 @@ function Invoke-CIPPStandardUserPreferredLanguage {
             $_.userType -eq 'Member' -and
             $_.onPremisesSyncEnabled -ne $true
         }
+        $AllUsers = $null
     } catch {
         $ErrorMessage = Get-NormalizedError -Message $_.Exception.Message
         Write-LogMessage -API 'Standards' -Tenant $Tenant -Message "Could not get the UserPreferredLanguage state for $Tenant. Error: $ErrorMessage" -Sev Error

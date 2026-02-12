@@ -47,6 +47,7 @@ function Invoke-CIPPStandardPerUserMFA {
             $_.accountEnabled -eq $true -and
             $_.displayName -ne 'On-Premises Directory Synchronization Service Account'
         }
+        $AllUsers = $null
     } catch {
         $ErrorMessage = Get-NormalizedError -Message $_.Exception.Message
         Write-LogMessage -API 'Standards' -Tenant $Tenant -Message "Could not get the PerUserMFA state for $Tenant. Error: $ErrorMessage" -Sev Error
