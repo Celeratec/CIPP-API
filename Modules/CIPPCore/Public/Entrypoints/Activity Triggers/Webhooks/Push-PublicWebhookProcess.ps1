@@ -18,7 +18,11 @@ function Push-PublicWebhookProcess {
     } catch {
         Write-Host "Webhook Exception: $($_.Exception.Message)"
     } finally {
-        $Entity = $Webhook | Select-Object -Property RowKey, PartitionKey
-        Remove-AzDataTableEntity -Force @Table -Entity $Entity
+        if ($Webhook) {
+            $Entity = $Webhook | Select-Object -Property RowKey, PartitionKey
+            Remove-AzDataTableEntity -Force @Table -Entity $Entity
+        } else {
+            Write-Warning "Webhook row not found for RowKey '$($Item.RowKey)' - skipping cleanup"
+        }
     }
 }
