@@ -673,7 +673,34 @@ function Invoke-NinjaOneTenantSync {
                 UserDetails         = $DeviceUsersDetail
                 CompliancePolicies  = $DevicePolcies
                 Groups              = $DeviceGroups
-                NinjaDevice         = $MatchedNinjaDevice
+                # Store curated NinjaOne fields for device/user augmentation.
+                # Full device details available via: GET /api/v2/device/{id}
+                # Full detailed list via: GET /api/v2/devices-detailed?df=org={orgId}
+                NinjaDevice         = [PSCustomObject]@{
+                    id               = $MatchedNinjaDevice.id
+                    systemName       = $MatchedNinjaDevice.systemName
+                    dnsName          = $MatchedNinjaDevice.dnsName
+                    nodeClass        = $MatchedNinjaDevice.nodeClass        # WINDOWS_WORKSTATION, WINDOWS_SERVER, MAC, LINUX, etc.
+                    lastContact      = $MatchedNinjaDevice.lastContact
+                    offline          = $MatchedNinjaDevice.offline
+                    approvalStatus   = $MatchedNinjaDevice.approvalStatus
+                    # Hardware
+                    manufacturer     = $MatchedNinjaDevice.system.manufacturer
+                    model            = $MatchedNinjaDevice.system.model
+                    biosSerialNumber = $MatchedNinjaDevice.system.biosSerialNumber
+                    serialNumber     = $MatchedNinjaDevice.system.serialNumber
+                    domain           = $MatchedNinjaDevice.system.domain
+                    # OS
+                    osName           = $MatchedNinjaDevice.os.name
+                    osBuild          = $MatchedNinjaDevice.os.build
+                    osArchitecture   = $MatchedNinjaDevice.os.architecture
+                    lastBootTime     = $MatchedNinjaDevice.os.lastBootTime
+                    # CPU (first processor)
+                    cpuName          = ($MatchedNinjaDevice.processors | Select-Object -First 1).name
+                    cpuCores         = ($MatchedNinjaDevice.processors | Select-Object -First 1).cores
+                    # Memory (total GB)
+                    totalRamGB       = if ($MatchedNinjaDevice.memory) { [math]::Round(($MatchedNinjaDevice.memory | Measure-Object -Property capacity -Sum).Sum / 1GB, 1) } else { $null }
+                }
                 DeviceLink          = $ParsedDeviceName
             }
 
@@ -815,7 +842,7 @@ function Invoke-NinjaOneTenantSync {
         Write-Information 'Processed Devices'
 
         # Memory cleanup: release device-phase data no longer needed
-        # Matched NinjaDevice objects are still referenced via $ParsedDevices[].NinjaDevice
+        # Full NinjaDevice objects can now be freed - ParsedDevices only holds curated summaries
         $NinjaDevices = $null
         $NinjaDevicesBySerial = $null
         $NinjaDevicesByName = $null
