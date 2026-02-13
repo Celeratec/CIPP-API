@@ -15,19 +15,32 @@ function Invoke-ListCrossTenantPartners {
         # Get all partner cross-tenant configurations
         $Partners = New-GraphGetRequest -uri 'https://graph.microsoft.com/v1.0/policies/crossTenantAccessPolicy/partners' -tenantid $TenantFilter -AsApp $true
 
-        $Results = foreach ($Partner in $Partners) {
-            # Attempt to resolve the partner tenant name
-            $PartnerName = 'Unknown'
+        # Resolve partner tenant names via bulk request using the CIPP service tenant
+        $TenantLookup = @{}
+        if ($Partners.Count -gt 0) {
             try {
-                $TenantInfo = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/tenantRelationships/findTenantInformationByTenantId(tenantId='$($Partner.tenantId)')" -tenantid $TenantFilter -AsApp $true
-                $PartnerName = $TenantInfo.displayName
+                $ReverseLookupRequests = $Partners | ForEach-Object {
+                    @{
+                        id     = $_.tenantId
+                        url    = "tenantRelationships/findTenantInformationByTenantId(tenantId='$($_.tenantId)')"
+                        method = 'GET'
+                    }
+                }
+                $LookupResults = New-GraphBulkRequest -Requests @($ReverseLookupRequests) -tenantid $env:TenantID -NoAuthCheck $true -asapp $true
+                foreach ($Result in $LookupResults) {
+                    if ($Result.body.displayName) {
+                        $TenantLookup[$Result.id] = $Result.body.displayName
+                    }
+                }
             } catch {
-                # Tenant info lookup may fail for some tenants
+                Write-LogMessage -API $APIName -tenant $TenantFilter -message "Could not resolve partner tenant names: $($_.Exception.Message)" -Sev 'Debug'
             }
+        }
 
+        $Results = foreach ($Partner in $Partners) {
             [PSCustomObject]@{
                 tenantId                     = $Partner.tenantId
-                partnerName                  = $PartnerName
+                partnerName                  = $TenantLookup[$Partner.tenantId] ?? 'Unknown'
                 isServiceProvider            = $Partner.isServiceProvider
                 isInMultiTenantOrganization  = $Partner.isInMultiTenantOrganization
                 b2bCollaborationInbound      = $Partner.b2bCollaborationInbound
