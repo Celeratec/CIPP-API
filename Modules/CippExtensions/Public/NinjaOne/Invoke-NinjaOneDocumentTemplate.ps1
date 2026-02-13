@@ -18,7 +18,7 @@ function Invoke-NinjaOneDocumentTemplate {
     } else {
         $DocumentTemplate = (Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/document-templates/$($ID)" -Method GET -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json').content | ConvertFrom-Json -Depth 20
     }
-    
+
     $MatchedCount = ($DocumentTemplate | Measure-Object).count
     if ($MatchedCount -eq 1) {
         # Matched a single document template
