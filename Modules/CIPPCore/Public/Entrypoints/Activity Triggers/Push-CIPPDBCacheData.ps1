@@ -23,8 +23,9 @@ function Push-CIPPDBCacheData {
         $ConditionalAccessCapable = Test-CIPPStandardLicense -StandardName 'ConditionalAccessLicenseCheck' -TenantFilter $TenantFilter -RequiredCapabilities @('AAD_PREMIUM', 'AAD_PREMIUM_P2') -SkipLog
         $AzureADPremiumP2Capable = Test-CIPPStandardLicense -StandardName 'AzureADPremiumP2LicenseCheck' -TenantFilter $TenantFilter -RequiredCapabilities @('AAD_PREMIUM_P2') -SkipLog
         $ExchangeCapable = Test-CIPPStandardLicense -StandardName 'ExchangeLicenseCheck' -TenantFilter $TenantFilter -RequiredCapabilities @('EXCHANGE_S_STANDARD', 'EXCHANGE_S_ENTERPRISE', 'EXCHANGE_S_STANDARD_GOV', 'EXCHANGE_S_ENTERPRISE_GOV', 'EXCHANGE_LITE') -SkipLog
+        $DefenderForOffice365Capable = Test-CIPPStandardLicense -StandardName 'DefenderForOffice365LicenseCheck' -TenantFilter $TenantFilter -RequiredCapabilities @('ATP_ENTERPRISE', 'THREAT_INTELLIGENCE') -SkipLog
 
-        Write-Information "CIPPDBCache: $TenantFilter - License capabilities - Intune: $IntuneCapable, CA: $ConditionalAccessCapable, P2: $AzureADPremiumP2Capable, Exchange: $ExchangeCapable"
+        Write-Information "CIPPDBCache: $TenantFilter - License capabilities - Intune: $IntuneCapable, CA: $ConditionalAccessCapable, P2: $AzureADPremiumP2Capable, Exchange: $ExchangeCapable, MDO: $DefenderForOffice365Capable"
 
         # Build dynamic batch of cache collection tasks based on license capabilities
         $Batch = [System.Collections.Generic.List[object]]::new()
@@ -48,11 +49,7 @@ function Push-CIPPDBCacheData {
             'DefaultAppManagementPolicy'
             'Settings'
             'SecureScore'
-            'PIMSettings'
             'Domains'
-            'RoleEligibilitySchedules'
-            'RoleManagementPolicies'
-            'RoleAssignmentScheduleInstances'
             'B2BManagementPolicy'
             'AuthenticationFlowsPolicy'
             'DeviceRegistrationPolicy'
@@ -79,8 +76,6 @@ function Push-CIPPDBCacheData {
             $ExchangeCacheFunctions = @(
                 'ExoAntiPhishPolicies'
                 'ExoMalwareFilterPolicies'
-                'ExoSafeLinksPolicies'
-                'ExoSafeAttachmentPolicies'
                 'ExoTransportRules'
                 'ExoDkimSigningConfig'
                 'ExoOrganizationConfig'
@@ -88,15 +83,11 @@ function Push-CIPPDBCacheData {
                 'ExoHostedContentFilterPolicy'
                 'ExoHostedOutboundSpamFilterPolicy'
                 'ExoAntiPhishPolicy'
-                'ExoSafeLinksPolicy'
-                'ExoSafeAttachmentPolicy'
                 'ExoMalwareFilterPolicy'
-                'ExoAtpPolicyForO365'
                 'ExoQuarantinePolicy'
                 'ExoRemoteDomain'
                 'ExoSharingPolicy'
                 'ExoAdminAuditLogConfig'
-                'ExoPresetSecurityPolicy'
                 'ExoTenantAllowBlockList'
                 'Mailboxes'
                 'CASMailboxes'
@@ -112,6 +103,30 @@ function Push-CIPPDBCacheData {
                         QueueId      = $QueueId
                     })
             }
+
+            #region Defender for Office 365 Licensed - ATP/MDO features (requires Exchange + MDO)
+            if ($DefenderForOffice365Capable) {
+                $MdoCacheFunctions = @(
+                    'ExoSafeLinksPolicies'
+                    'ExoSafeAttachmentPolicies'
+                    'ExoSafeLinksPolicy'
+                    'ExoSafeAttachmentPolicy'
+                    'ExoAtpPolicyForO365'
+                    'ExoPresetSecurityPolicy'
+                )
+
+                foreach ($CacheFunction in $MdoCacheFunctions) {
+                    $Batch.Add(@{
+                            FunctionName = 'ExecCIPPDBCache'
+                            Name         = $CacheFunction
+                            TenantFilter = $TenantFilter
+                            QueueId      = $QueueId
+                        })
+                }
+            } else {
+                Write-Host 'Skipping Defender for Office 365 data collection - tenant does not have required license'
+            }
+            #endregion Defender for Office 365 Licensed
         } else {
             Write-Host 'Skipping Exchange Online data collection - tenant does not have required license'
         }
@@ -130,13 +145,17 @@ function Push-CIPPDBCacheData {
         }
         #endregion Conditional Access Licensed
 
-        #region Azure AD Premium P2 - Identity Protection features
+        #region Azure AD Premium P2 - Identity Protection and PIM features
         if ($AzureADPremiumP2Capable) {
             $P2CacheFunctions = @(
                 'RiskyUsers'
                 'RiskyServicePrincipals'
                 'ServicePrincipalRiskDetections'
                 'RiskDetections'
+                'PIMSettings'
+                'RoleEligibilitySchedules'
+                'RoleManagementPolicies'
+                'RoleAssignmentScheduleInstances'
             )
             foreach ($CacheFunction in $P2CacheFunctions) {
                 $Batch.Add(@{
@@ -147,7 +166,7 @@ function Push-CIPPDBCacheData {
                     })
             }
         } else {
-            Write-Host 'Skipping Azure AD Premium P2 Identity Protection data collection - tenant does not have required license'
+            Write-Host 'Skipping Azure AD Premium P2 Identity Protection and PIM data collection - tenant does not have required license'
         }
         #endregion Azure AD Premium P2
 

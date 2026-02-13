@@ -22,7 +22,6 @@ function Set-CIPPDBCacheRoleAssignmentScheduleInstances {
         $null = Add-CIPPAzDataTableEntity @CacheTableDetails -Entity $Body -Force
         Write-LogMessage -API 'DBCache' -tenant $TenantFilter -message 'Role assignment schedule instances cache updated' -sev Debug
     } catch {
-        Write-LogMessage -API 'DBCache' -tenant $TenantFilter -message "Error caching role assignment schedule instances: $($_.Exception.Message)" -sev Error
-        throw
+        Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message "Error caching role assignment schedule instances: $($_.Exception.Message)" -sev Error
     }
 }
