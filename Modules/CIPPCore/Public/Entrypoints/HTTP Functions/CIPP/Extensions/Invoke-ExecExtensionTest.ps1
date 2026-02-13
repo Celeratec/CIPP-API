@@ -65,14 +65,6 @@ Function Invoke-ExecExtensionTest {
                     $Results = [pscustomobject]@{'Results' = 'Failed to connect to Hudu, check your API credentials and try again.' }
                 }
             }
-            'Sherweb' {
-                $token = Get-SherwebAuthentication
-                if ($token) {
-                    $Results = [pscustomobject]@{'Results' = 'Successfully Connected to Sherweb' }
-                } else {
-                    $Results = [pscustomobject]@{'Results' = 'Failed to connect to Sherweb, check your API credentials and try again.' }
-                }
-            }
             'HIBP' {
                 $ConnectionTest = Get-HIBPConnectionTest
                 $Results = [pscustomobject]@{'Results' = 'Successfully Connected to HIBP' }

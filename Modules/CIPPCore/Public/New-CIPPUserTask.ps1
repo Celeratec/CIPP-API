@@ -20,32 +20,8 @@ function New-CIPPUserTask {
 
     try {
         if ($UserObj.licenses.value) {
-            if ($UserObj.sherwebLicense.value) {
-                $null = Set-SherwebSubscription -Headers $Headers -TenantFilter $UserObj.tenantFilter -SKU $UserObj.sherwebLicense.value -Add 1
-                $null = $Results.Add('Added Sherweb License, scheduling assignment')
-                $taskObject = [PSCustomObject]@{
-                    TenantFilter  = $UserObj.tenantFilter
-                    Name          = "Assign License: $UserPrincipalName"
-                    Command       = @{
-                        value = 'Set-CIPPUserLicense'
-                    }
-                    Parameters    = [pscustomobject]@{
-                        UserId      = $CreationResults.Username
-                        APIName     = 'Sherweb License Assignment'
-                        AddLicenses = $UserObj.licenses.value
-                    }
-                    ScheduledTime = 0 #right now, which is in the next 15 minutes and should cover most cases.
-                    PostExecution = @{
-                        Webhook = [bool]$Request.Body.PostExecution.webhook
-                        Email   = [bool]$Request.Body.PostExecution.email
-                        PSA     = [bool]$Request.Body.PostExecution.psa
-                    }
-                }
-                Add-CIPPScheduledTask -Task $taskObject -hidden $false -Headers $Headers
-            } else {
-                $LicenseResults = Set-CIPPUserLicense -UserId $CreationResults.Username -TenantFilter $UserObj.tenantFilter -AddLicenses $UserObj.licenses.value -Headers $Headers
+            $LicenseResults = Set-CIPPUserLicense -UserId $CreationResults.Username -TenantFilter $UserObj.tenantFilter -AddLicenses $UserObj.licenses.value -Headers $Headers
                 $Results.Add($LicenseResults)
-            }
         }
     } catch {
         Write-LogMessage -headers $Headers -API $APIName -tenant $($UserObj.tenantFilter) -message "Failed to assign the license. Error:$($_.Exception.Message)" -Sev 'Error'

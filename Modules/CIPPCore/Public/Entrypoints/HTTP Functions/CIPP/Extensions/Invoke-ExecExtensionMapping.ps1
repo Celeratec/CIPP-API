@@ -31,9 +31,6 @@ Function Invoke-ExecExtensionMapping {
       'HuduFields' {
         $Result = Get-HuduFieldMapping -CIPPMapping $Table
       }
-      'Sherweb' {
-        $Result = Get-SherwebMapping -CIPPMapping $Table
-      }
       'HaloPSAFields' {
         $TicketTypes = Get-HaloTicketType
         $Outcomes = Get-HaloTicketOutcome
@@ -54,9 +51,6 @@ Function Invoke-ExecExtensionMapping {
   try {
     if ($Request.Query.AddMapping) {
       switch ($Request.Query.AddMapping) {
-        'Sherweb' {
-          $Result = Set-SherwebMapping -CIPPMapping $Table -APIName $APIName -Request $Request
-        }
         'HaloPSA' {
           $Result = Set-HaloMapping -CIPPMapping $Table -APIName $APIName -Request $Request
         }

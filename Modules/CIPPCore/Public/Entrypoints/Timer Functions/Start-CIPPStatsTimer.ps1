@@ -34,7 +34,6 @@ function Start-CIPPStatsTimer {
             uid                 = $env:TenantID
             CIPPAPI             = $RawExt.CIPPAPI.Enabled
             Hudu                = $RawExt.Hudu.Enabled
-            Sherweb             = $RawExt.Sherweb.Enabled
             Gradient            = $RawExt.Gradient.Enabled
             NinjaOne            = $RawExt.NinjaOne.Enabled
             haloPSA             = $RawExt.haloPSA.Enabled
