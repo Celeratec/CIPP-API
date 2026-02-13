@@ -12,7 +12,7 @@ function Invoke-ListCrossTenantHealth {
     $TenantFilter = $Request.Query.tenantFilter
 
     try {
-        # Fetch all cross-tenant data in bulk for health analysis
+        # Fetch cross-tenant data in bulk for health analysis
         $Requests = @(
             @{
                 id     = 'defaultPolicy'
@@ -24,18 +24,15 @@ function Invoke-ListCrossTenantHealth {
                 url    = 'policies/crossTenantAccessPolicy/partners'
                 method = 'GET'
             }
-            @{
-                id     = 'authPolicy'
-                url    = 'policies/authorizationPolicy'
-                method = 'GET'
-            }
         )
 
         $BulkResults = New-GraphBulkRequest -Requests $Requests -tenantid $TenantFilter -asapp $true
 
         $DefaultPolicy = ($BulkResults | Where-Object { $_.id -eq 'defaultPolicy' }).body
         $Partners = ($BulkResults | Where-Object { $_.id -eq 'partners' }).body.value
-        $AuthPolicy = ($BulkResults | Where-Object { $_.id -eq 'authPolicy' }).body
+
+        # Fetch authorization policy separately (must use /authorizationPolicy/authorizationPolicy to get the object, not the collection)
+        $AuthPolicy = New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/policies/authorizationPolicy/authorizationPolicy' -tenantid $TenantFilter -AsApp $true
 
         # Analyze configuration and detect issues
         $Findings = [System.Collections.Generic.List[PSCustomObject]]::new()

@@ -12,17 +12,8 @@ function Invoke-ListExternalCollaboration {
     $TenantFilter = $Request.Query.tenantFilter
 
     try {
-        # Use bulk request to fetch authorization policy and external identities settings in parallel
-        $Requests = @(
-            @{
-                id     = 'authorizationPolicy'
-                url    = 'policies/authorizationPolicy'
-                method = 'GET'
-            }
-        )
-
-        $BulkResults = New-GraphBulkRequest -Requests $Requests -tenantid $TenantFilter -asapp $true
-        $AuthPolicy = ($BulkResults | Where-Object { $_.id -eq 'authorizationPolicy' }).body
+        # Fetch authorization policy directly (note: must use /authorizationPolicy/authorizationPolicy to get the object, not the collection)
+        $AuthPolicy = New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/policies/authorizationPolicy/authorizationPolicy' -tenantid $TenantFilter -AsApp $true
 
         # Map guest invite setting to human-readable labels
         $InviteSettingMap = @{
