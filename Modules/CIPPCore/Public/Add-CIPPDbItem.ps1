@@ -115,21 +115,19 @@ function Add-CIPPDbItem {
         }
 
         if (-not $Count.IsPresent) {
-            # Delete existing entries for this type
+            # Track existing RowKeys so we can remove stale entries after upsert
+            # This avoids the expensive delete-all-then-rewrite pattern
             $Filter = "PartitionKey eq '{0}' and RowKey ge '{1}-' and RowKey lt '{1}0'" -f $TenantFilter, $Type
+            $ExistingRowKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
             $ExistingEntities = Get-CIPPAzDataTableEntity @Table -Filter $Filter -Property PartitionKey, RowKey, ETag
             if ($ExistingEntities) {
-                try {
-                    Remove-AzDataTableEntity @Table -Entity $ExistingEntities -Force -ErrorAction Stop | Out-Null
-                } catch {
-                    # Ignore if entities were already deleted (404/ResourceNotFound) - can happen with concurrent operations
-                    if ($_.Exception.Message -notmatch 'does not exist|ResourceNotFound') {
-                        throw
-                    }
+                foreach ($entity in @($ExistingEntities)) {
+                    [void]$ExistingRowKeys.Add($entity.RowKey)
                 }
             }
+            $WrittenRowKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
             $AllocatedMemoryMB = [math]::Round([System.GC]::GetTotalMemory($false) / 1MB, 2)
-            #Write-Debug "Starting $Type import for $TenantFilter | Allocated Memory: ${AllocatedMemoryMB}MB | Batch Size: 500"
+            #Write-Debug "Starting $Type import for $TenantFilter | Allocated Memory: ${AllocatedMemoryMB}MB | Batch Size: 500 | Existing: $($ExistingRowKeys.Count)"
         }
     }
 
@@ -162,14 +160,16 @@ function Add-CIPPDbItem {
 
             # Convert to entity
             $ItemId = $Item.ExternalDirectoryObjectId ?? $Item.id ?? $Item.Identity ?? $Item.skuId
+            $RowKey = Format-RowKey "$Type-$ItemId"
             $Entity = @{
                 PartitionKey = $TenantFilter
-                RowKey       = Format-RowKey "$Type-$ItemId"
+                RowKey       = $RowKey
                 Data         = [string]($Item | ConvertTo-Json -Depth 10 -Compress)
                 Type         = $Type
             }
 
             $BatchAccumulator.Add($Entity)
+            [void]$WrittenRowKeys.Add($RowKey)
 
             # Flush when batch reaches 500 items
             if ($BatchAccumulator.Count -ge 500) {
@@ -195,6 +195,29 @@ function Add-CIPPDbItem {
                 Add-CIPPAzDataTableEntity @Table -Entity $Entity -Force | Out-Null
             }
 
+            # Remove stale entries that no longer exist in the source data
+            # Only delete the diff instead of delete-all-then-rewrite to reduce storage write operations
+            if (-not $Count.IsPresent -and $ExistingRowKeys.Count -gt 0 -and $WrittenRowKeys.Count -gt 0) {
+                $StaleRowKeys = $ExistingRowKeys | Where-Object { -not $WrittenRowKeys.Contains($_) }
+                if ($StaleRowKeys) {
+                    $StaleEntities = @($StaleRowKeys | ForEach-Object {
+                        @{
+                            PartitionKey = $TenantFilter
+                            RowKey       = $_
+                        }
+                    })
+                    if ($StaleEntities.Count -gt 0) {
+                        try {
+                            Remove-AzDataTableEntity @Table -Entity $StaleEntities -Force -ErrorAction Stop | Out-Null
+                        } catch {
+                            if ($_.Exception.Message -notmatch 'does not exist|ResourceNotFound') {
+                                Write-Warning "Failed to remove $($StaleEntities.Count) stale $Type entries for $TenantFilter : $($_.Exception.Message)"
+                            }
+                        }
+                    }
+                }
+            }
+
             Write-LogMessage -API 'CIPPDbItem' -tenant $TenantFilter `
                 -message "Added $($State.TotalProcessed) items of type $Type$(if ($Count.IsPresent) { ' (count mode)' })" -sev Debug
 
@@ -217,6 +240,8 @@ function Add-CIPPDbItem {
 
             # Final cleanup
             $BatchAccumulator = $null
+            $ExistingRowKeys = $null
+            $WrittenRowKeys = $null
             [System.GC]::Collect()
         }
     }

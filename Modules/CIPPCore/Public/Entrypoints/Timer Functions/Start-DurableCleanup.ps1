@@ -107,5 +107,50 @@ function Start-DurableCleanup {
         Write-LogMessage -api 'Durable Cleanup' -message "$CleanupCount orchestrators were terminated. $QueueCount queues were cleared." -sev 'Info' -LogData $FunctionsWithLongRunningOrchestrators
     }
 
-    Write-Information "Durable cleanup complete. $CleanupCount orchestrators were terminated. $QueueCount queues were cleared."
+    # Purge completed/failed/terminated durable function history older than retention period
+    # This reduces storage write/read overhead from accumulating history rows
+    $PurgeCount = 0
+    $PurgeRetentionHours = 24
+    $PurgeCutoff = (Get-Date).ToUniversalTime().AddHours(-$PurgeRetentionHours)
+
+    foreach ($TableName in $InstancesTables) {
+        $Table = Get-CippTable -TableName $TableName
+        $HistoryTableName = $TableName -replace 'Instances', 'History'
+
+        # Purge completed/failed/terminated instances older than retention period
+        $CompletedFilter = "(RuntimeStatus eq 'Completed' or RuntimeStatus eq 'Failed' or RuntimeStatus eq 'Terminated') and Timestamp lt datetime'{0}'" -f $PurgeCutoff.ToString('yyyy-MM-ddTHH:mm:ssZ')
+        try {
+            $StaleInstances = Get-CIPPAzDataTableEntity @Table -Filter $CompletedFilter -Property PartitionKey, RowKey, ETag -First 500
+            if ($StaleInstances -and @($StaleInstances).Count -gt 0) {
+                Remove-AzDataTableEntity @Table -Entity $StaleInstances -Force -ErrorAction Stop | Out-Null
+                $PurgeCount += @($StaleInstances).Count
+            }
+        } catch {
+            if ($_.Exception.Message -notmatch 'does not exist|ResourceNotFound') {
+                Write-Warning "Failed to purge instances from $TableName : $($_.Exception.Message)"
+            }
+        }
+
+        # Purge corresponding history table entries
+        try {
+            $HistoryTable = Get-CippTable -TableName $HistoryTableName
+            $HistoryFilter = "Timestamp lt datetime'{0}'" -f $PurgeCutoff.ToString('yyyy-MM-ddTHH:mm:ssZ')
+            $StaleHistory = Get-CIPPAzDataTableEntity @HistoryTable -Filter $HistoryFilter -Property PartitionKey, RowKey, ETag -First 1000
+            if ($StaleHistory -and @($StaleHistory).Count -gt 0) {
+                Remove-AzDataTableEntity @HistoryTable -Entity $StaleHistory -Force -ErrorAction Stop | Out-Null
+                $PurgeCount += @($StaleHistory).Count
+            }
+        } catch {
+            # History table may not exist for all function apps, ignore errors
+            if ($_.Exception.Message -notmatch 'does not exist|ResourceNotFound|TableNotFound') {
+                Write-Warning "Failed to purge history from $HistoryTableName : $($_.Exception.Message)"
+            }
+        }
+    }
+
+    if ($PurgeCount -gt 0) {
+        Write-Information "Purged $PurgeCount stale durable function history entries (older than $PurgeRetentionHours hours)"
+    }
+
+    Write-Information "Durable cleanup complete. $CleanupCount orchestrators were terminated. $QueueCount queues were cleared. $PurgeCount history entries purged."
 }

@@ -13,10 +13,10 @@
       "maxConcurrentRequests": 10
     },
     "durableTask": {
-      "maxConcurrentActivityFunctions": 3,
-      "maxConcurrentOrchestratorFunctions": 3,
-      "maxQueuePollingInterval": "00:00:02",
-      "controlQueueBatchSize": 32,
+      "maxConcurrentActivityFunctions": 5,
+      "maxConcurrentOrchestratorFunctions": 5,
+      "maxQueuePollingInterval": "00:00:10",
+      "controlQueueBatchSize": 16,
       "tracing": {
         "distributedTracingEnabled": false,
         "version": "None"

@@ -13,8 +13,7 @@ function Start-CIPPDBCacheOrchestrator {
     param()
 
     try {
-        Write-LogMessage -API 'CIPPDBCache' -message 'Starting database cache orchestration' -sev Info
-        Write-Host 'Starting database cache orchestration'
+        Write-Information 'CIPPDBCache: Starting database cache orchestration'
         $TenantList = Get-Tenants | Where-Object { $_.defaultDomainName -ne $null }
 
         if ($TenantList.Count -eq 0) {
@@ -44,7 +43,7 @@ function Start-CIPPDBCacheOrchestrator {
 
         Start-NewOrchestration -FunctionName 'CIPPOrchestrator' -InputObject ($InputObject | ConvertTo-Json -Compress -Depth 5)
 
-        Write-LogMessage -API 'CIPPDBCache' -message "Queued database cache collection for $($TenantList.Count) tenants" -sev Info
+        Write-Information "CIPPDBCache: Queued database cache collection for $($TenantList.Count) tenants"
 
     } catch {
         Write-LogMessage -API 'CIPPDBCache' -message "Failed to start orchestration: $($_.Exception.Message)" -sev Error

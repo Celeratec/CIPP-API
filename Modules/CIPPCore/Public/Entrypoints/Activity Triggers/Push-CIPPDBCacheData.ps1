@@ -16,7 +16,7 @@ function Push-CIPPDBCacheData {
     $QueueId = $Item.QueueId
 
     try {
-        Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message 'Starting database cache orchestration for tenant' -sev Info
+        Write-Information "CIPPDBCache: Starting database cache orchestration for tenant $TenantFilter"
 
         # Check tenant capabilities for license-specific features
         $IntuneCapable = Test-CIPPStandardLicense -StandardName 'IntuneLicenseCheck' -TenantFilter $TenantFilter -RequiredCapabilities @('INTUNE_A', 'MDM_Services', 'EMS', 'SCCM', 'MICROSOFTINTUNEPLAN1') -SkipLog
@@ -24,7 +24,7 @@ function Push-CIPPDBCacheData {
         $AzureADPremiumP2Capable = Test-CIPPStandardLicense -StandardName 'AzureADPremiumP2LicenseCheck' -TenantFilter $TenantFilter -RequiredCapabilities @('AAD_PREMIUM_P2') -SkipLog
         $ExchangeCapable = Test-CIPPStandardLicense -StandardName 'ExchangeLicenseCheck' -TenantFilter $TenantFilter -RequiredCapabilities @('EXCHANGE_S_STANDARD', 'EXCHANGE_S_ENTERPRISE', 'EXCHANGE_S_STANDARD_GOV', 'EXCHANGE_S_ENTERPRISE_GOV', 'EXCHANGE_LITE') -SkipLog
 
-        Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message "License capabilities - Intune: $IntuneCapable, Conditional Access: $ConditionalAccessCapable, Azure AD Premium P2: $AzureADPremiumP2Capable, Exchange: $ExchangeCapable" -sev Info
+        Write-Information "CIPPDBCache: $TenantFilter - License capabilities - Intune: $IntuneCapable, CA: $ConditionalAccessCapable, P2: $AzureADPremiumP2Capable, Exchange: $ExchangeCapable"
 
         # Build dynamic batch of cache collection tasks based on license capabilities
         $Batch = [System.Collections.Generic.List[object]]::new()
@@ -191,8 +191,7 @@ function Push-CIPPDBCacheData {
         }
 
         $InstanceId = Start-NewOrchestration -FunctionName 'CIPPOrchestrator' -InputObject ($InputObject | ConvertTo-Json -Depth 5 -Compress)
-        Write-Information "Started cache collection orchestration for $TenantFilter with ID = '$InstanceId'"
-        Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message "Started cache collection orchestration with $($Batch.Count) activities. Instance ID: $InstanceId" -sev Info
+        Write-Information "CIPPDBCache: Started cache collection for $TenantFilter ($($Batch.Count) activities) ID='$InstanceId'"
 
         return @{
             InstanceId = $InstanceId

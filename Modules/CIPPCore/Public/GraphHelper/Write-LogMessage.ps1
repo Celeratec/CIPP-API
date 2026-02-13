@@ -13,12 +13,20 @@ function Write-LogMessage {
         $sev,
         $LogData = ''
     )
-    
+
     # Early exit for Debug logs when not in debug mode - BEFORE any expensive operations
     if ($sev -eq 'Debug' -and $env:DebugMode -ne $true) {
         return
     }
-    
+
+    # Early exit for Info severity in background/activity context to reduce storage writes
+    # These informational messages from orchestrators and activities generate high write volume
+    # but are not critical for troubleshooting. Errors and Warnings are always written.
+    if ($sev -eq 'Info' -and $env:CIPP_LOW_LOG_MODE -eq 'true') {
+        Write-Information "[LOG-SKIP] $API | $tenant | $message"
+        return
+    }
+
     if ($Headers.'x-ms-client-principal-idp' -eq 'azureStaticWebApps' -or !$Headers.'x-ms-client-principal-idp') {
         $user = $headers.'x-ms-client-principal'
         $username = ([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($user)) | ConvertFrom-Json).userDetails
