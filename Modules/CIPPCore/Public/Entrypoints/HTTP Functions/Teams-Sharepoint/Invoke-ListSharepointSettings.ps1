@@ -7,16 +7,29 @@ Function Invoke-ListSharepointSettings {
     #>
     [CmdletBinding()]
     param($Request, $TriggerMetadata)
-    #  XXX - Seems to be an unused endpoint? -Bobby
 
+    $APIName = $Request.Params.CIPPEndpoint
+    $TenantFilter = $Request.Query.tenantFilter
 
-    # Interact with query parameters or the body of the request.
-    $Tenant = $Request.Query.tenantFilter
-    $Request = New-GraphGetRequest -tenantid $Tenant -Uri 'https://graph.microsoft.com/beta/admin/sharepoint/settings'
+    try {
+        if ([string]::IsNullOrWhiteSpace($TenantFilter)) {
+            throw 'Tenant filter is required.'
+        }
+
+        $GraphResult = New-GraphGetRequest -tenantid $TenantFilter -Uri 'https://graph.microsoft.com/beta/admin/sharepoint/settings' -AsApp $true
+
+        $Body = @($GraphResult)
+        $StatusCode = [HttpStatusCode]::OK
+    } catch {
+        $ErrorMessage = Get-NormalizedError -Message $_.Exception.Message
+        Write-LogMessage -API $APIName -tenant $TenantFilter -message "Failed to get SharePoint settings: $ErrorMessage" -Sev 'Error'
+        $Body = @{ Results = "Failed to get SharePoint settings: $ErrorMessage" }
+        $StatusCode = [HttpStatusCode]::BadRequest
+    }
 
     return ([HttpResponseContext]@{
-            StatusCode = [HttpStatusCode]::OK
-            Body       = @($Request)
+            StatusCode = $StatusCode
+            Body       = $Body
         })
 
 }
