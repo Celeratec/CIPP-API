@@ -23,35 +23,43 @@ function Invoke-EditTeamsSettings {
 
         switch ($Section) {
             'federation' {
-                # Update Federation Configuration
+                # Establish Teams session first (required before calling New-CsEdgeAllowAllKnownDomains
+                # which uses the Teams ConfigAPI and requires an active connection)
+                $null = New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Get-CsTenantFederationConfiguration' -CmdParams @{ Identity = 'Global' }
+
+                # Now build federation configuration parameters
                 $FederationMode = $Request.Body.federationMode
-                $cmdParams = @{ Identity = 'Global' }
+                $cmdParams = @{
+                    Identity            = 'Global'
+                    AllowFederatedUsers = $true
+                    BlockedDomains      = @()
+                }
+                $AllowedDomainsAsAList = @()
 
                 switch ($FederationMode) {
                     'AllowAllExternal' {
-                        $cmdParams['AllowFederatedUsers'] = $true
                         $cmdParams['AllowedDomains'] = New-CsEdgeAllowAllKnownDomains
-                        $cmdParams['BlockedDomains'] = @()
                     }
                     'BlockAllExternal' {
                         $cmdParams['AllowFederatedUsers'] = $false
+                        $cmdParams['AllowedDomains'] = New-CsEdgeAllowAllKnownDomains
                     }
                     'AllowSpecificExternal' {
-                        $cmdParams['AllowFederatedUsers'] = $true
-                        $cmdParams['BlockedDomains'] = @()
-                        $AllowedDomains = @($Request.Body.federationAllowedDomains)
-                        if ($AllowedDomains.Count -gt 0) {
-                            $cmdParams['AllowedDomainsAsAList'] = $AllowedDomains
-                        }
+                        $AllowedDomainsAsAList = @($Request.Body.federationAllowedDomains)
                     }
                     'BlockSpecificExternal' {
-                        $cmdParams['AllowFederatedUsers'] = $true
                         $cmdParams['AllowedDomains'] = New-CsEdgeAllowAllKnownDomains
                         $BlockedDomains = @($Request.Body.federationBlockedDomains)
                         if ($BlockedDomains.Count -gt 0) {
                             $cmdParams['BlockedDomains'] = $BlockedDomains
                         }
                     }
+                }
+
+                # Use AllowedDomainsAsAList for specific domain lists, AllowedDomains for the allow-all object
+                if ($AllowedDomainsAsAList.Count -gt 0) {
+                    $cmdParams.Remove('AllowedDomains')
+                    $cmdParams['AllowedDomainsAsAList'] = $AllowedDomainsAsAList
                 }
 
                 if ($null -ne $Request.Body.allowTeamsConsumer) {
