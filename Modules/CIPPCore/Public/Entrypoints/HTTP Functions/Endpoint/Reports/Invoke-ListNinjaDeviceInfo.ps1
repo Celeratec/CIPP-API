@@ -23,13 +23,15 @@ Function Invoke-ListNinjaDeviceInfo {
         if (($RawDevices | Measure-Object).Count -eq 0) {
             # No NinjaOne data cached for this tenant
             $Results = @()
+            $BySerial = @{}
         } else {
+            $BySerial = @{}
             $Results = foreach ($Entity in $RawDevices) {
                 try {
                     $Parsed = $Entity.RawDevice | ConvertFrom-Json -Depth 20 -ErrorAction SilentlyContinue
                     if ($Parsed -and $Parsed.NinjaDevice) {
                         $nd = $Parsed.NinjaDevice
-                        [PSCustomObject]@{
+                        $NinjaInfo = [PSCustomObject]@{
                             azureADDeviceId   = $Entity.RowKey
                             ninjaDeviceId     = $nd.id
                             ninjaSystemName   = $nd.systemName
@@ -47,6 +49,16 @@ Function Invoke-ListNinjaDeviceInfo {
                             ninjaManufacturer = $nd.manufacturer
                             ninjaModel        = $nd.model
                         }
+                        # Index by serial for fallback matching (NinjaOne stores serial as primary identifier)
+                        $Serials = @()
+                        if ($nd.biosSerialNumber) { $Serials += $nd.biosSerialNumber.Trim() }
+                        if ($nd.serialNumber -and $nd.serialNumber -ne $nd.biosSerialNumber) { $Serials += $nd.serialNumber.Trim() }
+                        foreach ($sn in $Serials) {
+                            if ($sn -and -not $BySerial.ContainsKey($sn)) {
+                                $BySerial[$sn] = $NinjaInfo
+                            }
+                        }
+                        $NinjaInfo
                     }
                 } catch {
                     # Skip unparseable entries
@@ -60,10 +72,11 @@ Function Invoke-ListNinjaDeviceInfo {
         $ErrorMessage = Get-NormalizedError -Message $_.Exception.Message
         $StatusCode = [HttpStatusCode]::Forbidden
         $Results = $ErrorMessage
+        $BySerial = @{}
     }
 
     return ([HttpResponseContext]@{
             StatusCode = $StatusCode
-            Body       = @{ Results = @($Results) }
+            Body       = @{ Results = @($Results); BySerial = $BySerial }
         })
 }

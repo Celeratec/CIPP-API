@@ -458,9 +458,17 @@ function Invoke-NinjaOneTenantSync {
         $NinjaDevicesBySerial = @{}
         $NinjaDevicesByName = @{}
         foreach ($nd in $NinjaDevices) {
-            if ($nd.system.biosSerialNumber) { $NinjaDevicesBySerial[$nd.system.biosSerialNumber] = $nd }
-            if ($nd.system.serialNumber -and -not $NinjaDevicesBySerial.ContainsKey($nd.system.serialNumber)) {
-                $NinjaDevicesBySerial[$nd.system.serialNumber] = $nd
+            if ($nd.system.biosSerialNumber) {
+                $sn = $nd.system.biosSerialNumber.Trim()
+                $NinjaDevicesBySerial[$sn] = $nd
+                if ($sn -ne $sn.ToLower()) { $NinjaDevicesBySerial[$sn.ToLower()] = $nd }
+            }
+            if ($nd.system.serialNumber) {
+                $sn2 = $nd.system.serialNumber.Trim()
+                if (-not $NinjaDevicesBySerial.ContainsKey($sn2)) {
+                    $NinjaDevicesBySerial[$sn2] = $nd
+                    if ($sn2 -ne $sn2.ToLower()) { $NinjaDevicesBySerial[$sn2.ToLower()] = $nd }
+                }
             }
             if ($nd.systemName) { $NinjaDevicesByName[$nd.systemName] = $nd }
             if ($nd.dnsName -and -not $NinjaDevicesByName.ContainsKey($nd.dnsName)) {
@@ -565,10 +573,16 @@ function Invoke-NinjaOneTenantSync {
         # Parse Devices
         foreach ($Device in $Devices | Where-Object { $_.id -notin $ParsedDevices.id }) {
 
-            # First lets match on serial (O(1) hashtable lookup)
-            $MatchedNinjaDevice = if ($Device.SerialNumber) { $NinjaDevicesBySerial[$Device.SerialNumber] } else { $null }
+            # First match on serial (O(1) hashtable lookup) - try exact, then trimmed, then case-insensitive
+            $MatchedNinjaDevice = $null
+            if ($Device.SerialNumber) {
+                $sn = $Device.SerialNumber
+                $MatchedNinjaDevice = $NinjaDevicesBySerial[$sn]
+                if (-not $MatchedNinjaDevice) { $MatchedNinjaDevice = $NinjaDevicesBySerial[$sn.Trim()] }
+                if (-not $MatchedNinjaDevice) { $MatchedNinjaDevice = $NinjaDevicesBySerial[$sn.Trim().ToLower()] }
+            }
 
-            # See if we found just one device, if not match on name
+            # See if we found a device, if not match on name
             if (-not $MatchedNinjaDevice) {
                 $MatchedNinjaDevice = if ($Device.Name) { $NinjaDevicesByName[$Device.Name] } else { $null }
             }
