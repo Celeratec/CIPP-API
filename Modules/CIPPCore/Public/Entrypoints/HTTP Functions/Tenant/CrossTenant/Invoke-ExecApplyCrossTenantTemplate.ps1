@@ -65,7 +65,7 @@ function Invoke-ExecApplyCrossTenantTemplate {
         if ($AuthPatch.Count -gt 0) {
             try {
                 $AuthJSON = ConvertTo-Json -Depth 10 -InputObject $AuthPatch -Compress
-                $null = New-GraphPostRequest -tenantid $TenantFilter -Uri 'https://graph.microsoft.com/v1.0/policies/authorizationPolicy/authorizationPolicy' -Type PATCH -Body $AuthJSON -ContentType 'application/json' -AsApp $true
+                $null = New-GraphPostRequest -tenantid $TenantFilter -Uri 'https://graph.microsoft.com/beta/policies/authorizationPolicy/authorizationPolicy' -Type PATCH -Body $AuthJSON -ContentType 'application/json' -AsApp $true
                 $Results.Add('External collaboration settings applied.')
             } catch {
                 $ErrorMsg = Get-NormalizedError -Message $_.Exception.Message

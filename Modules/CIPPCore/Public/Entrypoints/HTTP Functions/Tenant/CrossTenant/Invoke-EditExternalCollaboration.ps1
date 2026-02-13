@@ -36,7 +36,7 @@ function Invoke-EditExternalCollaboration {
 
         if ($AuthPatchBody.Count -gt 0) {
             $AuthPatchJSON = ConvertTo-Json -Depth 10 -InputObject $AuthPatchBody -Compress
-            $null = New-GraphPostRequest -tenantid $TenantFilter -Uri 'https://graph.microsoft.com/v1.0/policies/authorizationPolicy/authorizationPolicy' -Type PATCH -Body $AuthPatchJSON -ContentType 'application/json' -AsApp $true
+            $null = New-GraphPostRequest -tenantid $TenantFilter -Uri 'https://graph.microsoft.com/beta/policies/authorizationPolicy/authorizationPolicy' -Type PATCH -Body $AuthPatchJSON -ContentType 'application/json' -AsApp $true
             $Results.Add('Successfully updated authorization policy settings.')
         }
 
