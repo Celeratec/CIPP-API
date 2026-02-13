@@ -834,6 +834,102 @@ function Invoke-NinjaOneTenantSync {
             }
         }
 
+        ############################ Entra-Only Fallback (Non-Intune Tenants) ############################
+        # If no Intune managed devices exist, fall back to Entra ID devices so that
+        # NinjaOne hardware data is still cached and available for enrichment on the
+        # Identity Devices page and User Devices tab.
+        if (($Devices | Measure-Object).Count -eq 0 -and ($NinjaDevices | Measure-Object).Count -gt 0) {
+            Write-Information "No Intune devices found for $($Customer.displayName) - falling back to Entra ID devices for NinjaOne matching"
+            try {
+                $EntraDevices = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/devices?`$top=999&`$select=id,displayName,operatingSystem,operatingSystemVersion,manufacturer,model,deviceId,trustType,accountEnabled,isManaged,isCompliant,approximateLastSignInDateTime" -tenantid $Customer.defaultDomainName
+
+                foreach ($EntraDevice in $EntraDevices) {
+                    # Skip devices already in the cache (from a previous sync run)
+                    if ($EntraDevice.id -in $ParsedDevices.EntraIDID -or $EntraDevice.id -in $ParsedDevices.RowKey) {
+                        continue
+                    }
+
+                    # Match by device displayName against NinjaOne systemName/dnsName
+                    $MatchedNinjaDevice = if ($EntraDevice.displayName) { $NinjaDevicesByName[$EntraDevice.displayName] } else { $null }
+
+                    if (-not $MatchedNinjaDevice) {
+                        continue
+                    }
+
+                    $ParsedDeviceName = '<a href="https://' + ($Configuration.Instance -replace '/ws', '') + '/#/deviceDashboard/' + $MatchedNinjaDevice.id + '/overview" target="_blank">' + $EntraDevice.displayName + '</a>'
+
+                    # Build lightweight ParsedDevice with Entra + NinjaOne fields
+                    $ParsedDevice = [PSCustomObject]@{
+                        PartitionKey        = $Customer.CustomerId
+                        RowKey              = $EntraDevice.id
+                        id                  = $EntraDevice.id
+                        Name                = $EntraDevice.displayName
+                        SerialNumber        = $MatchedNinjaDevice.system.serialNumber
+                        OS                  = $EntraDevice.operatingSystem
+                        OSVersion           = $EntraDevice.operatingSystemVersion
+                        Enrolled            = $null
+                        Compliance          = if ($EntraDevice.isCompliant) { 'compliant' } else { 'unknown' }
+                        LastSync            = $EntraDevice.approximateLastSignInDateTime
+                        PrimaryUser         = $null
+                        Owner               = $null
+                        DeviceType          = $null
+                        Make                = $EntraDevice.manufacturer
+                        Model               = $EntraDevice.model
+                        ManagementState     = $null
+                        RegistrationState   = $null
+                        JailBroken          = $null
+                        EnrollmentType      = $null
+                        EntraIDRegistration = $true
+                        EntraIDID           = $EntraDevice.id
+                        JoinType            = $EntraDevice.trustType
+                        SecurityPatchLevel  = $null
+                        Users               = $null
+                        UserIDs             = @()
+                        UserDetails         = @()
+                        CompliancePolicies  = @()
+                        Groups              = @()
+                        Source              = 'EntraOnly'
+                        NinjaDevice         = [PSCustomObject]@{
+                            id               = $MatchedNinjaDevice.id
+                            systemName       = $MatchedNinjaDevice.systemName
+                            dnsName          = $MatchedNinjaDevice.dnsName
+                            nodeClass        = $MatchedNinjaDevice.nodeClass
+                            lastContact      = $MatchedNinjaDevice.lastContact
+                            offline          = $MatchedNinjaDevice.offline
+                            approvalStatus   = $MatchedNinjaDevice.approvalStatus
+                            manufacturer     = $MatchedNinjaDevice.system.manufacturer
+                            model            = $MatchedNinjaDevice.system.model
+                            biosSerialNumber = $MatchedNinjaDevice.system.biosSerialNumber
+                            serialNumber     = $MatchedNinjaDevice.system.serialNumber
+                            domain           = $MatchedNinjaDevice.system.domain
+                            osName           = $MatchedNinjaDevice.os.name
+                            osBuild          = $MatchedNinjaDevice.os.build
+                            osArchitecture   = $MatchedNinjaDevice.os.architecture
+                            lastBootTime     = $MatchedNinjaDevice.os.lastBootTime
+                            cpuName          = ($MatchedNinjaDevice.processors | Select-Object -First 1).name
+                            cpuCores         = ($MatchedNinjaDevice.processors | Select-Object -First 1).cores
+                            totalRamGB       = if ($MatchedNinjaDevice.memory) { [math]::Round(($MatchedNinjaDevice.memory | Measure-Object -Property capacity -Sum).Sum / 1GB, 1) } else { $null }
+                        }
+                        DeviceLink          = $ParsedDeviceName
+                    }
+
+                    Add-CIPPAzDataTableEntity @DeviceTable -Entity @{
+                        PartitionKey = $Customer.CustomerId
+                        RowKey       = $EntraDevice.id
+                        RawDevice    = "$($ParsedDevice | ConvertTo-Json -Depth 20 -Compress)"
+                    } -Force
+
+                    $ParsedDevices.add($ParsedDevice)
+                }
+
+                Write-Information "Entra fallback: cached $($ParsedDevices.Count) devices with NinjaOne data for $($Customer.displayName)"
+            } catch {
+                Write-Information "Entra fallback failed for $($Customer.displayName): $($_.Exception.Message)"
+            }
+            # Release Entra devices
+            $EntraDevices = $null
+        }
+
         # Enable Device Updates Subscription if needed.
         if ($MappedFields.DeviceCompliance) {
             New-CIPPGraphSubscription -TenantFilter $TenantFilter -TypeofSubscription 'updated' -BaseURL $CIPPUrl -Resource 'devices' -EventType 'DeviceUpdate' -Headers 'NinjaOneSync'
