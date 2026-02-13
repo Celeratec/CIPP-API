@@ -244,13 +244,13 @@ function Compare-CIPPIntuneObject {
         }
 
         $obj1 = if ($ReferenceObject -is [string]) {
-            $ReferenceObject | ConvertFrom-Json -AsHashtable -Depth 100
+            $ReferenceObject | ConvertFrom-Json -AsHashtable -Depth 25
         } else {
             $ReferenceObject
         }
 
         $obj2 = if ($DifferenceObject -is [string]) {
-            $DifferenceObject | ConvertFrom-Json -AsHashtable -Depth 100
+            $DifferenceObject | ConvertFrom-Json -AsHashtable -Depth 25
         } else {
             $DifferenceObject
         }

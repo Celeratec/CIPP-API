@@ -34,7 +34,7 @@ function Get-NinjaOneOrgMapping {
         $After = 0
         $PageSize = 1000
         $NinjaOrgs = do {
-            $Result = (Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/organizations?pageSize=$PageSize&after=$After" -Method GET -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json').content | ConvertFrom-Json -Depth 100
+            $Result = (Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/organizations?pageSize=$PageSize&after=$After" -Method GET -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json').content | ConvertFrom-Json -Depth 20
             $Result | Select-Object name, @{n = 'value'; e = { $_.id } }
             $ResultCount = ($Result.id | Measure-Object -Maximum)
             $After = $ResultCount.maximum

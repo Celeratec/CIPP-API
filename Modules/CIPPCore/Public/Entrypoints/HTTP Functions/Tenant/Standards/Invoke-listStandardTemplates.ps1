@@ -15,7 +15,7 @@ function Invoke-listStandardTemplates {
         $JSON = $_.JSON -replace '"Action":', '"action":'
         try {
             $RowKey = $_.RowKey
-            $Data = $JSON | ConvertFrom-Json -Depth 100 -ErrorAction SilentlyContinue
+            $Data = $JSON | ConvertFrom-Json -Depth 20 -ErrorAction SilentlyContinue
 
         } catch {
             Write-Host "$($RowKey) standard could not be loaded: $($_.Exception.Message)"

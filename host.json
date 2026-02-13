@@ -9,9 +9,12 @@
   },
   "functionTimeout": "00:10:00",
   "extensions": {
+    "http": {
+      "maxConcurrentRequests": 10
+    },
     "durableTask": {
-      "maxConcurrentActivityFunctions": 5,
-      "maxConcurrentOrchestratorFunctions": 5,
+      "maxConcurrentActivityFunctions": 3,
+      "maxConcurrentOrchestratorFunctions": 3,
       "maxQueuePollingInterval": "00:00:02",
       "controlQueueBatchSize": 32,
       "tracing": {

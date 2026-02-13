@@ -26,7 +26,7 @@ Function Invoke-ListNinjaDeviceInfo {
         } else {
             $Results = foreach ($Entity in $RawDevices) {
                 try {
-                    $Parsed = $Entity.RawDevice | ConvertFrom-Json -Depth 100 -ErrorAction SilentlyContinue
+                    $Parsed = $Entity.RawDevice | ConvertFrom-Json -Depth 20 -ErrorAction SilentlyContinue
                     if ($Parsed -and $Parsed.NinjaDevice) {
                         $nd = $Parsed.NinjaDevice
                         [PSCustomObject]@{

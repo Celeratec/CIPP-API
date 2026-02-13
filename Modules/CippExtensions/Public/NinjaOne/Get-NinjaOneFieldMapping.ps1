@@ -79,11 +79,11 @@ function Get-NinjaOneFieldMapping {
 
         $Token = Get-NinjaOneToken -configuration $Configuration
 
-        $NinjaCustomFieldsNodeRaw = (Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/device-custom-fields?scopes=node" -Method GET -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json').content | ConvertFrom-Json -Depth 100
+        $NinjaCustomFieldsNodeRaw = (Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/device-custom-fields?scopes=node" -Method GET -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json').content | ConvertFrom-Json -Depth 20
 
         [System.Collections.Generic.List[object]]$NinjaCustomFieldsNode = $NinjaCustomFieldsNodeRaw | Where-Object { $_.apiPermission -eq 'READ_WRITE' -and $_.type -in $CIPPFields.Type } | Select-Object @{n = 'name'; e = { $_.label } }, @{n = 'value'; e = { $_.name } }, type, @{n = 'FieldType'; e = { 'Device' } }
 
-        $NinjaCustomFieldsOrgRaw = (Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/device-custom-fields?scopes=organization" -Method GET -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json').content | ConvertFrom-Json -Depth 100
+        $NinjaCustomFieldsOrgRaw = (Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/device-custom-fields?scopes=organization" -Method GET -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json').content | ConvertFrom-Json -Depth 20
 
         [System.Collections.Generic.List[object]]$NinjaCustomFieldsOrg = $NinjaCustomFieldsOrgRaw | Where-Object { $_.apiPermission -eq 'READ_WRITE' -and $_.type -in $CIPPFields.Type } | Select-Object @{n = 'name'; e = { $_.label } }, @{n = 'value'; e = { $_.name } }, type, @{n = 'FieldType'; e = { 'Organization' } }
 

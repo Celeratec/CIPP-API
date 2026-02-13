@@ -26,7 +26,7 @@ function Invoke-NinjaOneOrgMapping {
     $After = 0
     $PageSize = 1000
     $NinjaOrgs = do {
-        $Result = (Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/organizations?pageSize=$PageSize&after=$After" -Method GET -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json').content | ConvertFrom-Json -Depth 100
+        $Result = (Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/organizations?pageSize=$PageSize&after=$After" -Method GET -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json').content | ConvertFrom-Json -Depth 20
         $Result
         $ResultCount = ($Result.id | Measure-Object -Maximum)
         $After = $ResultCount.maximum
@@ -51,7 +51,7 @@ function Invoke-NinjaOneOrgMapping {
     $After = 0
     $PageSize = 1000
     $NinjaDevicesRaw = do {
-        $Result = (Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/devices-detailed?pageSize=$PageSize&after=$After" -Method GET -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json').content | ConvertFrom-Json -Depth 100
+        $Result = (Invoke-WebRequest -Uri "https://$($Configuration.Instance)/api/v2/devices-detailed?pageSize=$PageSize&after=$After" -Method GET -Headers @{Authorization = "Bearer $($token.access_token)" } -ContentType 'application/json').content | ConvertFrom-Json -Depth 20
         $Result
         $ResultCount = ($Result.id | Measure-Object -Maximum)
         $After = $ResultCount.maximum

@@ -28,7 +28,7 @@ function Invoke-ListNewUserDefaults {
     $Templates = (Get-CIPPAzDataTableEntity @Table -Filter $Filter) | ForEach-Object {
         try {
             $row = $_
-            $data = $row.JSON | ConvertFrom-Json -Depth 100 -ErrorAction Stop
+            $data = $row.JSON | ConvertFrom-Json -Depth 20 -ErrorAction Stop
             $data | Add-Member -NotePropertyName 'GUID' -NotePropertyValue $row.GUID -Force
             $data | Add-Member -NotePropertyName 'RowKey' -NotePropertyValue $row.RowKey -Force
             $data

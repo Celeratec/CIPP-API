@@ -7,7 +7,7 @@ function New-CIPPTemplateRun {
     $Table = Get-CippTable -tablename 'templates'
     $ExistingTemplates = (Get-CIPPAzDataTableEntity @Table) | ForEach-Object {
         try {
-            $data = $_.JSON | ConvertFrom-Json -ErrorAction SilentlyContinue -Depth 100
+            $data = $_.JSON | ConvertFrom-Json -ErrorAction SilentlyContinue -Depth 20
             $data | Add-Member -NotePropertyName 'GUID' -NotePropertyValue $_.RowKey -Force -ErrorAction Stop
             $data | Add-Member -NotePropertyName 'PartitionKey' -NotePropertyValue $_.PartitionKey -Force -ErrorAction Stop
             $data | Add-Member -NotePropertyName 'SHA' -NotePropertyValue $_.SHA -Force -ErrorAction SilentlyContinue

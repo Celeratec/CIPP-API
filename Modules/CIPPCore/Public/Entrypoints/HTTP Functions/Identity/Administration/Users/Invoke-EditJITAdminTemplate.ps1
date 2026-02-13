@@ -43,13 +43,13 @@ function Invoke-EditJITAdminTemplate {
         }
 
         # Parse existing template data
-        $ExistingData = $ExistingTemplate.JSON | ConvertFrom-Json -Depth 100
+        $ExistingData = $ExistingTemplate.JSON | ConvertFrom-Json -Depth 20
 
         # Check if template name is unique (excluding current template)
         $AllTemplates = Get-CIPPAzDataTableEntity @Table -Filter "PartitionKey eq 'JITAdminTemplate'"
         $DuplicateName = $AllTemplates | Where-Object { $_.RowKey -ne $GUID } | ForEach-Object {
             try {
-                $data = $_.JSON | ConvertFrom-Json -Depth 100 -ErrorAction Stop
+                $data = $_.JSON | ConvertFrom-Json -Depth 20 -ErrorAction Stop
                 if ($data.tenantFilter -eq $TenantFilter -and $data.templateName -eq $TemplateName) {
                     $data
                 }
@@ -67,7 +67,7 @@ function Invoke-EditJITAdminTemplate {
             $AllTemplates | Where-Object { $_.RowKey -ne $GUID } | ForEach-Object {
                 try {
                     $row = $_
-                    $data = $row.JSON | ConvertFrom-Json -Depth 100 -ErrorAction Stop
+                    $data = $row.JSON | ConvertFrom-Json -Depth 20 -ErrorAction Stop
                     if ($data.tenantFilter -eq $TenantFilter -and $data.defaultForTenant -eq $true) {
                         # Unset the default flag
                         $data.defaultForTenant = $false

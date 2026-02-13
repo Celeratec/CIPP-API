@@ -34,7 +34,7 @@ function Invoke-AddJITAdminTemplate {
         $ExistingTemplates = Get-CIPPAzDataTableEntity @Table -Filter "PartitionKey eq 'JITAdminTemplate'"
         $ExistingNames = $ExistingTemplates | ForEach-Object {
             try {
-                $data = $_.JSON | ConvertFrom-Json -Depth 100 -ErrorAction Stop
+                $data = $_.JSON | ConvertFrom-Json -Depth 20 -ErrorAction Stop
                 if ($data.tenantFilter -eq $TenantFilter -and $data.templateName -eq $TemplateName) {
                     $data
                 }
@@ -52,7 +52,7 @@ function Invoke-AddJITAdminTemplate {
             $ExistingTemplates | ForEach-Object {
                 try {
                     $row = $_
-                    $data = $row.JSON | ConvertFrom-Json -Depth 100 -ErrorAction Stop
+                    $data = $row.JSON | ConvertFrom-Json -Depth 20 -ErrorAction Stop
                     if ($data.tenantFilter -eq $TenantFilter -and $data.defaultForTenant -eq $true) {
                         # Unset the default flag
                         $data.defaultForTenant = $false

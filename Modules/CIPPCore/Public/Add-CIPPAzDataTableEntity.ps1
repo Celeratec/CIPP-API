@@ -144,7 +144,14 @@ function Add-CIPPAzDataTableEntity {
                         $originalRowKey = $SingleEnt.RowKey
                         $entityIndex = 0
 
+                        $maxSplitIterations = 50
+                        $splitIteration = 0
                         while ($entitySize -gt $MaxRowSize) {
+                            $splitIteration++
+                            if ($splitIteration -gt $maxSplitIterations) {
+                                Write-Warning "Entity splitting exceeded $maxSplitIterations iterations for entity $($SingleEnt['RowKey'] ?? 'unknown'). Entity may be too large to store."
+                                break
+                            }
                             Write-Information "Entity size is $entitySize. Splitting entity into multiple parts."
                             $newEntity = @{}
                             $newEntity['PartitionKey'] = $originalPartitionKey
@@ -210,7 +217,8 @@ function Add-CIPPAzDataTableEntity {
                         Add-AzDataTableEntity @Parameters -Entity $NewEnt
                         if ($NewEnt.PSObject.Properties['OriginalEntityId'] -eq $null -and $NewEnt.PSObject.Properties['PartIndex'] -eq $null) {
                             $partIndex = 1
-                            while ($true) {
+                            $maxPartCleanup = 100
+                            while ($partIndex -le $maxPartCleanup) {
                                 $partRowKey = "$($NewEnt.RowKey)-part$partIndex"
                                 try {
                                     Remove-AzDataTableEntity -Context $Context -PartitionKey $NewEnt.PartitionKey -RowKey $partRowKey -ErrorAction Stop
@@ -219,6 +227,9 @@ function Add-CIPPAzDataTableEntity {
                                 } catch {
                                     break
                                 }
+                            }
+                            if ($partIndex -gt $maxPartCleanup) {
+                                Write-Warning "Hit max part cleanup limit ($maxPartCleanup) for entity $($NewEnt.RowKey). Some obsolete parts may remain."
                             }
                         }
                     }

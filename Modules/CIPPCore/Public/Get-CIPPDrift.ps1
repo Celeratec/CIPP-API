@@ -55,7 +55,7 @@ function Get-CIPPDrift {
     $RawCATemplates = (Get-CIPPAzDataTableEntity @IntuneTable -Filter $CAFilter)
     $AllCATemplates = $RawCATemplates | ForEach-Object {
         try {
-            $data = $_.JSON | ConvertFrom-Json -Depth 100 -ErrorAction SilentlyContinue
+            $data = $_.JSON | ConvertFrom-Json -Depth 20 -ErrorAction SilentlyContinue
             $data | Add-Member -NotePropertyName 'GUID' -NotePropertyValue $_.RowKey -Force
             $data
         } catch {
