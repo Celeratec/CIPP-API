@@ -68,21 +68,25 @@ function Invoke-ExecSharePointInviteGuest {
                     $LoginName = "i:0#.f|membership|$GuestUPN"
 
                     # Ensure the guest user exists in the site's User Information List
+                    # Note: SharePoint REST _api/web endpoints do not support app-only tokens,
+                    # so we use delegated auth (SAM refresh token) instead of -AsApp $true.
                     $EnsureBody = ConvertTo-Json @{ logonName = $LoginName } -Compress
-                    $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/ensureuser" -Type POST -Body $EnsureBody -ContentType $SPContentType -AddedHeaders $SPHeaders -AsApp $true
+                    $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/ensureuser" -Type POST -Body $EnsureBody -ContentType $SPContentType -AddedHeaders $SPHeaders
 
                     # Add the user to the site's default Members permission group
                     $AddBody = ConvertTo-Json @{ LoginName = $LoginName } -Compress
-                    $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/associatedmembergroup/users" -Type POST -Body $AddBody -ContentType $SPContentType -AddedHeaders $SPHeaders -AsApp $true
+                    $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/associatedmembergroup/users" -Type POST -Body $AddBody -ContentType $SPContentType -AddedHeaders $SPHeaders
 
                     $ResultMessages.Add("Added guest as a member of the SharePoint site.")
                 } catch {
                     $SiteError = Get-CippException -Exception $_
                     $ErrorMsg = [string]$SiteError.NormalizedError + [string]$SiteError.Message
                     if ($ErrorMsg -match 'ID3035' -or $ErrorMsg -match 'is malformed' -or $ErrorMsg -match 'Could not get token') {
-                        $ResultMessages.Add("Guest invited to tenant, but could not add to site members: The CIPP app registration is missing the SharePoint 'Sites.FullControl.All' application permission. This permission is required for managing members on non-group-connected SharePoint sites. To fix: Open the Azure portal > App registrations > CIPP app > API permissions > Add a permission > SharePoint > Application permissions > Sites.FullControl.All > Grant admin consent.")
+                        $ResultMessages.Add("Guest invited to tenant, but could not add to site members: The CIPP app registration is missing the SharePoint 'AllSites.FullControl' delegated permission. To fix: Go to CIPP Settings > Super Admin > SAM App Permissions, ensure the SharePoint 'AllSites.FullControl' scope is included, then refresh CPV consent for this tenant.")
+                    } elseif ($ErrorMsg -match 'Unsupported app only token') {
+                        $ResultMessages.Add("Guest invited to tenant, but could not add to site members: SharePoint rejected the app-only token. This is an internal error -- please report it.")
                     } elseif ($ErrorMsg -match 'unauthorized' -or $ErrorMsg -match 'Access denied' -or $ErrorMsg -match '403') {
-                        $ResultMessages.Add("Guest invited to tenant, but could not add to site members: Insufficient SharePoint permissions. Ensure the CIPP app registration has 'Sites.FullControl.All' on the SharePoint API (not just Microsoft Graph) and that admin consent has been granted.")
+                        $ResultMessages.Add("Guest invited to tenant, but could not add to site members: Insufficient SharePoint permissions. Ensure CPV consent has been refreshed for this tenant so the CIPP SAM app has 'AllSites.FullControl' delegated access.")
                     } else {
                         $ResultMessages.Add("Guest invited to tenant, but could not add to site members: $($SiteError.NormalizedError)")
                     }
