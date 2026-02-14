@@ -14,11 +14,11 @@ function Invoke-ExecSetSharePointMember {
     $TenantFilter = $Request.Body.tenantFilter
 
     try {
-        # The user picker sends both .value (UPN) and .id (Entra object ID).
+        # The user picker sends .value (UPN), .addedFields.id (Entra object ID), and .label.
         # Use the object ID for Graph API calls to avoid UPN encoding issues
-        # (guest UPNs contain '#' which breaks URL paths).
+        # (guest UPNs contain '#' which breaks URL paths and query strings).
         $UserEmail = $Request.Body.user.value ?? $Request.Body.user
-        $UserObjectId = $Request.Body.user.id
+        $UserObjectId = $Request.Body.user.addedFields.id ?? $Request.Body.user.id
 
         if ($Request.Body.SharePointType -eq 'Group') {
             if ($Request.Body.GroupID -match '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$') {
@@ -30,11 +30,13 @@ function Invoke-ExecSetSharePointMember {
             if ($Request.Body.Add -eq $true) {
                 $Results = Add-CIPPGroupMember -GroupType 'Team' -GroupID $GroupID -Member $Request.Body.user.value -TenantFilter $TenantFilter -Headers $Headers
             } else {
-                # Use the object ID directly if available, otherwise resolve via $filter
+                # Use the object ID directly if available, otherwise resolve via Graph
                 if ($UserObjectId) {
                     $UserID = $UserObjectId
                 } else {
-                    $UserLookup = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users?`$filter=userPrincipalName eq '$UserEmail'&`$select=id" -tenantid $TenantFilter -ComplexFilter
+                    # Encode '#' as '%23' in the UPN to prevent URL fragment parsing
+                    $SafeEmail = $UserEmail -replace '#', '%23'
+                    $UserLookup = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users?`$filter=userPrincipalName eq '$SafeEmail'&`$select=id" -tenantid $TenantFilter -ComplexFilter
                     $UserID = $UserLookup.id
                 }
                 $Results = Remove-CIPPGroupMember -GroupType 'Team' -GroupID $GroupID -Member $UserID -TenantFilter $TenantFilter -Headers $Headers
@@ -57,9 +59,10 @@ function Invoke-ExecSetSharePointMember {
             $SiteDrive = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/sites/$($GraphSite.id)/drive?`$select=id" -tenantid $TenantFilter -AsApp $true
 
             if ($Request.Body.Add -eq $true) {
-                # Use the object ID from the picker, or resolve it via $filter if not available
+                # Use the object ID from the picker, or resolve it via Graph if not available
                 if (!$UserObjectId) {
-                    $UserLookup = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users?`$filter=userPrincipalName eq '$UserEmail'&`$select=id" -tenantid $TenantFilter -AsApp $true -ComplexFilter
+                    $SafeEmail = $UserEmail -replace '#', '%23'
+                    $UserLookup = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users?`$filter=userPrincipalName eq '$SafeEmail'&`$select=id" -tenantid $TenantFilter -AsApp $true -ComplexFilter
                     $UserObjectId = $UserLookup.id
                 }
 
