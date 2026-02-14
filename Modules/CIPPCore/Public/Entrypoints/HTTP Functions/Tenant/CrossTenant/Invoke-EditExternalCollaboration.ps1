@@ -48,6 +48,7 @@ function Invoke-EditExternalCollaboration {
                 $B2BManagement = $B2BPolicies | Where-Object { $_.type -eq 6 }
 
                 if ($B2BManagement) {
+                    # Update existing B2B Management Policy
                     $ExistingDef = ($B2BManagement.definition | ConvertFrom-Json)
                     $ExistingDef.B2BManagementPolicy.InvitationsAllowedAndBlockedDomainsPolicy = $Request.Body.domainRestrictions.InvitationsAllowedAndBlockedDomainsPolicy
 
@@ -57,6 +58,21 @@ function Invoke-EditExternalCollaboration {
                     $UpdateJSON = ConvertTo-Json -Depth 20 -InputObject $UpdateBody -Compress
                     $null = New-GraphPostRequest -tenantid $TenantFilter -Uri "https://graph.microsoft.com/beta/legacy/policies/$($B2BManagement.id)" -Type PATCH -Body $UpdateJSON -ContentType 'application/json' -AsApp $true
                     $Results.Add('Successfully updated domain allow/deny list.')
+                } else {
+                    # No B2B Management Policy exists — create one
+                    $NewDefinition = @{
+                        B2BManagementPolicy = @{
+                            InvitationsAllowedAndBlockedDomainsPolicy = $Request.Body.domainRestrictions.InvitationsAllowedAndBlockedDomainsPolicy
+                        }
+                    }
+                    $NewPolicyBody = @{
+                        displayName = 'B2BManagementPolicy'
+                        definition  = @(($NewDefinition | ConvertTo-Json -Depth 20 -Compress))
+                        type        = 6
+                    }
+                    $NewPolicyJSON = ConvertTo-Json -Depth 20 -InputObject $NewPolicyBody -Compress
+                    $null = New-GraphPostRequest -tenantid $TenantFilter -Uri 'https://graph.microsoft.com/beta/legacy/policies' -Type POST -Body $NewPolicyJSON -ContentType 'application/json' -AsApp $true
+                    $Results.Add('Successfully created domain allow/deny list policy.')
                 }
             } catch {
                 $DomainError = Get-NormalizedError -Message $_.Exception.Message
