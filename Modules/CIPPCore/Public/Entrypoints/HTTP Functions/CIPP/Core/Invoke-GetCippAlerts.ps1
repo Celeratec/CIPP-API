@@ -46,12 +46,17 @@ function Invoke-GetCippAlerts {
             })
     }
     if ($role -like '*superadmin*') {
-        $Alerts.Add(@{
-                title = 'Superadmin Account Warning'
-                Alert = 'You are logged in under a superadmin account. This account should not be used for normal usage.'
-                link  = 'https://docs.cipp.app/setup/installation/owntenant'
-                type  = 'error'
-            })
+        $SwaCreds = ([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($Request.Headers.'x-ms-client-principal')) | ConvertFrom-Json)
+        $Username = $SwaCreds.userDetails
+        $SuperAdminIgnoreList = @('Clint@celeratec.cloud')
+        if ($Username -notin $SuperAdminIgnoreList) {
+            $Alerts.Add(@{
+                    title = 'Superadmin Account Warning'
+                    Alert = 'You are logged in under a superadmin account. This account should not be used for normal usage.'
+                    link  = 'https://docs.cipp.app/setup/installation/owntenant'
+                    type  = 'error'
+                })
+        }
     }
     if (!(![string]::IsNullOrEmpty($env:WEBSITE_RUN_FROM_PACKAGE) -or ![string]::IsNullOrEmpty($env:DEPLOYMENT_STORAGE_CONNECTION_STRING)) -and $env:AzureWebJobsStorage -ne 'UseDevelopmentStorage=true' -and $env:NonLocalHostAzurite -ne 'true') {
         $Alerts.Add(
