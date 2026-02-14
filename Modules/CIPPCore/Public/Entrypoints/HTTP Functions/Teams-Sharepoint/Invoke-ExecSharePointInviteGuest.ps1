@@ -78,7 +78,14 @@ function Invoke-ExecSharePointInviteGuest {
                     $ResultMessages.Add("Added guest as a member of the SharePoint site.")
                 } catch {
                     $SiteError = Get-CippException -Exception $_
-                    $ResultMessages.Add("Guest invited to tenant, but could not add to site members: $($SiteError.NormalizedError)")
+                    $ErrorMsg = [string]$SiteError.NormalizedError + [string]$SiteError.Message
+                    if ($ErrorMsg -match 'ID3035' -or $ErrorMsg -match 'is malformed' -or $ErrorMsg -match 'Could not get token') {
+                        $ResultMessages.Add("Guest invited to tenant, but could not add to site members: The CIPP app registration is missing the SharePoint 'Sites.FullControl.All' application permission. This permission is required for managing members on non-group-connected SharePoint sites. To fix: Open the Azure portal > App registrations > CIPP app > API permissions > Add a permission > SharePoint > Application permissions > Sites.FullControl.All > Grant admin consent.")
+                    } elseif ($ErrorMsg -match 'unauthorized' -or $ErrorMsg -match 'Access denied' -or $ErrorMsg -match '403') {
+                        $ResultMessages.Add("Guest invited to tenant, but could not add to site members: Insufficient SharePoint permissions. Ensure the CIPP app registration has 'Sites.FullControl.All' on the SharePoint API (not just Microsoft Graph) and that admin consent has been granted.")
+                    } else {
+                        $ResultMessages.Add("Guest invited to tenant, but could not add to site members: $($SiteError.NormalizedError)")
+                    }
                     Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Failed to add guest to non-group site members: $($SiteError.NormalizedError)" -Sev 'Warning' -LogData $SiteError
                     $NonGroupSiteWarning = $true
                 }

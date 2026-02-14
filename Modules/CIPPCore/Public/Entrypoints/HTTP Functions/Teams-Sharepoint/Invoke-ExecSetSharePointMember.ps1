@@ -89,7 +89,14 @@ function Invoke-ExecSetSharePointMember {
             $StatusCode = [HttpStatusCode]::OK
         }
     } catch {
-        $Results = Get-NormalizedError -Message $_.Exception.Message
+        $ErrorMsg = $_.Exception.Message
+        if ($ErrorMsg -match 'ID3035' -or $ErrorMsg -match 'is malformed' -or $ErrorMsg -match 'Could not get token') {
+            $Results = "The CIPP app registration is missing the SharePoint 'Sites.FullControl.All' application permission. This permission is required for managing members on non-group-connected SharePoint sites. To fix: Open the Azure portal > App registrations > CIPP app > API permissions > Add a permission > SharePoint > Application permissions > Sites.FullControl.All > Grant admin consent."
+        } elseif ($ErrorMsg -match 'unauthorized' -or $ErrorMsg -match 'Access denied' -or $ErrorMsg -match '403') {
+            $Results = "Insufficient SharePoint permissions. Ensure the CIPP app registration has 'Sites.FullControl.All' on the SharePoint API (not just Microsoft Graph) and that admin consent has been granted."
+        } else {
+            $Results = Get-NormalizedError -Message $ErrorMsg
+        }
         $StatusCode = [HttpStatusCode]::InternalServerError
     }
 
