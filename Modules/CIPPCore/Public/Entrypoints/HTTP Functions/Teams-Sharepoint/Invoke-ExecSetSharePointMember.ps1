@@ -29,11 +29,48 @@ function Invoke-ExecSetSharePointMember {
             }
             $StatusCode = [HttpStatusCode]::OK
         } else {
-            $StatusCode = [HttpStatusCode]::BadRequest
-            $Results = 'This type of SharePoint site is not supported.'
+            # Non-group site: manage membership via SharePoint REST API
+            $SiteUrl = $Request.Body.URL
+            if (!$SiteUrl) {
+                throw 'Site URL is required for non-group site membership changes.'
+            }
+
+            $SharePointInfo = Get-SharePointAdminLink -Public $false -tenantFilter $TenantFilter
+            $SPScope = "$($SharePointInfo.SharePointUrl)/.default"
+            $SPHeaders = @{ 'Accept' = 'application/json;odata=verbose' }
+            $SPContentType = 'application/json;odata=verbose'
+
+            # Resolve the user's login name for SharePoint
+            $UserEmail = $Request.Body.user.value ?? $Request.Body.user
+            $LoginName = "i:0#.f|membership|$UserEmail"
+
+            if ($Request.Body.Add -eq $true) {
+                # Ensure the user exists in the site's User Information List
+                $EnsureBody = ConvertTo-Json @{ logonName = $LoginName } -Compress
+                $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/ensureuser" -Type POST -Body $EnsureBody -ContentType $SPContentType -AddedHeaders $SPHeaders -NoAuthCheck
+
+                # Add to the site's default Members group
+                $AddBody = ConvertTo-Json @{ LoginName = $LoginName } -Compress
+                $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/associatedmembergroup/users" -Type POST -Body $AddBody -ContentType $SPContentType -AddedHeaders $SPHeaders -NoAuthCheck
+
+                $Results = "Successfully added $UserEmail as a member of the SharePoint site."
+            } else {
+                # Remove: first get the user's SharePoint ID, then remove from members group
+                $EnsureBody = ConvertTo-Json @{ logonName = $LoginName } -Compress
+                $UserInfo = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/ensureuser" -Type POST -Body $EnsureBody -ContentType $SPContentType -AddedHeaders $SPHeaders -NoAuthCheck
+
+                $SPUserId = $UserInfo.d.Id ?? $UserInfo.Id
+                if ($SPUserId) {
+                    $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/associatedmembergroup/users/removeById($SPUserId)" -Type POST -Body '{}' -ContentType $SPContentType -AddedHeaders $SPHeaders -NoAuthCheck
+                    $Results = "Successfully removed $UserEmail from the SharePoint site."
+                } else {
+                    throw "Could not resolve SharePoint user ID for $UserEmail."
+                }
+            }
+            $StatusCode = [HttpStatusCode]::OK
         }
     } catch {
-        $Results = $_.Exception.Message
+        $Results = Get-NormalizedError -Message $_.Exception.Message
         $StatusCode = [HttpStatusCode]::InternalServerError
     }
 

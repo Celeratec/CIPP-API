@@ -56,12 +56,44 @@ function Invoke-ExecSharePointInviteGuest {
                 Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Failed to add guest to site group: $($GroupError.NormalizedError)" -Sev 'Warning' -LogData $GroupError
             }
         } elseif ($Request.Body.SharePointType -ne 'Group') {
-            $ResultMessages.Add("Guest invited to tenant. Non-group sites require manual permission assignment in SharePoint.")
+            # Non-group site (Communication, classic Team, etc.): add guest directly
+            # to the SharePoint site's associated Members group via SharePoint REST API
+            $SiteUrl = $Request.Body.URL
+            if ($SiteUrl -and $GuestUPN) {
+                try {
+                    $SharePointInfo = Get-SharePointAdminLink -Public $false -tenantFilter $TenantFilter
+                    $SPScope = "$($SharePointInfo.SharePointUrl)/.default"
+                    $SPHeaders = @{ 'Accept' = 'application/json;odata=verbose' }
+                    $SPContentType = 'application/json;odata=verbose'
+                    $LoginName = "i:0#.f|membership|$GuestUPN"
+
+                    # Ensure the guest user exists in the site's User Information List
+                    $EnsureBody = ConvertTo-Json @{ logonName = $LoginName } -Compress
+                    $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/ensureuser" -Type POST -Body $EnsureBody -ContentType $SPContentType -AddedHeaders $SPHeaders -NoAuthCheck
+
+                    # Add the user to the site's default Members group
+                    $AddBody = ConvertTo-Json @{ LoginName = $LoginName } -Compress
+                    $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/associatedmembergroup/users" -Type POST -Body $AddBody -ContentType $SPContentType -AddedHeaders $SPHeaders -NoAuthCheck
+
+                    $ResultMessages.Add("Added guest as a member of the SharePoint site.")
+                } catch {
+                    $SiteError = Get-CippException -Exception $_
+                    $ResultMessages.Add("Guest invited to tenant, but could not add to site members: $($SiteError.NormalizedError)")
+                    Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Failed to add guest to non-group site members: $($SiteError.NormalizedError)" -Sev 'Warning' -LogData $SiteError
+                    $NonGroupSiteWarning = $true
+                }
+            } else {
+                $ResultMessages.Add("Guest invited to tenant. Site URL or guest identity not available for automatic site membership.")
+                $NonGroupSiteWarning = $true
+            }
         }
 
         Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message ($ResultMessages -join ' ') -Sev 'Info'
         $StatusCode = [HttpStatusCode]::OK
         $Body = @{ Results = @($ResultMessages) }
+        if ($NonGroupSiteWarning) {
+            $Body['NonGroupSiteWarning'] = $true
+        }
     } catch {
         $ErrorMessage = Get-CippException -Exception $_
         $ErrorText = "Failed to invite guest. $($ErrorMessage.NormalizedError)"
