@@ -47,21 +47,21 @@ function Invoke-ExecSetSharePointMember {
             if ($Request.Body.Add -eq $true) {
                 # Ensure the user exists in the site's User Information List
                 $EnsureBody = ConvertTo-Json @{ logonName = $LoginName } -Compress
-                $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/ensureuser" -Type POST -Body $EnsureBody -ContentType $SPContentType -AddedHeaders $SPHeaders -NoAuthCheck
+                $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/ensureuser" -Type POST -Body $EnsureBody -ContentType $SPContentType -AddedHeaders $SPHeaders -NoAuthCheck $true
 
                 # Add to the site's default Members group
                 $AddBody = ConvertTo-Json @{ LoginName = $LoginName } -Compress
-                $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/associatedmembergroup/users" -Type POST -Body $AddBody -ContentType $SPContentType -AddedHeaders $SPHeaders -NoAuthCheck
+                $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/associatedmembergroup/users" -Type POST -Body $AddBody -ContentType $SPContentType -AddedHeaders $SPHeaders -NoAuthCheck $true
 
                 $Results = "Successfully added $UserEmail as a member of the SharePoint site."
             } else {
                 # Remove: first get the user's SharePoint ID, then remove from members group
                 $EnsureBody = ConvertTo-Json @{ logonName = $LoginName } -Compress
-                $UserInfo = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/ensureuser" -Type POST -Body $EnsureBody -ContentType $SPContentType -AddedHeaders $SPHeaders -NoAuthCheck
+                $UserInfo = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/ensureuser" -Type POST -Body $EnsureBody -ContentType $SPContentType -AddedHeaders $SPHeaders -NoAuthCheck $true
 
                 $SPUserId = $UserInfo.d.Id ?? $UserInfo.Id
                 if ($SPUserId) {
-                    $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/associatedmembergroup/users/removeById($SPUserId)" -Type POST -Body '{}' -ContentType $SPContentType -AddedHeaders $SPHeaders -NoAuthCheck
+                    $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/associatedmembergroup/users/removeById($SPUserId)" -Type POST -Body '{}' -ContentType $SPContentType -AddedHeaders $SPHeaders -NoAuthCheck $true
                     $Results = "Successfully removed $UserEmail from the SharePoint site."
                 } else {
                     throw "Could not resolve SharePoint user ID for $UserEmail."

@@ -69,11 +69,11 @@ function Invoke-ExecSharePointInviteGuest {
 
                     # Ensure the guest user exists in the site's User Information List
                     $EnsureBody = ConvertTo-Json @{ logonName = $LoginName } -Compress
-                    $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/ensureuser" -Type POST -Body $EnsureBody -ContentType $SPContentType -AddedHeaders $SPHeaders -NoAuthCheck
+                    $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/ensureuser" -Type POST -Body $EnsureBody -ContentType $SPContentType -AddedHeaders $SPHeaders -NoAuthCheck $true
 
                     # Add the user to the site's default Members group
                     $AddBody = ConvertTo-Json @{ LoginName = $LoginName } -Compress
-                    $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/associatedmembergroup/users" -Type POST -Body $AddBody -ContentType $SPContentType -AddedHeaders $SPHeaders -NoAuthCheck
+                    $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/associatedmembergroup/users" -Type POST -Body $AddBody -ContentType $SPContentType -AddedHeaders $SPHeaders -NoAuthCheck $true
 
                     $ResultMessages.Add("Added guest as a member of the SharePoint site.")
                 } catch {
