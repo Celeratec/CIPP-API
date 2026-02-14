@@ -24,7 +24,8 @@ function Invoke-ExecSetSharePointMember {
             if ($Request.Body.Add -eq $true) {
                 $Results = Add-CIPPGroupMember -GroupType 'Team' -GroupID $GroupID -Member $Request.Body.user.value -TenantFilter $TenantFilter -Headers $Headers
             } else {
-                $UserID = (New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users/$($Request.Body.user.value)" -tenantid $TenantFilter).id
+                $EncodedUser = [uri]::EscapeDataString($Request.Body.user.value)
+                $UserID = (New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users/$EncodedUser" -tenantid $TenantFilter).id
                 $Results = Remove-CIPPGroupMember -GroupType 'Team' -GroupID $GroupID -Member $UserID -TenantFilter $TenantFilter -Headers $Headers
             }
             $StatusCode = [HttpStatusCode]::OK
@@ -48,7 +49,9 @@ function Invoke-ExecSetSharePointMember {
 
             if ($Request.Body.Add -eq $true) {
                 # Resolve user's Entra object ID for reliable sharing
-                $UserObj = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users/$UserEmail?`$select=id" -tenantid $TenantFilter -AsApp $true
+                # URL-encode the UPN because guest UPNs contain '#' (e.g. user_domain.com#EXT#@tenant.onmicrosoft.com)
+                $EncodedEmail = [uri]::EscapeDataString($UserEmail)
+                $UserObj = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users/$EncodedEmail?`$select=id" -tenantid $TenantFilter -AsApp $true
 
                 # Grant edit access via sharing invitation on the document library root
                 $ShareBody = ConvertTo-Json @{
