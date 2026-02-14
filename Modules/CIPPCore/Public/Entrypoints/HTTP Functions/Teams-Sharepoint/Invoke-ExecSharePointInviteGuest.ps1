@@ -56,28 +56,24 @@ function Invoke-ExecSharePointInviteGuest {
                 Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Failed to add guest to site group: $($GroupError.NormalizedError)" -Sev 'Warning' -LogData $GroupError
             }
         } elseif ($Request.Body.SharePointType -ne 'Group') {
-            # Non-group site (Communication, classic Team, etc.): grant the guest
-            # edit access via the Graph API sharing invitation on the site's document library.
+            # Non-group site (Communication, classic Team, etc.): add guest to the
+            # site's Members permission group via SharePoint REST API.
             $SiteUrl = $Request.Body.URL
-            if ($SiteUrl -and $GuestUserId) {
+            if ($SiteUrl -and $GuestUPN) {
                 try {
-                    # Resolve the Graph site ID from the site URL
-                    $SiteUri = [System.Uri]$SiteUrl
-                    $SiteHost = $SiteUri.Host
-                    $SitePath = $SiteUri.AbsolutePath.TrimEnd('/')
-                    $GraphSite = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/sites/${SiteHost}:${SitePath}?`$select=id" -tenantid $TenantFilter -AsApp $true
+                    $SharePointInfo = Get-SharePointAdminLink -Public $false -tenantFilter $TenantFilter
+                    $SPScope = "$($SharePointInfo.SharePointUrl)/.default"
+                    $SPHeaders = @{ 'Accept' = 'application/json;odata=verbose' }
+                    $SPContentType = 'application/json;odata=verbose'
+                    $LoginName = "i:0#.f|membership|$GuestUPN"
 
-                    # Get the default document library drive
-                    $SiteDrive = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/sites/$($GraphSite.id)/drive?`$select=id" -tenantid $TenantFilter -AsApp $true
+                    # Ensure the guest user exists in the site's User Information List
+                    $EnsureBody = ConvertTo-Json @{ logonName = $LoginName } -Compress
+                    $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/ensureuser" -Type POST -Body $EnsureBody -ContentType $SPContentType -AddedHeaders $SPHeaders -AsApp $true
 
-                    # Grant the guest edit access to the site's document library
-                    $ShareBody = ConvertTo-Json @{
-                        recipients     = @(@{ objectId = $GuestUserId })
-                        roles          = @('write')
-                        requireSignIn  = $true
-                        sendInvitation = $false
-                    } -Depth 5 -Compress
-                    $null = New-GraphPostRequest -uri "https://graph.microsoft.com/v1.0/drives/$($SiteDrive.id)/root/invite" -tenantid $TenantFilter -type POST -body $ShareBody -AsApp $true
+                    # Add the user to the site's default Members permission group
+                    $AddBody = ConvertTo-Json @{ LoginName = $LoginName } -Compress
+                    $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/associatedmembergroup/users" -Type POST -Body $AddBody -ContentType $SPContentType -AddedHeaders $SPHeaders -AsApp $true
 
                     $ResultMessages.Add("Added guest as a member of the SharePoint site.")
                 } catch {
