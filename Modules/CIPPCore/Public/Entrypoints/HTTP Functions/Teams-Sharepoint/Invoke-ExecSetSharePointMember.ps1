@@ -14,6 +14,12 @@ function Invoke-ExecSetSharePointMember {
     $TenantFilter = $Request.Body.tenantFilter
 
     try {
+        # The user picker sends both .value (UPN) and .id (Entra object ID).
+        # Use the object ID for Graph API calls to avoid UPN encoding issues
+        # (guest UPNs contain '#' which breaks URL paths).
+        $UserEmail = $Request.Body.user.value ?? $Request.Body.user
+        $UserObjectId = $Request.Body.user.id
+
         if ($Request.Body.SharePointType -eq 'Group') {
             if ($Request.Body.GroupID -match '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$') {
                 $GroupId = $Request.Body.GroupID
@@ -24,8 +30,13 @@ function Invoke-ExecSetSharePointMember {
             if ($Request.Body.Add -eq $true) {
                 $Results = Add-CIPPGroupMember -GroupType 'Team' -GroupID $GroupID -Member $Request.Body.user.value -TenantFilter $TenantFilter -Headers $Headers
             } else {
-                $EncodedUser = [uri]::EscapeDataString($Request.Body.user.value)
-                $UserID = (New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users/$EncodedUser" -tenantid $TenantFilter).id
+                # Use the object ID directly if available, otherwise resolve via $filter
+                if ($UserObjectId) {
+                    $UserID = $UserObjectId
+                } else {
+                    $UserLookup = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users?`$filter=userPrincipalName eq '$UserEmail'&`$select=id" -tenantid $TenantFilter -ComplexFilter
+                    $UserID = $UserLookup.id
+                }
                 $Results = Remove-CIPPGroupMember -GroupType 'Team' -GroupID $GroupID -Member $UserID -TenantFilter $TenantFilter -Headers $Headers
             }
             $StatusCode = [HttpStatusCode]::OK
@@ -35,8 +46,6 @@ function Invoke-ExecSetSharePointMember {
             if (!$SiteUrl) {
                 throw 'Site URL is required for non-group site membership changes.'
             }
-
-            $UserEmail = $Request.Body.user.value ?? $Request.Body.user
 
             # Resolve the Graph site ID from the site URL
             $SiteUri = [System.Uri]$SiteUrl
@@ -48,14 +57,15 @@ function Invoke-ExecSetSharePointMember {
             $SiteDrive = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/sites/$($GraphSite.id)/drive?`$select=id" -tenantid $TenantFilter -AsApp $true
 
             if ($Request.Body.Add -eq $true) {
-                # Resolve user's Entra object ID for reliable sharing
-                # URL-encode the UPN because guest UPNs contain '#' (e.g. user_domain.com#EXT#@tenant.onmicrosoft.com)
-                $EncodedEmail = [uri]::EscapeDataString($UserEmail)
-                $UserObj = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users/$EncodedEmail?`$select=id" -tenantid $TenantFilter -AsApp $true
+                # Use the object ID from the picker, or resolve it via $filter if not available
+                if (!$UserObjectId) {
+                    $UserLookup = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users?`$filter=userPrincipalName eq '$UserEmail'&`$select=id" -tenantid $TenantFilter -AsApp $true -ComplexFilter
+                    $UserObjectId = $UserLookup.id
+                }
 
                 # Grant edit access via sharing invitation on the document library root
                 $ShareBody = ConvertTo-Json @{
-                    recipients     = @(@{ objectId = $UserObj.id })
+                    recipients     = @(@{ objectId = $UserObjectId })
                     roles          = @('write')
                     requireSignIn  = $true
                     sendInvitation = $false
@@ -66,12 +76,14 @@ function Invoke-ExecSetSharePointMember {
             } else {
                 # Remove: find the user's sharing permission on the drive root and delete it
                 $Permissions = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/drives/$($SiteDrive.id)/root/permissions" -tenantid $TenantFilter -AsApp $true
-                $UserLower = $UserEmail.ToLower()
+                $UserLower = ($UserEmail ?? '').ToLower()
                 $MatchedPerm = $Permissions | Where-Object {
                     ($_.grantedToV2.user.email -and $_.grantedToV2.user.email.ToLower() -eq $UserLower) -or
+                    ($_.grantedToV2.user.id -and $UserObjectId -and $_.grantedToV2.user.id -eq $UserObjectId) -or
                     ($_.grantedTo.user.email -and $_.grantedTo.user.email.ToLower() -eq $UserLower) -or
-                    ($_.grantedToIdentitiesV2 | Where-Object { $_.user.email -and $_.user.email.ToLower() -eq $UserLower }) -or
-                    ($_.grantedToIdentities | Where-Object { $_.user.email -and $_.user.email.ToLower() -eq $UserLower })
+                    ($_.grantedTo.user.id -and $UserObjectId -and $_.grantedTo.user.id -eq $UserObjectId) -or
+                    ($_.grantedToIdentitiesV2 | Where-Object { ($_.user.email -and $_.user.email.ToLower() -eq $UserLower) -or ($_.user.id -and $UserObjectId -and $_.user.id -eq $UserObjectId) }) -or
+                    ($_.grantedToIdentities | Where-Object { ($_.user.email -and $_.user.email.ToLower() -eq $UserLower) -or ($_.user.id -and $UserObjectId -and $_.user.id -eq $UserObjectId) })
                 } | Select-Object -First 1
 
                 if ($MatchedPerm) {
