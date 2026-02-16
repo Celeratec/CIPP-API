@@ -37,62 +37,29 @@ function Invoke-ExecSharePointInviteGuest {
 
         # Step 2: Add guest to the target resource
         if ($Request.Body.TeamID -and $GuestUserId) {
-            # Teams mode: add guest to the Team via Graph API.
-            # Azure AD needs a few seconds to propagate the freshly-invited guest
-            # user object before it can be resolved for team membership, so we
-            # wait and then retry with increasing delays.
+            # Teams mode: add guest to the Team's underlying M365 Group.
+            # Using Add-CIPPGroupMember (Group membership API) instead of the
+            # Teams conversation member API because it handles guest users and
+            # #EXT# UPN encoding reliably. Team ID = Group ID for M365 Teams.
             $TeamID = $Request.Body.TeamID
-            $TeamMemberBody = @{
-                '@odata.type'     = '#microsoft.graph.aadUserConversationMember'
-                'roles'           = @()
-                'user@odata.bind' = "https://graph.microsoft.com/v1.0/users('$GuestUserId')"
-            } | ConvertTo-Json -Depth 5
+            $MemberIdentifier = if ($GuestUPN) { $GuestUPN } else { $GuestUserId }
 
-            # Initial delay: the guest was just created, give Azure AD time to propagate
+            # Brief delay: the guest was just created, give Azure AD time to propagate
             Start-Sleep -Seconds 5
 
             try {
-                $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/members" -tenantid $TenantFilter -type POST -body $TeamMemberBody
+                $null = Add-CIPPGroupMember -GroupType 'Team' -GroupID $TeamID -Member $MemberIdentifier -TenantFilter $TenantFilter -Headers $Headers
                 $ResultMessages.Add("Added guest as a member of the Team.")
             } catch {
-                $FirstError = Get-CippException -Exception $_
-                $FirstMsg = [string]$FirstError.NormalizedError + [string]$FirstError.Message
-                $IsPerm = $FirstMsg -match '403' -or $FirstMsg -match 'Authorization_RequestDenied' -or $FirstMsg -match 'Access denied'
-                if (-not $IsPerm) {
-                    # Retry: wait longer and try again (propagation lag)
-                    Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "First attempt to add guest to Team failed, retrying after delay: $($FirstError.NormalizedError)" -Sev 'Debug'
-                    Start-Sleep -Seconds 10
-                    try {
-                        $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/members" -tenantid $TenantFilter -type POST -body $TeamMemberBody
-                        $ResultMessages.Add("Added guest as a member of the Team.")
-                    } catch {
-                        $SecondError = Get-CippException -Exception $_
-                        $SecondMsg = [string]$SecondError.NormalizedError + [string]$SecondError.Message
-                        $IsPerm2 = $SecondMsg -match '403' -or $SecondMsg -match 'Authorization_RequestDenied' -or $SecondMsg -match 'Access denied'
-                        if (-not $IsPerm2) {
-                            # Final retry
-                            Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Second attempt failed, final retry after delay: $($SecondError.NormalizedError)" -Sev 'Debug'
-                            Start-Sleep -Seconds 15
-                            try {
-                                $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/members" -tenantid $TenantFilter -type POST -body $TeamMemberBody
-                                $ResultMessages.Add("Added guest as a member of the Team.")
-                            } catch {
-                                $FinalError = Get-CippException -Exception $_
-                                $ResultMessages.Add("Guest invited to tenant, but could not add to Team after 3 attempts: $($FinalError.NormalizedError)")
-                                Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Failed to add guest to Team after 3 retries: $($FinalError.NormalizedError)" -Sev 'Warning' -LogData $FinalError
-                                $TeamsAddWarning = $true
-                            }
-                        } else {
-                            $ResultMessages.Add("Guest invited to tenant, but could not add to Team: Insufficient permissions. Ensure the CIPP app has 'Group.ReadWrite.All' application permission and CPV consent has been refreshed for this tenant.")
-                            Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Failed to add guest to Team (permissions): $($SecondError.NormalizedError)" -Sev 'Warning' -LogData $SecondError
-                            $TeamsAddWarning = $true
-                        }
-                    }
-                } else {
+                $TeamError = Get-CippException -Exception $_
+                $ErrorMsg = [string]$TeamError.NormalizedError + [string]$TeamError.Message
+                if ($ErrorMsg -match '403' -or $ErrorMsg -match 'Authorization_RequestDenied' -or $ErrorMsg -match 'Access denied') {
                     $ResultMessages.Add("Guest invited to tenant, but could not add to Team: Insufficient permissions. Ensure the CIPP app has 'Group.ReadWrite.All' application permission and CPV consent has been refreshed for this tenant.")
-                    Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Failed to add guest to Team (permissions): $($FirstError.NormalizedError)" -Sev 'Warning' -LogData $FirstError
-                    $TeamsAddWarning = $true
+                } else {
+                    $ResultMessages.Add("Guest invited to tenant, but could not add to Team: $($TeamError.NormalizedError)")
                 }
+                Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Failed to add guest to Team: $($TeamError.NormalizedError)" -Sev 'Warning' -LogData $TeamError
+                $TeamsAddWarning = $true
             }
         } elseif ($Request.Body.SharePointType -eq 'Group' -and $Request.Body.groupId -and $GuestUserId) {
             # SharePoint Group-connected site: add guest to the M365 group

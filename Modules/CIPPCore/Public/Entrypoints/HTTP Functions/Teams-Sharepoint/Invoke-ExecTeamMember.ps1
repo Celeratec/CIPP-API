@@ -1,38 +1,3 @@
-function Add-CIPPTeamMemberWithRetry {
-    param(
-        [string]$TeamID,
-        [string]$TenantFilter,
-        [string]$Body,
-        [string]$Role,
-        [string]$TeamLabel,
-        $Headers,
-        [string]$APIName
-    )
-
-    $MaxRetries = 3
-    $RetryDelays = @(0, 5, 10)
-
-    for ($i = 0; $i -lt $MaxRetries; $i++) {
-        try {
-            if ($RetryDelays[$i] -gt 0) {
-                Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Retry $i of $MaxRetries - waiting $($RetryDelays[$i])s before adding member to Team" -Sev 'Debug'
-                Start-Sleep -Seconds $RetryDelays[$i]
-            }
-            $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/members" -tenantid $TenantFilter -type POST -body $Body
-            return "Successfully added user as $Role to team '$TeamLabel'"
-        } catch {
-            $RetryError = Get-CippException -Exception $_
-            $RetryMsg = [string]$RetryError.NormalizedError + [string]$RetryError.Message
-            if ($RetryMsg -match '403' -or $RetryMsg -match 'Authorization_RequestDenied' -or $RetryMsg -match 'Access denied') {
-                throw
-            }
-            if ($i -eq ($MaxRetries - 1)) {
-                throw
-            }
-        }
-    }
-}
-
 Function Invoke-ExecTeamMember {
     <#
     .FUNCTIONALITY
@@ -68,15 +33,32 @@ Function Invoke-ExecTeamMember {
                 $Role = $Request.Body.Role
                 if (-not $Role) { $Role = 'member' }
 
-                [string[]]$Roles = if ($Role -eq 'owner') { @('owner') } else { @() }
+                # Add member via the M365 Group membership API (Team ID = Group ID).
+                # This is more reliable than the Teams conversation member API,
+                # especially for guest users whose objects may still be propagating.
+                $null = Add-CIPPGroupMember -GroupType 'Team' -GroupID $TeamID -Member $UserID -TenantFilter $TenantFilter -Headers $Headers
+                $Message = "Successfully added user as $Role to team '$TeamLabel'"
 
-                $Body = @{
-                    '@odata.type'     = '#microsoft.graph.aadUserConversationMember'
-                    'roles'           = $Roles
-                    'user@odata.bind' = "https://graph.microsoft.com/v1.0/users('$UserID')"
-                } | ConvertTo-Json -Depth 5
-
-                $Message = Add-CIPPTeamMemberWithRetry -TeamID $TeamID -TenantFilter $TenantFilter -Body $Body -Role $Role -TeamLabel $TeamLabel -Headers $Headers -APIName $APIName
+                # If adding as owner, also set the owner role via Teams API
+                if ($Role -eq 'owner') {
+                    try {
+                        # Look up the membership ID to promote to owner
+                        $TeamMembers = New-GraphGetRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/members" -tenantid $TenantFilter
+                        $NewMember = $TeamMembers | Where-Object { $_.userId -eq $UserID }
+                        if ($NewMember) {
+                            [string[]]$OwnerRoles = @('owner')
+                            $RoleBody = @{
+                                '@odata.type' = '#microsoft.graph.aadUserConversationMember'
+                                'roles'       = $OwnerRoles
+                            } | ConvertTo-Json -Depth 5
+                            $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/members/$($NewMember.id)" -tenantid $TenantFilter -type PATCH -body $RoleBody
+                            $Message = "Successfully added user as owner to team '$TeamLabel'"
+                        }
+                    } catch {
+                        Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Added member but failed to set owner role: $($_.Exception.Message)" -Sev 'Warning'
+                        $Message = "Added user to team '$TeamLabel' as member (owner role promotion failed - you can promote them from the team members list)"
+                    }
+                }
             }
             'Remove' {
                 $MembershipID = $Request.Body.MembershipID
