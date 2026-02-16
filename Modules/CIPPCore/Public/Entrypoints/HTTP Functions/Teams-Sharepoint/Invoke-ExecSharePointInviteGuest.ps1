@@ -35,8 +35,31 @@ function Invoke-ExecSharePointInviteGuest {
             $ResultMessages.Add("Invited guest $($Request.Body.displayName) ($($Request.Body.mail)) without email invite.")
         }
 
-        # Step 2: Add guest to the SharePoint site group (for Group-connected sites)
-        if ($Request.Body.SharePointType -eq 'Group' -and $Request.Body.groupId -and $GuestUserId) {
+        # Step 2: Add guest to the target resource
+        if ($Request.Body.TeamID -and $GuestUserId) {
+            # Teams mode: add guest to the Team via Graph API
+            try {
+                $TeamID = $Request.Body.TeamID
+                $TeamMemberBody = @{
+                    '@odata.type'     = '#microsoft.graph.aadUserConversationMember'
+                    'roles'           = @()
+                    'user@odata.bind' = "https://graph.microsoft.com/v1.0/users('$GuestUserId')"
+                } | ConvertTo-Json -Depth 5
+                $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/members" -tenantid $TenantFilter -type POST -body $TeamMemberBody
+                $ResultMessages.Add("Added guest as a member of the Team.")
+            } catch {
+                $TeamError = Get-CippException -Exception $_
+                $ErrorMsg = [string]$TeamError.NormalizedError + [string]$TeamError.Message
+                if ($ErrorMsg -match '403' -or $ErrorMsg -match 'Authorization_RequestDenied' -or $ErrorMsg -match 'Access denied') {
+                    $ResultMessages.Add("Guest invited to tenant, but could not add to Team: Insufficient permissions. Ensure the CIPP app has 'Group.ReadWrite.All' application permission and CPV consent has been refreshed for this tenant.")
+                } else {
+                    $ResultMessages.Add("Guest invited to tenant, but could not add to Team: $($TeamError.NormalizedError)")
+                }
+                Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Failed to add guest to Team: $($TeamError.NormalizedError)" -Sev 'Warning' -LogData $TeamError
+                $TeamsAddWarning = $true
+            }
+        } elseif ($Request.Body.SharePointType -eq 'Group' -and $Request.Body.groupId -and $GuestUserId) {
+            # SharePoint Group-connected site: add guest to the M365 group
             try {
                 $GroupId = $Request.Body.groupId
                 if ($GroupId -notmatch '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$') {
@@ -104,6 +127,9 @@ function Invoke-ExecSharePointInviteGuest {
         $Body = @{ Results = @($ResultMessages) }
         if ($NonGroupSiteWarning) {
             $Body['NonGroupSiteWarning'] = $true
+        }
+        if ($TeamsAddWarning) {
+            $Body['TeamsAddWarning'] = $true
         }
     } catch {
         $ErrorMessage = Get-CippException -Exception $_
@@ -183,61 +209,81 @@ function Invoke-ExecSharePointInviteGuest {
                     # Could not retrieve Entra External Collaboration settings
                 }
 
-                # --- Check SharePoint sharing settings ---
-                try {
-                    $SPSettings = New-GraphGetRequest -tenantid $TenantFilter -Uri 'https://graph.microsoft.com/beta/admin/sharepoint/settings' -AsApp $true
-
-                    if ($SPSettings.sharingCapability -eq 'disabled') {
-                        $DiagList.Add(@{
-                            source       = 'SharePoint Sharing Settings'
-                            issue        = 'External sharing is completely disabled for SharePoint'
-                            detail       = "SharePoint external sharing is set to Only people in your organization. No external guests can access any SharePoint content."
-                            fix          = "Enable external sharing in SharePoint Sharing Settings. At minimum, set it to Existing guests or New and existing guests."
-                            settingsPage = '/teams-share/sharepoint/sharing-settings'
-                            severity     = 'error'
-                        })
-                    }
-
-                    if ($SPSettings.sharingDomainRestrictionMode -eq 'allowList') {
-                        $SPAllowed = @($SPSettings.sharingAllowedDomainList)
-                        if ($SPAllowed.Count -gt 0 -and $BlockedDomain -notin $SPAllowed) {
+                if ($Request.Body.TeamID) {
+                    # --- Check Teams guest access settings ---
+                    try {
+                        $ClientConfig = New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Get-CsTeamsClientConfiguration' -CmdParams @{Identity = 'Global' }
+                        if ($ClientConfig.AllowGuestUser -eq $false) {
                             $DiagList.Add(@{
-                                source       = 'SharePoint Sharing Settings'
-                                issue        = "Domain '$BlockedDomain' is not in the SharePoint allowed domains list"
-                                detail       = "SharePoint uses a domain allow-list for external sharing. Permitted domains: $($SPAllowed -join ', '). The domain '$BlockedDomain' is not on this list."
-                                fix          = "Add '$BlockedDomain' to the SharePoint sharing allowed domains list."
-                                settingsPage = '/teams-share/sharepoint/sharing-settings'
-                                severity     = 'warning'
-                                currentList  = $SPAllowed
-                                listType     = 'allowList'
+                                source       = 'Teams Guest Access'
+                                issue        = 'Guest access is disabled for Microsoft Teams'
+                                detail       = 'The Teams tenant setting "Allow guest access" is currently disabled. Guests cannot be added to any teams until this is enabled.'
+                                fix          = 'Enable guest access in Teams Settings > Guest & Cloud Storage, or use the CIPP Teams Settings page.'
+                                settingsPage = '/teams-share/teams/teams-settings'
+                                severity     = 'error'
                             })
                         }
-                    } elseif ($SPSettings.sharingDomainRestrictionMode -eq 'blockList') {
-                        $SPBlocked = @($SPSettings.sharingBlockedDomainList)
-                        if ($SPBlocked.Count -gt 0 -and $BlockedDomain -in $SPBlocked) {
+                    } catch {
+                        # Teams settings may not be accessible
+                    }
+                } else {
+                    # --- Check SharePoint sharing settings ---
+                    try {
+                        $SPSettings = New-GraphGetRequest -tenantid $TenantFilter -Uri 'https://graph.microsoft.com/beta/admin/sharepoint/settings' -AsApp $true
+
+                        if ($SPSettings.sharingCapability -eq 'disabled') {
                             $DiagList.Add(@{
                                 source       = 'SharePoint Sharing Settings'
-                                issue        = "Domain '$BlockedDomain' is blocked in SharePoint sharing settings"
-                                detail       = "The domain '$BlockedDomain' appears in the SharePoint blocked domains list."
-                                fix          = "Remove '$BlockedDomain' from the SharePoint sharing blocked domains list."
+                                issue        = 'External sharing is completely disabled for SharePoint'
+                                detail       = "SharePoint external sharing is set to Only people in your organization. No external guests can access any SharePoint content."
+                                fix          = "Enable external sharing in SharePoint Sharing Settings. At minimum, set it to Existing guests or New and existing guests."
                                 settingsPage = '/teams-share/sharepoint/sharing-settings'
-                                severity     = 'warning'
-                                currentList  = $SPBlocked
-                                listType     = 'blockList'
+                                severity     = 'error'
                             })
                         }
+
+                        if ($SPSettings.sharingDomainRestrictionMode -eq 'allowList') {
+                            $SPAllowed = @($SPSettings.sharingAllowedDomainList)
+                            if ($SPAllowed.Count -gt 0 -and $BlockedDomain -notin $SPAllowed) {
+                                $DiagList.Add(@{
+                                    source       = 'SharePoint Sharing Settings'
+                                    issue        = "Domain '$BlockedDomain' is not in the SharePoint allowed domains list"
+                                    detail       = "SharePoint uses a domain allow-list for external sharing. Permitted domains: $($SPAllowed -join ', '). The domain '$BlockedDomain' is not on this list."
+                                    fix          = "Add '$BlockedDomain' to the SharePoint sharing allowed domains list."
+                                    settingsPage = '/teams-share/sharepoint/sharing-settings'
+                                    severity     = 'warning'
+                                    currentList  = $SPAllowed
+                                    listType     = 'allowList'
+                                })
+                            }
+                        } elseif ($SPSettings.sharingDomainRestrictionMode -eq 'blockList') {
+                            $SPBlocked = @($SPSettings.sharingBlockedDomainList)
+                            if ($SPBlocked.Count -gt 0 -and $BlockedDomain -in $SPBlocked) {
+                                $DiagList.Add(@{
+                                    source       = 'SharePoint Sharing Settings'
+                                    issue        = "Domain '$BlockedDomain' is blocked in SharePoint sharing settings"
+                                    detail       = "The domain '$BlockedDomain' appears in the SharePoint blocked domains list."
+                                    fix          = "Remove '$BlockedDomain' from the SharePoint sharing blocked domains list."
+                                    settingsPage = '/teams-share/sharepoint/sharing-settings'
+                                    severity     = 'warning'
+                                    currentList  = $SPBlocked
+                                    listType     = 'blockList'
+                                })
+                            }
+                        }
+                    } catch {
+                        # SharePoint settings may not be accessible
                     }
-                } catch {
-                    # SharePoint settings may not be accessible
                 }
 
                 # Fallback if no specific cause found
                 if ($DiagList.Count -eq 0) {
+                    $ContextLabel = if ($Request.Body.TeamID) { 'Teams Settings' } else { 'SharePoint Sharing settings' }
                     $DiagList.Add(@{
                         source       = 'Unknown Policy'
                         issue        = "Could not determine the specific policy blocking domain '$BlockedDomain'"
                         detail       = "The domain '$BlockedDomain' is being blocked by a tenant policy, but the specific restriction could not be identified. This may be caused by a Cross-Tenant Access Policy, Conditional Access policy, or another setting."
-                        fix          = 'Review External Collaboration settings, SharePoint Sharing settings, and Cross-Tenant Access Policies for domain restrictions.'
+                        fix          = "Review External Collaboration settings, $ContextLabel, and Cross-Tenant Access Policies for domain restrictions."
                         settingsPage = '/tenant/administration/cross-tenant-access/external-collaboration'
                         severity     = 'warning'
                     })
