@@ -1,3 +1,38 @@
+function Add-CIPPTeamMemberWithRetry {
+    param(
+        [string]$TeamID,
+        [string]$TenantFilter,
+        [string]$Body,
+        [string]$Role,
+        [string]$TeamLabel,
+        $Headers,
+        [string]$APIName
+    )
+
+    $MaxRetries = 3
+    $RetryDelays = @(0, 5, 10)
+
+    for ($i = 0; $i -lt $MaxRetries; $i++) {
+        try {
+            if ($RetryDelays[$i] -gt 0) {
+                Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Retry $i of $MaxRetries - waiting $($RetryDelays[$i])s before adding member to Team" -Sev 'Debug'
+                Start-Sleep -Seconds $RetryDelays[$i]
+            }
+            $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/members" -tenantid $TenantFilter -type POST -body $Body
+            return "Successfully added user as $Role to team '$TeamLabel'"
+        } catch {
+            $RetryError = Get-CippException -Exception $_
+            $RetryMsg = [string]$RetryError.NormalizedError + [string]$RetryError.Message
+            if ($RetryMsg -match '403' -or $RetryMsg -match 'Authorization_RequestDenied' -or $RetryMsg -match 'Access denied') {
+                throw
+            }
+            if ($i -eq ($MaxRetries - 1)) {
+                throw
+            }
+        }
+    }
+}
+
 Function Invoke-ExecTeamMember {
     <#
     .FUNCTIONALITY
@@ -41,34 +76,7 @@ Function Invoke-ExecTeamMember {
                     'user@odata.bind' = "https://graph.microsoft.com/v1.0/users('$UserID')"
                 } | ConvertTo-Json -Depth 5
 
-                # Retry with delays to handle Azure AD propagation lag for
-                # freshly-invited guest users whose objects haven't replicated yet.
-                $MaxRetries = 3
-                $RetryDelays = @(0, 5, 10)
-                $AddSuccess = $false
-
-                for ($RetryIdx = 0; $RetryIdx -lt $MaxRetries; $RetryIdx++) {
-                    try {
-                        if ($RetryDelays[$RetryIdx] -gt 0) {
-                            Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Retry $RetryIdx/$MaxRetries: waiting $($RetryDelays[$RetryIdx])s before adding member to Team '$TeamLabel'" -Sev 'Debug'
-                            Start-Sleep -Seconds $RetryDelays[$RetryIdx]
-                        }
-                        $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/members" -tenantid $TenantFilter -type POST -body $Body
-                        $Message = "Successfully added user as $Role to team '$TeamLabel'"
-                        $AddSuccess = $true
-                        break
-                    } catch {
-                        $RetryError = Get-CippException -Exception $_
-                        $RetryMsg = [string]$RetryError.NormalizedError + [string]$RetryError.Message
-                        # Don't retry permission errors — they won't resolve with time
-                        if ($RetryMsg -match '403' -or $RetryMsg -match 'Authorization_RequestDenied' -or $RetryMsg -match 'Access denied') {
-                            throw
-                        }
-                        if ($RetryIdx -eq ($MaxRetries - 1)) {
-                            throw
-                        }
-                    }
-                }
+                $Message = Add-CIPPTeamMemberWithRetry -TeamID $TeamID -TenantFilter $TenantFilter -Body $Body -Role $Role -TeamLabel $TeamLabel -Headers $Headers -APIName $APIName
             }
             'Remove' {
                 $MembershipID = $Request.Body.MembershipID
