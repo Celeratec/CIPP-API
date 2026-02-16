@@ -41,8 +41,34 @@ Function Invoke-ExecTeamMember {
                     'user@odata.bind' = "https://graph.microsoft.com/v1.0/users('$UserID')"
                 } | ConvertTo-Json -Depth 5
 
-                $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/members" -tenantid $TenantFilter -type POST -body $Body
-                $Message = "Successfully added user as $Role to team '$TeamLabel'"
+                # Retry with delays to handle Azure AD propagation lag for
+                # freshly-invited guest users whose objects haven't replicated yet.
+                $MaxRetries = 3
+                $RetryDelays = @(0, 5, 10)
+                $AddSuccess = $false
+
+                for ($RetryIdx = 0; $RetryIdx -lt $MaxRetries; $RetryIdx++) {
+                    try {
+                        if ($RetryDelays[$RetryIdx] -gt 0) {
+                            Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Retry $RetryIdx/$MaxRetries: waiting $($RetryDelays[$RetryIdx])s before adding member to Team '$TeamLabel'" -Sev 'Debug'
+                            Start-Sleep -Seconds $RetryDelays[$RetryIdx]
+                        }
+                        $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/members" -tenantid $TenantFilter -type POST -body $Body
+                        $Message = "Successfully added user as $Role to team '$TeamLabel'"
+                        $AddSuccess = $true
+                        break
+                    } catch {
+                        $RetryError = Get-CippException -Exception $_
+                        $RetryMsg = [string]$RetryError.NormalizedError + [string]$RetryError.Message
+                        # Don't retry permission errors — they won't resolve with time
+                        if ($RetryMsg -match '403' -or $RetryMsg -match 'Authorization_RequestDenied' -or $RetryMsg -match 'Access denied') {
+                            throw
+                        }
+                        if ($RetryIdx -eq ($MaxRetries - 1)) {
+                            throw
+                        }
+                    }
+                }
             }
             'Remove' {
                 $MembershipID = $Request.Body.MembershipID

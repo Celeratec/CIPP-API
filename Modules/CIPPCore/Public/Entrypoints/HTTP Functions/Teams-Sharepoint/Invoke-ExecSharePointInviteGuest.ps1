@@ -37,26 +37,50 @@ function Invoke-ExecSharePointInviteGuest {
 
         # Step 2: Add guest to the target resource
         if ($Request.Body.TeamID -and $GuestUserId) {
-            # Teams mode: add guest to the Team via Graph API
-            try {
-                $TeamID = $Request.Body.TeamID
-                $TeamMemberBody = @{
-                    '@odata.type'     = '#microsoft.graph.aadUserConversationMember'
-                    'roles'           = @()
-                    'user@odata.bind' = "https://graph.microsoft.com/v1.0/users('$GuestUserId')"
-                } | ConvertTo-Json -Depth 5
-                $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/members" -tenantid $TenantFilter -type POST -body $TeamMemberBody
-                $ResultMessages.Add("Added guest as a member of the Team.")
-            } catch {
-                $TeamError = Get-CippException -Exception $_
-                $ErrorMsg = [string]$TeamError.NormalizedError + [string]$TeamError.Message
-                if ($ErrorMsg -match '403' -or $ErrorMsg -match 'Authorization_RequestDenied' -or $ErrorMsg -match 'Access denied') {
-                    $ResultMessages.Add("Guest invited to tenant, but could not add to Team: Insufficient permissions. Ensure the CIPP app has 'Group.ReadWrite.All' application permission and CPV consent has been refreshed for this tenant.")
-                } else {
-                    $ResultMessages.Add("Guest invited to tenant, but could not add to Team: $($TeamError.NormalizedError)")
+            # Teams mode: add guest to the Team via Graph API.
+            # Azure AD needs a few seconds to propagate the freshly-invited guest
+            # user object before it can be resolved for team membership, so we
+            # retry with increasing delays.
+            $TeamID = $Request.Body.TeamID
+            $TeamMemberBody = @{
+                '@odata.type'     = '#microsoft.graph.aadUserConversationMember'
+                'roles'           = @()
+                'user@odata.bind' = "https://graph.microsoft.com/v1.0/users('$GuestUserId')"
+            } | ConvertTo-Json -Depth 5
+
+            $MaxRetries = 3
+            $RetryDelays = @(5, 10, 15)
+            $TeamAddSuccess = $false
+
+            # Initial delay: the guest was just created, give Azure AD time to propagate
+            Start-Sleep -Seconds 5
+
+            for ($i = 0; $i -lt $MaxRetries; $i++) {
+                try {
+                    if ($i -gt 0) {
+                        Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Retry $i/$MaxRetries: waiting $($RetryDelays[$i])s for guest user to propagate before adding to Team" -Sev 'Debug'
+                        Start-Sleep -Seconds $RetryDelays[$i]
+                    }
+                    $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/members" -tenantid $TenantFilter -type POST -body $TeamMemberBody
+                    $ResultMessages.Add("Added guest as a member of the Team.")
+                    $TeamAddSuccess = $true
+                    break
+                } catch {
+                    $TeamError = Get-CippException -Exception $_
+                    $ErrorMsg = [string]$TeamError.NormalizedError + [string]$TeamError.Message
+                    # Only retry on transient/propagation errors, not permission errors
+                    if ($ErrorMsg -match '403' -or $ErrorMsg -match 'Authorization_RequestDenied' -or $ErrorMsg -match 'Access denied') {
+                        $ResultMessages.Add("Guest invited to tenant, but could not add to Team: Insufficient permissions. Ensure the CIPP app has 'Group.ReadWrite.All' application permission and CPV consent has been refreshed for this tenant.")
+                        Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Failed to add guest to Team (permissions): $($TeamError.NormalizedError)" -Sev 'Warning' -LogData $TeamError
+                        $TeamsAddWarning = $true
+                        break
+                    }
+                    if ($i -eq ($MaxRetries - 1)) {
+                        $ResultMessages.Add("Guest invited to tenant, but could not add to Team after $MaxRetries attempts: $($TeamError.NormalizedError)")
+                        Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Failed to add guest to Team after $MaxRetries retries: $($TeamError.NormalizedError)" -Sev 'Warning' -LogData $TeamError
+                        $TeamsAddWarning = $true
+                    }
                 }
-                Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Failed to add guest to Team: $($TeamError.NormalizedError)" -Sev 'Warning' -LogData $TeamError
-                $TeamsAddWarning = $true
             }
         } elseif ($Request.Body.SharePointType -eq 'Group' -and $Request.Body.groupId -and $GuestUserId) {
             # SharePoint Group-connected site: add guest to the M365 group
