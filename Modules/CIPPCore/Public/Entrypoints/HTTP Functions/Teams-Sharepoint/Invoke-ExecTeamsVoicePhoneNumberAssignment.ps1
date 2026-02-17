@@ -50,77 +50,67 @@ Function Invoke-ExecTeamsVoicePhoneNumberAssignment {
             # Pattern 1: Missing Capabilities
             if ($NormError -match 'does not have required capabilities' -or $RawError -match 'does not have required capabilities') {
                 $TeamsAdminUrl = 'https://admin.teams.microsoft.com/phone-numbers'
+                # Collect capability info from the best available source
+                $AcquiredCapsList = @()
+                $AvailableCapsList = @()
+                $NumberType = $null
+                $LookupSource = $null
+
+                # Primary: Get-CsOnlineTelephoneNumber (returns AcquiredCapabilities & AvailableCapabilities)
                 try {
-                    # Use Get-CsOnlineTelephoneNumber which returns AcquiredCapabilities & AvailableCapabilities
-                    # (Get-CsPhoneNumberAssignment only returns 'Capability' and lacks AvailableCapabilities)
                     $NumberInfo = New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Get-CsOnlineTelephoneNumber' -CmdParams @{TelephoneNumber = $PhoneNumber; ErrorAction = 'Stop' }
-                    $AcquiredCaps = if ($NumberInfo.AcquiredCapabilities) { ($NumberInfo.AcquiredCapabilities -join ', ') } else { 'None' }
-                    $AvailableCaps = if ($NumberInfo.AvailableCapabilities) { ($NumberInfo.AvailableCapabilities -join ', ') } else { 'None' }
+                    $AcquiredCapsList = @($NumberInfo.AcquiredCapabilities | Where-Object { $_ })
+                    $AvailableCapsList = @($NumberInfo.AvailableCapabilities | Where-Object { $_ })
                     $NumberType = $NumberInfo.InventoryType
-                    $HasUserAssignment = $NumberInfo.AcquiredCapabilities -contains 'UserAssignment'
-                    $UserAssignmentAvailable = $NumberInfo.AvailableCapabilities -contains 'UserAssignment'
-
-                    if (-not $HasUserAssignment -and $UserAssignmentAvailable) {
-                        $DetailMsg = "This phone number has 'UserAssignment' as an available capability but it has NOT been acquired yet. Acquired: $AcquiredCaps. Available: $AvailableCaps. The number type is '$NumberType'. The number's usage type needs to be changed to 'User' in the Teams Admin Center to acquire the UserAssignment capability."
-                        $FixMsg = "Open the Teams Admin Center > Phone Numbers, find this number, click Edit, and change the 'Assigned to' usage type to 'User'. This will acquire the UserAssignment capability. Then retry the assignment."
-                    } elseif (-not $HasUserAssignment -and -not $UserAssignmentAvailable) {
-                        $DetailMsg = "This phone number does not have 'UserAssignment' in either its acquired or available capabilities. Acquired: $AcquiredCaps. Available: $AvailableCaps. This number type ($NumberType) may not support user assignment."
-                        $FixMsg = "This number may be a service number (toll/toll-free) that cannot be assigned to users. In the Teams Admin Center > Phone Numbers, check the number type. If it is a service number, you will need to acquire a user number instead."
-                    } else {
-                        $DetailMsg = "This phone number currently has acquired capabilities: $AcquiredCaps. Available capabilities: $AvailableCaps. The number type is '$NumberType'. It requires the 'UserAssignment' capability to be assigned to a user."
-                        $FixMsg = "Open the Teams Admin Center > Phone Numbers, find this number, and change its usage type to allow user assignment."
-                    }
-
-                    $DiagList.Add(@{
-                        source       = 'Phone Number Capabilities'
-                        issue        = 'Number lacks required capabilities for user assignment'
-                        detail       = $DetailMsg
-                        fix          = $FixMsg
-                        severity     = 'error'
-                        canQuickFix  = $false
-                        settingsPage = $TeamsAdminUrl
-                        riskLevel    = $null
-                        riskWarning  = $null
-                    })
+                    $LookupSource = 'primary'
                 } catch {
-                    # Fallback: try Get-CsPhoneNumberAssignment which uses 'Capability' property
+                    # Fallback: Get-CsPhoneNumberAssignment (returns 'Capability' property only)
                     try {
                         $NumberInfo2 = New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Get-CsPhoneNumberAssignment' -CmdParams @{TelephoneNumber = $PhoneNumber; ErrorAction = 'Stop' }
-                        $AcquiredCaps2 = if ($NumberInfo2.Capability) { ($NumberInfo2.Capability -join ', ') } elseif ($NumberInfo2.AcquiredCapabilities) { ($NumberInfo2.AcquiredCapabilities -join ', ') } else { 'None' }
-                        $NumberType2 = $NumberInfo2.NumberType
-                        $HasUserAssignment2 = ($NumberInfo2.Capability -contains 'UserAssignment') -or ($NumberInfo2.AcquiredCapabilities -contains 'UserAssignment')
-
-                        if (-not $HasUserAssignment2) {
-                            $DetailMsg2 = "This phone number's current capabilities are: $AcquiredCaps2. The number type is '$NumberType2'. It does not have the 'UserAssignment' capability required to assign to a user."
-                        } else {
-                            $DetailMsg2 = "This phone number has capabilities: $AcquiredCaps2. The number type is '$NumberType2'. Despite having UserAssignment capability, the assignment failed. This may be a provisioning issue."
-                        }
-
-                        $DiagList.Add(@{
-                            source       = 'Phone Number Capabilities'
-                            issue        = 'Number lacks required capabilities for user assignment'
-                            detail       = $DetailMsg2
-                            fix          = "Open the Teams Admin Center > Phone Numbers, find this number, and verify its usage type supports user assignment."
-                            severity     = 'error'
-                            canQuickFix  = $false
-                            settingsPage = $TeamsAdminUrl
-                            riskLevel    = $null
-                            riskWarning  = $null
-                        })
+                        $RawCaps = if ($NumberInfo2.Capability) { @($NumberInfo2.Capability) } elseif ($NumberInfo2.AcquiredCapabilities) { @($NumberInfo2.AcquiredCapabilities) } else { @() }
+                        $AcquiredCapsList = @($RawCaps | Where-Object { $_ })
+                        $NumberType = $NumberInfo2.NumberType
+                        $LookupSource = 'fallback'
                     } catch {
-                        $DiagList.Add(@{
-                            source       = 'Phone Number Capabilities'
-                            issue        = 'Number lacks required capabilities for user assignment'
-                            detail       = "The phone number does not have the required capabilities to be assigned to a user. The diagnostic lookup could not retrieve detailed capability information."
-                            fix          = "Open the Teams Admin Center > Phone Numbers, find this number, and verify its usage type supports user assignment."
-                            severity     = 'error'
-                            canQuickFix  = $false
-                            settingsPage = $TeamsAdminUrl
-                            riskLevel    = $null
-                            riskWarning  = $null
-                        })
+                        $LookupSource = 'failed'
                     }
                 }
+
+                $HasUserAssignment = $AcquiredCapsList -contains 'UserAssignment'
+                $UserAssignmentAvailable = $AvailableCapsList -contains 'UserAssignment'
+
+                if ($LookupSource -eq 'failed') {
+                    $DetailMsg = "The phone number does not have the required capabilities to be assigned to a user. The diagnostic lookup could not retrieve detailed capability information."
+                    $FixMsg = "Open the Teams Admin Center > Phone Numbers, find this number, and verify its usage type supports user assignment."
+                } elseif (-not $HasUserAssignment -and $UserAssignmentAvailable) {
+                    $DetailMsg = "This phone number has 'UserAssignment' as an available capability but it has NOT been acquired yet. The number's licensed usage must be changed to 'User' in the Teams Admin Center. This cannot be done via PowerShell — Microsoft only supports this change through the admin center UI."
+                    $FixMsg = "1) Click the button below to open the Teams Admin Center Phone Numbers page. 2) Find number $PhoneNumber in the list. 3) Ensure the number is unassigned (it should be). 4) Select the number and click 'Change usage'. 5) Choose 'User' from the available usages. 6) Click Apply. 7) Return here and retry the assignment."
+                } elseif (-not $HasUserAssignment -and -not $UserAssignmentAvailable -and $LookupSource -eq 'primary') {
+                    $DetailMsg = "This phone number does not support user assignment. 'UserAssignment' is not listed as an available capability for this number. This number type may be restricted to service use only (auto attendants, call queues, or conferencing)."
+                    $FixMsg = "This number cannot be assigned to a user. You will need to acquire a separate user-type phone number for this person. Check the Teams Admin Center for available number types."
+                } elseif (-not $HasUserAssignment) {
+                    $DetailMsg = "This phone number does not have the 'UserAssignment' capability required to assign to a user. The number type is '$NumberType'. The number's licensed usage may need to be changed to 'User' in the Teams Admin Center."
+                    $FixMsg = "1) Click the button below to open the Teams Admin Center Phone Numbers page. 2) Find number $PhoneNumber in the list. 3) Select the number and click 'Change usage'. 4) Choose 'User' from the available usages. 5) Click Apply. 6) Return here and retry the assignment."
+                } else {
+                    $DetailMsg = "This phone number has the UserAssignment capability, but the assignment still failed. The number type is '$NumberType'. This may be a provisioning delay or a Teams backend issue."
+                    $FixMsg = "Wait a few minutes and retry. If the issue persists, open the Teams Admin Center > Phone Numbers and verify this number's configuration."
+                }
+
+                $DiagEntry = @{
+                    source                = 'Phone Number Capabilities'
+                    issue                 = 'Number lacks required capabilities for user assignment'
+                    detail                = $DetailMsg
+                    fix                   = $FixMsg
+                    severity              = 'error'
+                    canQuickFix           = $false
+                    settingsPage          = $TeamsAdminUrl
+                    riskLevel             = $null
+                    riskWarning           = $null
+                    numberType            = $NumberType
+                    acquiredCapabilities  = @($AcquiredCapsList)
+                    availableCapabilities = @($AvailableCapsList)
+                }
+                $DiagList.Add($DiagEntry)
             }
 
             # Pattern 2: Number Already Assigned to Someone
