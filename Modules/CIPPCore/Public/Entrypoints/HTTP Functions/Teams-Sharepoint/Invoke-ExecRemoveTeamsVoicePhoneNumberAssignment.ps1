@@ -15,7 +15,11 @@ Function Invoke-ExecRemoveTeamsVoicePhoneNumberAssignment {
     # Interact with query parameters or the body of the request.
     $TenantFilter = $Request.Body.tenantFilter
     $AssignedTo = $Request.Body.AssignedTo
-    $PhoneNumber = $Request.Body.PhoneNumber
+    # Normalize phone number -- the + prefix can be lost during URL encoding (+ becomes space)
+    $PhoneNumber = ($Request.Body.PhoneNumber -replace '^\s+', '') -replace '^ ', ''
+    if ($PhoneNumber -and $PhoneNumber -notmatch '^\+') {
+        $PhoneNumber = "+$PhoneNumber"
+    }
     $PhoneNumberType = $Request.Body.PhoneNumberType
 
     try {

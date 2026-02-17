@@ -14,13 +14,18 @@ Function Invoke-ExecTeamsVoicePhoneNumberAssignment {
     $Identity = $Request.Body.input.value
 
     $tenantFilter = $Request.Body.TenantFilter
+    # Normalize phone number -- the + prefix can be lost during URL encoding (+ becomes space)
+    $PhoneNumber = ($Request.Body.PhoneNumber -replace '^\s+', '') -replace '^ ', ''
+    if ($PhoneNumber -and $PhoneNumber -notmatch '^\+') {
+        $PhoneNumber = "+$PhoneNumber"
+    }
     try {
         if ($Request.Body.locationOnly) {
-            $null = New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Set-CsPhoneNumberAssignment' -CmdParams @{LocationId = $Identity; PhoneNumber = $Request.Body.PhoneNumber; ErrorAction = 'stop' }
-            $Results = [pscustomobject]@{'Results' = "Successfully assigned emergency location to $($Request.Body.PhoneNumber)" }
+            $null = New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Set-CsPhoneNumberAssignment' -CmdParams @{LocationId = $Identity; PhoneNumber = $PhoneNumber; ErrorAction = 'stop' }
+            $Results = [pscustomobject]@{'Results' = "Successfully assigned emergency location to $($PhoneNumber)" }
         } else {
-            $null = New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Set-CsPhoneNumberAssignment' -CmdParams @{Identity = $Identity; PhoneNumber = $Request.Body.PhoneNumber; PhoneNumberType = $Request.Body.PhoneNumberType; ErrorAction = 'stop' }
-            $Results = [pscustomobject]@{'Results' = "Successfully assigned $($Request.Body.PhoneNumber) to $($Identity)" }
+            $null = New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Set-CsPhoneNumberAssignment' -CmdParams @{Identity = $Identity; PhoneNumber = $PhoneNumber; PhoneNumberType = $Request.Body.PhoneNumberType; ErrorAction = 'stop' }
+            $Results = [pscustomobject]@{'Results' = "Successfully assigned $($PhoneNumber) to $($Identity)" }
         }
         Write-LogMessage -Headers $Headers -API $APINAME -tenant $($TenantFilter) -message $($Results.Results) -Sev Info
         $StatusCode = [HttpStatusCode]::OK
