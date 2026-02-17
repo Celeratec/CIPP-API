@@ -62,7 +62,7 @@ Function Invoke-ExecRemoveTeamsVoicePhoneNumberAssignment {
                 $ActualAssignee = $null
                 $ActualAssigneeDisplay = 'a different user'
                 try {
-                    $NumberInfo = New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Get-CsPhoneNumberAssignment' -CmdParams @{PhoneNumber = $PhoneNumber; ErrorAction = 'Stop' }
+                    $NumberInfo = New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Get-CsPhoneNumberAssignment' -CmdParams @{TelephoneNumber = $PhoneNumber; ErrorAction = 'Stop' }
                     if ($NumberInfo.AssignedPstnTargetId) {
                         $ActualAssignee = $NumberInfo.AssignedPstnTargetId
                         try {

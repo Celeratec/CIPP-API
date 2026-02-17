@@ -49,18 +49,29 @@ Function Invoke-ExecTeamsVoicePhoneNumberAssignment {
 
             # Pattern 1: Missing Capabilities
             if ($NormError -match 'does not have required capabilities' -or $RawError -match 'does not have required capabilities') {
+                $TeamsAdminUrl = 'https://admin.teams.microsoft.com/phone-numbers'
                 try {
-                    $NumberInfo = New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Get-CsPhoneNumberAssignment' -CmdParams @{PhoneNumber = $PhoneNumber; ErrorAction = 'Stop' }
+                    $NumberInfo = New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Get-CsPhoneNumberAssignment' -CmdParams @{TelephoneNumber = $PhoneNumber; ErrorAction = 'Stop' }
                     $AcquiredCaps = if ($NumberInfo.AcquiredCapabilities) { ($NumberInfo.AcquiredCapabilities -join ', ') } else { 'None' }
                     $AvailableCaps = if ($NumberInfo.AvailableCapabilities) { ($NumberInfo.AvailableCapabilities -join ', ') } else { 'None' }
+                    $NumberType = $NumberInfo.NumberType
+                    $HasUserAssignment = $NumberInfo.AcquiredCapabilities -contains 'UserAssignment'
+                    $UserAssignmentAvailable = $NumberInfo.AvailableCapabilities -contains 'UserAssignment'
+
+                    if ($UserAssignmentAvailable -and -not $HasUserAssignment) {
+                        $DetailMsg = "This phone number has 'UserAssignment' as an available capability but it has not been acquired. Acquired: $AcquiredCaps. The number type is '$NumberType'. To fix this, the number's usage type may need to be changed from its current type to 'User' in the Teams Admin Center."
+                    } else {
+                        $DetailMsg = "This phone number currently has acquired capabilities: $AcquiredCaps. Available capabilities: $AvailableCaps. The number type is '$NumberType'. It requires the 'UserAssignment' capability to be assigned to a user."
+                    }
+
                     $DiagList.Add(@{
                         source       = 'Phone Number Capabilities'
                         issue        = 'Number lacks required capabilities for user assignment'
-                        detail       = "This phone number currently has acquired capabilities: $AcquiredCaps. Available capabilities: $AvailableCaps. It requires the 'UserAssignment' capability to be assigned to a user."
-                        fix          = "In the Teams Admin Center > Phone Numbers, change this number's usage type to include user assignment. Alternatively, ensure the correct Calling Plan or Operator Connect license is assigned that enables user assignment for this number type."
+                        detail       = $DetailMsg
+                        fix          = "Open the Teams Admin Center > Phone Numbers, find this number, and change its usage type to allow user assignment. If the number was provisioned for service use (auto attendant, call queue), it must be changed to a user number."
                         severity     = 'error'
                         canQuickFix  = $false
-                        settingsPage = $null
+                        settingsPage = $TeamsAdminUrl
                         riskLevel    = $null
                         riskWarning  = $null
                     })
@@ -68,11 +79,11 @@ Function Invoke-ExecTeamsVoicePhoneNumberAssignment {
                     $DiagList.Add(@{
                         source       = 'Phone Number Capabilities'
                         issue        = 'Number lacks required capabilities for user assignment'
-                        detail       = "The phone number does not have the required capabilities. Could not retrieve detailed capability information."
-                        fix          = "In the Teams Admin Center > Phone Numbers, verify this number's usage type and ensure it supports user assignment."
+                        detail       = "The phone number does not have the required capabilities to be assigned to a user. The diagnostic lookup failed, so detailed capability information is not available."
+                        fix          = "Open the Teams Admin Center > Phone Numbers, find this number, and verify its usage type supports user assignment."
                         severity     = 'error'
                         canQuickFix  = $false
-                        settingsPage = $null
+                        settingsPage = $TeamsAdminUrl
                         riskLevel    = $null
                         riskWarning  = $null
                     })
@@ -84,7 +95,7 @@ Function Invoke-ExecTeamsVoicePhoneNumberAssignment {
                 $CurrentAssignee = $null
                 $CurrentAssigneeDisplay = 'another user'
                 try {
-                    $NumberInfo = New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Get-CsPhoneNumberAssignment' -CmdParams @{PhoneNumber = $PhoneNumber; ErrorAction = 'Stop' }
+                    $NumberInfo = New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Get-CsPhoneNumberAssignment' -CmdParams @{TelephoneNumber = $PhoneNumber; ErrorAction = 'Stop' }
                     if ($NumberInfo.AssignedPstnTargetId) {
                         $CurrentAssignee = $NumberInfo.AssignedPstnTargetId
                         try {
@@ -171,7 +182,7 @@ Function Invoke-ExecTeamsVoicePhoneNumberAssignment {
             elseif ($NormError -match 'not valid for the specified phone number type' -or $RawError -match 'not valid for the specified phone number type' -or $NormError -match 'phone number type' -or $RawError -match 'phone number type.*does not match') {
                 $ActualType = $null
                 try {
-                    $NumberInfo = New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Get-CsPhoneNumberAssignment' -CmdParams @{PhoneNumber = $PhoneNumber; ErrorAction = 'Stop' }
+                    $NumberInfo = New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Get-CsPhoneNumberAssignment' -CmdParams @{TelephoneNumber = $PhoneNumber; ErrorAction = 'Stop' }
                     $ActualType = $NumberInfo.NumberType
                 } catch {
                     # Could not retrieve number info
