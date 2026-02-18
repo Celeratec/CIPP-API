@@ -87,8 +87,8 @@ Function Invoke-ExecTeamAction {
                 $ChannelJson = $ChannelBody | ConvertTo-Json -Depth 10 -Compress
 
                 if ($ChannelType -eq 'shared') {
-                    # Shared channels require delegated permissions — app-only tokens cause GetThreadAsync errors
-                    $null = New-GraphPostRequest -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels" -tenantid $TenantFilter -type POST -body $ChannelJson
+                    # Shared channels require the beta endpoint — v1.0 with app-only fails with GetThreadAsync
+                    $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/beta/teams/$TeamID/channels" -tenantid $TenantFilter -type POST -body $ChannelJson
                 } else {
                     $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels" -tenantid $TenantFilter -type POST -body $ChannelJson
                 }
