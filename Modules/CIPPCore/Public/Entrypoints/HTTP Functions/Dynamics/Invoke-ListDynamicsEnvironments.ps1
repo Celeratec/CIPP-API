@@ -54,6 +54,14 @@ function Invoke-ListDynamicsEnvironments {
         $Body = @{ Results = $Environments }
     } catch {
         $ErrorMessage = Get-NormalizedError -Message $_.Exception.Message
+        if ([string]::IsNullOrWhiteSpace($ErrorMessage)) {
+            $ErrorMessage = $_.Exception.Message
+        }
+        if ($ErrorMessage -like '*Could not get token*' -or $ErrorMessage -like '*AADSTS*') {
+            $ErrorMessage = "Failed to acquire Power Platform token for $TenantFilter. $ErrorMessage. Ensure the GDAP relationship includes the Power Platform Administrator or Dynamics 365 Administrator role."
+        } elseif ($ErrorMessage -like '*Forbidden*' -or $ErrorMessage -like '*403*' -or $ErrorMessage -like '*Unauthorized*' -or $ErrorMessage -like '*401*') {
+            $ErrorMessage = "Access denied to Power Platform Admin API for $TenantFilter. Verify the tenant has Dynamics 365 / Power Platform licenses and that the GDAP relationship includes the required admin roles."
+        }
         Write-LogMessage -headers $Request.Headers -API $APIName -message "Failed to list Dynamics environments: $ErrorMessage" -Sev 'Error' -tenant $TenantFilter
         $StatusCode = [HttpStatusCode]::Forbidden
         $Body = @{ Results = @(); Error = $ErrorMessage }
