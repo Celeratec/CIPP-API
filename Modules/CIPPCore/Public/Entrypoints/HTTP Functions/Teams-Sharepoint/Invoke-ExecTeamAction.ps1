@@ -84,9 +84,14 @@ Function Invoke-ExecTeamAction {
                     )
                 }
 
-                $ChannelJson = $ChannelBody | ConvertTo-Json -Depth 10
+                $ChannelJson = $ChannelBody | ConvertTo-Json -Depth 10 -Compress
 
-                $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels" -tenantid $TenantFilter -type POST -body $ChannelJson
+                if ($ChannelType -eq 'shared') {
+                    # Shared channels require delegated permissions — app-only tokens cause GetThreadAsync errors
+                    $null = New-GraphPostRequest -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels" -tenantid $TenantFilter -type POST -body $ChannelJson
+                } else {
+                    $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels" -tenantid $TenantFilter -type POST -body $ChannelJson
+                }
                 $Message = "Successfully created channel '$ChannelName' in team '$TeamLabel'"
             }
             'DeleteChannel' {
