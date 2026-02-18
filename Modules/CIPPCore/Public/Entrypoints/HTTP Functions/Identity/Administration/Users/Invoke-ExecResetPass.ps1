@@ -19,9 +19,21 @@ Function Invoke-ExecResetPass {
     $DisplayName = $Request.Query.displayName ?? $Request.Body.displayName ?? $ID
     $MustChange = $Request.Query.MustChange ?? $Request.Body.MustChange
     $MustChange = [System.Convert]::ToBoolean($MustChange)
+    $Password = $Request.Query.password ?? $Request.Body.password
 
     try {
-        $Result = Set-CIPPResetPassword -UserID $ID -tenantFilter $TenantFilter -APIName $APIName -Headers $Headers -forceChangePasswordNextSignIn $MustChange -DisplayName $DisplayName
+        $ResetParams = @{
+            UserID                         = $ID
+            tenantFilter                   = $TenantFilter
+            APIName                        = $APIName
+            Headers                        = $Headers
+            forceChangePasswordNextSignIn  = $MustChange
+            DisplayName                    = $DisplayName
+        }
+        if ($Password) {
+            $ResetParams['Password'] = $Password
+        }
+        $Result = Set-CIPPResetPassword @ResetParams
         $StatusCode = [HttpStatusCode]::OK
     } catch {
         $Result = $_.Exception.Message

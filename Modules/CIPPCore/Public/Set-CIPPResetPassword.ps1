@@ -6,11 +6,14 @@ function Set-CIPPResetPassword {
         $TenantFilter,
         $APIName = 'Reset Password',
         $Headers,
-        [bool]$forceChangePasswordNextSignIn = $true
+        [bool]$forceChangePasswordNextSignIn = $true,
+        [string]$Password
     )
 
     try {
-        $password = New-passwordString
+        if (-not $Password) {
+            $Password = New-passwordString
+        }
         $passwordProfile = @{
             'passwordProfile' = @{
                 'forceChangePasswordNextSignIn' = $forceChangePasswordNextSignIn
