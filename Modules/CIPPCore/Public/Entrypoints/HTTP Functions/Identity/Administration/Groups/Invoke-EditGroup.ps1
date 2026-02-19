@@ -49,9 +49,9 @@ function Invoke-EditGroup {
             $SecurityEnabled = $null -ne $UserObj.securityEnabled ? $UserObj.securityEnabled : $OrgGroup.securityEnabled
 
             $PatchObj = @{
-                displayName     = $UserObj.displayName
-                description     = $UserObj.description
-                mailNickname    = $UserObj.mailNickname
+                displayName     = $UserObj.displayName ?? $OrgGroup.displayName
+                description     = $UserObj.description ?? $OrgGroup.description
+                mailNickname    = $UserObj.mailNickname ?? $OrgGroup.mailNickname
                 mailEnabled     = $OrgGroup.mailEnabled
                 securityEnabled = $SecurityEnabled
             }
