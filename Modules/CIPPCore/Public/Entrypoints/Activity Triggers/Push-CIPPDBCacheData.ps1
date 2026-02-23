@@ -154,6 +154,7 @@ function Push-CIPPDBCacheData {
                 'RiskDetections'
                 'PIMSettings'
                 'RoleEligibilitySchedules'
+                'RoleAssignmentSchedules'
                 'RoleManagementPolicies'
                 'RoleAssignmentScheduleInstances'
             )
@@ -177,6 +178,7 @@ function Push-CIPPDBCacheData {
                 'IntunePolicies'
                 'ManagedDeviceEncryptionStates'
                 'IntuneAppProtectionPolicies'
+                'DetectedApps'
             )
             foreach ($CacheFunction in $IntuneCacheFunctions) {
                 $Batch.Add(@{

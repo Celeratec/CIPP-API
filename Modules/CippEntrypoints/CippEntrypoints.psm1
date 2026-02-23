@@ -405,7 +405,7 @@ function Receive-CippActivityTrigger {
             } else {
                 try {
                     Write-Information "Activity starting Function: $FunctionName"
-                    Invoke-Command -ScriptBlock { & $FunctionName -Item $Item }
+                    $Output = Invoke-Command -ScriptBlock { & $FunctionName -Item $Item }
                     $Status = 'Completed'
 
                     Write-Information "Activity completed Function: $FunctionName"

@@ -72,7 +72,10 @@ function Invoke-ExecAddGDAPRole {
                 @{ label = 'Authentication Policy Administrator'; value = '0526716b-113d-4c15-b2c8-68e3c22b9f80' },
                 @{ label = 'Privileged Role Administrator'; value = 'e8611ab8-c189-46e8-94e1-60213ab1f814' },
                 @{ label = 'Privileged Authentication Administrator'; value = '7be44c8a-adaf-4e2a-84d6-ab2649e08a13' },
-                @{ label = 'Power Platform Administrator'; value = '11648597-926c-4cf3-9c36-bcebb0ba8dcc' }
+                @{ label = 'Power Platform Administrator'; value = '11648597-926c-4cf3-9c36-bcebb0ba8dcc' },
+                @{ label = 'Billing Administrator'; value = 'b0f54661-2d74-4c50-afa3-1ec803f12efe' },
+                @{ label = 'Global Reader'; value = 'f2ef992c-3afb-46b9-b7cf-a126ee74c451' },
+                @{ label = 'Domain Name Administrator'; value = '8329153b-31d0-4727-b945-745eb3bc5f31' }
             )
 
             $Groups = $Request.Body.gdapRoles ?? $CippDefaults
