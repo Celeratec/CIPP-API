@@ -92,14 +92,15 @@ function Invoke-ExecSetSharePointMember {
         }
     } catch {
         $ErrorMsg = $_.Exception.Message
+        $NormalizedError = Get-NormalizedError -Message $ErrorMsg
         if ($ErrorMsg -match 'ID3035' -or $ErrorMsg -match 'is malformed' -or $ErrorMsg -match 'Could not get token') {
-            $Results = "The CIPP app registration is missing the SharePoint 'Sites.FullControl.All' application permission. This permission is required for managing members on non-group-connected SharePoint sites. To fix: Open the Azure portal > App registrations > CIPP app > API permissions > Add a permission > SharePoint > Application permissions > Sites.FullControl.All > Grant admin consent."
+            $Results = "Failed to obtain a SharePoint token for this tenant. This usually means delegated permissions have not been pushed via CPV consent. Try running a CPV Refresh for this tenant from the tenant overview page. Error: $NormalizedError"
         } elseif ($ErrorMsg -match 'Unsupported app only token') {
             $Results = "SharePoint rejected the app-only token for this operation. This is an internal error -- please report it. The endpoint should be using delegated authentication for SharePoint REST API calls."
         } elseif ($ErrorMsg -match 'unauthorized' -or $ErrorMsg -match 'Access denied' -or $ErrorMsg -match '403') {
-            $Results = "Insufficient SharePoint permissions. Ensure the CIPP SAM app has the 'AllSites.FullControl' delegated permission for SharePoint and that CPV consent has been refreshed for this tenant."
+            $Results = "SharePoint denied access to this operation. This may be a site-level permission issue or the site may have restricted access. Try running a CPV Refresh for this tenant. Error: $NormalizedError"
         } else {
-            $Results = Get-NormalizedError -Message $ErrorMsg
+            $Results = $NormalizedError
         }
         $StatusCode = [HttpStatusCode]::InternalServerError
     }

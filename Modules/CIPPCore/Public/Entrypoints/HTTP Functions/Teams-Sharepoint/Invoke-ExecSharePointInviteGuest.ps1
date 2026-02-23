@@ -108,11 +108,11 @@ function Invoke-ExecSharePointInviteGuest {
                     $SiteError = Get-CippException -Exception $_
                     $ErrorMsg = [string]$SiteError.NormalizedError + [string]$SiteError.Message
                     if ($ErrorMsg -match 'ID3035' -or $ErrorMsg -match 'is malformed' -or $ErrorMsg -match 'Could not get token') {
-                        $ResultMessages.Add("Guest invited to tenant, but could not add to site members: The CIPP app registration is missing the SharePoint 'AllSites.FullControl' delegated permission. To fix: Go to CIPP Settings > Super Admin > SAM App Permissions, ensure the SharePoint 'AllSites.FullControl' scope is included, then refresh CPV consent for this tenant.")
+                        $ResultMessages.Add("Guest invited to tenant, but could not add to site members: Failed to obtain a SharePoint token. Try running a CPV Refresh for this tenant. Error: $($SiteError.NormalizedError)")
                     } elseif ($ErrorMsg -match 'Unsupported app only token') {
                         $ResultMessages.Add("Guest invited to tenant, but could not add to site members: SharePoint rejected the app-only token. This is an internal error -- please report it.")
                     } elseif ($ErrorMsg -match 'unauthorized' -or $ErrorMsg -match 'Access denied' -or $ErrorMsg -match '403') {
-                        $ResultMessages.Add("Guest invited to tenant, but could not add to site members: Insufficient SharePoint permissions. Ensure CPV consent has been refreshed for this tenant so the CIPP SAM app has 'AllSites.FullControl' delegated access.")
+                        $ResultMessages.Add("Guest invited to tenant, but could not add to site members: SharePoint denied access. This may be a site-level permission issue. Try running a CPV Refresh for this tenant. Error: $($SiteError.NormalizedError)")
                     } else {
                         $ResultMessages.Add("Guest invited to tenant, but could not add to site members: $($SiteError.NormalizedError)")
                     }
