@@ -63,7 +63,7 @@ function New-CIPPGroup {
             '*microsoft*' { 'M365'; break }
             '*distribution*' { 'Distribution'; break }
             '*mail*' { 'Distribution'; break }
-            default { $GroupObject.groupType }
+            default { $GroupTypeValue }
         }
 
         # Determine if this group type needs an email address
@@ -226,7 +226,7 @@ function New-CIPPGroup {
                     Alias                              = $MailNickname
                     Description                        = $GroupObject.description
                     PrimarySmtpAddress                 = $Email
-                    Type                               = $GroupObject.groupType
+                    Type                               = $NormalizedGroupType
                     RequireSenderAuthenticationEnabled = [bool]!$GroupObject.allowExternal
                 }
 
