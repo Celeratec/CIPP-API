@@ -342,18 +342,24 @@ Function Invoke-ExecTeamAction {
                                 }
                             }
 
+                            $PartnerEditLink = if ($ExternalTenantIdDiag) {
+                                "/tenant/administration/cross-tenant-access/partners/partner?tenantId=$ExternalTenantIdDiag"
+                            } else {
+                                '/tenant/administration/cross-tenant-access/partners/partner'
+                            }
+
                             if ($PartnerPolicy) {
                                 $PartnerB2BDirect = $PartnerPolicy.b2bDirectConnectInbound
                                 $PartnerB2BDirectBlocked = ($PartnerB2BDirect.applications.accessType -eq 'blocked') -or ($PartnerB2BDirect.usersAndGroups.accessType -eq 'blocked')
                                 $InheritDefault = -not $PartnerB2BDirect -or ($null -eq $PartnerB2BDirect.applications -and $null -eq $PartnerB2BDirect.usersAndGroups)
 
                                 if ($InheritDefault -and $DefaultB2BDirectBlocked) {
-                                    $DiagMessages.Add("[Cross-Tenant Access Policy] Partner policy for '$EmailDomain' inherits the default policy, which BLOCKS B2B direct connect inbound. Shared channels require B2B direct connect. Create or update a partner-specific policy to allow B2B direct connect inbound for this organization. CIPP Settings: /tenant/administration/cross-tenant-access/partners/partner")
+                                    $DiagMessages.Add("[Cross-Tenant Access Policy] Partner policy for '$EmailDomain' exists but B2B direct connect inbound is set to 'Inherit from default', and the default policy BLOCKS it. Change B2B direct connect inbound to 'Allow' on the partner policy. CIPP Settings: $PartnerEditLink")
                                 } elseif (-not $InheritDefault -and $PartnerB2BDirectBlocked) {
-                                    $DiagMessages.Add("[Cross-Tenant Access Policy] Partner policy for '$EmailDomain' explicitly BLOCKS B2B direct connect inbound. Shared channels require this to be allowed. Update the partner-specific policy to allow B2B direct connect inbound. CIPP Settings: /tenant/administration/cross-tenant-access/partners/partner")
+                                    $DiagMessages.Add("[Cross-Tenant Access Policy] Partner policy for '$EmailDomain' explicitly BLOCKS B2B direct connect inbound. Shared channels require this to be set to 'Allow'. CIPP Settings: $PartnerEditLink")
                                 }
                             } elseif ($DefaultB2BDirectBlocked) {
-                                $DiagMessages.Add("[Cross-Tenant Access Policy] No partner-specific policy exists for '$EmailDomain', and the DEFAULT policy BLOCKS B2B direct connect inbound. Shared channels require B2B direct connect. Create a partner-specific policy for '$EmailDomain' that allows B2B direct connect inbound. CIPP Settings: /tenant/administration/cross-tenant-access/partners/partner")
+                                $DiagMessages.Add("[Cross-Tenant Access Policy] No partner-specific policy exists for '$EmailDomain', and the DEFAULT policy BLOCKS B2B direct connect inbound. Create a partner-specific policy for '$EmailDomain' and set B2B direct connect inbound to 'Allow'. CIPP Settings: /tenant/administration/cross-tenant-access/partners/partner")
                             }
 
                             if ($DiagMessages.Count -eq 0 -or -not ($DiagMessages | Where-Object { $_ -match 'Cross-Tenant' })) {
