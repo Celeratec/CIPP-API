@@ -76,7 +76,7 @@ function Invoke-EditJITAdminTemplate {
                         Write-LogMessage -headers $Headers -API $APIName -message "Unset default flag for existing template: $($data.templateName)" -Sev 'Info'
                     }
                 } catch {
-                    Write-LogMessage -headers $Headers -API $APIName -message "Failed to update existing template: $($_.Exception.Message)" -Sev 'Warning'
+                    Write-LogMessage -headers $Headers -API $APIName -message "Failed to update existing template: $($_.Exception.Message)" -sev 'Warn'
                 }
             }
         }

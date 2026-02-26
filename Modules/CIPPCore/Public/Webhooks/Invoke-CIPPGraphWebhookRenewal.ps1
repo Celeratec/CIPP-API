@@ -50,16 +50,13 @@ function Invoke-CippGraphWebhookRenewal {
             }
         }
 
-        # Second pass: Process valid webhooks in parallel batches
-        $BatchSize = 10  # Process 10 webhooks concurrently
+        $BatchSize = 10
         $ThrottleLimit = 10
         $ProcessedCount = 0
         $SuccessCount = 0
         $FailedCount = 0
 
-        # Process in batches to allow timeout checking between batches
         for ($i = 0; $i -lt $ValidWebhooks.Count; $i += $BatchSize) {
-            # Check timeout before each batch
             $ElapsedMinutes = ((Get-Date) - $StartTime).TotalMinutes
             if ($ElapsedMinutes -ge $MaxExecutionMinutes) {
                 $RemainingCount = $ValidWebhooks.Count - $ProcessedCount
@@ -67,19 +64,15 @@ function Invoke-CippGraphWebhookRenewal {
                 break
             }
 
-            # Get current batch
             $EndIndex = [Math]::Min($i + $BatchSize - 1, $ValidWebhooks.Count - 1)
             $CurrentBatch = $ValidWebhooks[$i..$EndIndex]
 
-            # Process batch in parallel
             $Results = $CurrentBatch | ForEach-Object -Parallel {
                 $UpdateSub = $_
                 $RenewalDate = $using:RenewalDate
                 $body = $using:body
                 $WebhookTable = $using:WebhookTable
 
-                # Import required modules in parallel runspace - parallel threads
-                # do not inherit the parent's imported modules
                 try {
                     Import-Module CIPPCore -Force
                     Import-Module AzBobbyTables -Force -ErrorAction SilentlyContinue
