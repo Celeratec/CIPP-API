@@ -156,6 +156,17 @@ Function Invoke-ExecTeamAction {
                 if (-not $ChannelRole) { $ChannelRole = 'member' }
                 $ChannelLabel = if ($ChannelName) { $ChannelName } else { $ChannelID }
 
+                # If UserID is an email address (typed in for guest), resolve to object ID
+                if ($UserID -match '@') {
+                    $EncodedEmail = $UserID -replace '#', '%23'
+                    $UserLookup = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users?`$filter=mail eq '$EncodedEmail' or userPrincipalName eq '$EncodedEmail'&`$select=id,displayName,userType" -tenantid $TenantFilter -AsApp $true
+                    if (-not $UserLookup -or $UserLookup.Count -eq 0) {
+                        throw "Could not find a user or guest with email '$UserID' in the tenant directory. Ensure the guest has been invited to the tenant first."
+                    }
+                    $ResolvedUser = if ($UserLookup -is [array]) { $UserLookup[0] } else { $UserLookup }
+                    $UserID = $ResolvedUser.id
+                }
+
                 [string[]]$Roles = if ($ChannelRole -eq 'owner') { @('owner') } else { @() }
 
                 $MemberBody = @{
