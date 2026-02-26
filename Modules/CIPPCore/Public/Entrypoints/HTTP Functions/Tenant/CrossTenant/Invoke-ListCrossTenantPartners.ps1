@@ -29,7 +29,10 @@ function Invoke-ListCrossTenantPartners {
                 $LookupResults = New-GraphBulkRequest -Requests @($ReverseLookupRequests) -tenantid $env:TenantID -NoAuthCheck $true -asapp $true
                 foreach ($Result in $LookupResults) {
                     if ($Result.body.displayName) {
-                        $TenantLookup[$Result.id] = $Result.body.displayName
+                        $TenantLookup[$Result.id] = @{
+                            displayName       = $Result.body.displayName
+                            defaultDomainName = $Result.body.defaultDomainName
+                        }
                     }
                 }
             } catch {
@@ -38,9 +41,11 @@ function Invoke-ListCrossTenantPartners {
         }
 
         $Results = foreach ($Partner in $Partners) {
+            $Lookup = $TenantLookup[$Partner.tenantId]
             [PSCustomObject]@{
                 tenantId                     = $Partner.tenantId
-                partnerName                  = $TenantLookup[$Partner.tenantId] ?? 'Unknown'
+                partnerName                  = $Lookup.displayName ?? 'Unknown'
+                partnerDomain                = $Lookup.defaultDomainName ?? ''
                 isServiceProvider            = $Partner.isServiceProvider
                 isInMultiTenantOrganization  = $Partner.isInMultiTenantOrganization
                 b2bCollaborationInbound      = $Partner.b2bCollaborationInbound
