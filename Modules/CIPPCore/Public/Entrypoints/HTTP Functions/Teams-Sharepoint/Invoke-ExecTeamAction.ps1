@@ -157,14 +157,26 @@ Function Invoke-ExecTeamAction {
                 $ChannelLabel = if ($ChannelName) { $ChannelName } else { $ChannelID }
 
                 # If UserID is an email address (typed in for guest), resolve to object ID
+                $GuestInvited = $false
                 if ($UserID -match '@') {
                     $EncodedEmail = $UserID -replace '#', '%23'
                     $UserLookup = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users?`$filter=mail eq '$EncodedEmail' or userPrincipalName eq '$EncodedEmail'&`$select=id,displayName,userType" -tenantid $TenantFilter -AsApp $true
                     if (-not $UserLookup -or $UserLookup.Count -eq 0) {
-                        throw "Could not find a user or guest with email '$UserID' in the tenant directory. Ensure the guest has been invited to the tenant first."
+                        # Guest not in directory — auto-invite via B2B invitation
+                        $InviteBody = @{
+                            invitedUserEmailAddress = $UserID
+                            inviteRedirectUrl       = 'https://myapps.microsoft.com'
+                            sendInvitationMessage   = $false
+                        } | ConvertTo-Json -Depth 5
+                        $InviteResult = New-GraphPostRequest -uri 'https://graph.microsoft.com/beta/invitations' -tenantid $TenantFilter -type POST -body $InviteBody
+                        $UserID = $InviteResult.invitedUser.id
+                        if (-not $UserID) { throw "Guest invitation succeeded but no user ID was returned for '$($Request.Body.UserID)'" }
+                        $GuestInvited = $true
+                        Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Auto-invited guest '$($Request.Body.UserID)' to tenant for shared channel access" -Sev Info
+                    } else {
+                        $ResolvedUser = if ($UserLookup -is [array]) { $UserLookup[0] } else { $UserLookup }
+                        $UserID = $ResolvedUser.id
                     }
-                    $ResolvedUser = if ($UserLookup -is [array]) { $UserLookup[0] } else { $UserLookup }
-                    $UserID = $ResolvedUser.id
                 }
 
                 [string[]]$Roles = if ($ChannelRole -eq 'owner') { @('owner') } else { @() }
@@ -176,7 +188,11 @@ Function Invoke-ExecTeamAction {
                 } | ConvertTo-Json -Depth 5
 
                 $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels/$ChannelID/members" -tenantid $TenantFilter -type POST -body $MemberBody
-                $Message = "Successfully added $ChannelRole to channel '$ChannelLabel' in team '$TeamLabel'"
+                $Message = if ($GuestInvited) {
+                    "Successfully invited guest '$($Request.Body.UserID)' and added as $ChannelRole to channel '$ChannelLabel' in team '$TeamLabel'"
+                } else {
+                    "Successfully added $ChannelRole to channel '$ChannelLabel' in team '$TeamLabel'"
+                }
             }
             'RemoveChannelMember' {
                 $ChannelID = $Request.Body.ChannelID
