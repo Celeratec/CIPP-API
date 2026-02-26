@@ -135,6 +135,7 @@ Function Invoke-ExecTeamAction {
             'AddChannelMember' {
                 $ChannelID = $Request.Body.ChannelID
                 $ChannelName = $Request.Body.ChannelName
+                $ChannelType = $Request.Body.ChannelType
                 $UserID = $Request.Body.UserID
                 $ChannelRole = $Request.Body.ChannelRole
                 if (-not $ChannelID) { throw 'ChannelID is required' }
@@ -155,27 +156,55 @@ Function Invoke-ExecTeamAction {
 
                 if (-not $ChannelRole) { $ChannelRole = 'member' }
                 $ChannelLabel = if ($ChannelName) { $ChannelName } else { $ChannelID }
-
-                # If UserID is an email address (typed in for guest), resolve to object ID
+                $OriginalInput = $UserID
                 $GuestInvited = $false
+                $ExternalTenantId = $null
+
                 if ($UserID -match '@') {
-                    $EncodedEmail = $UserID -replace '#', '%23'
-                    $UserLookup = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users?`$filter=mail eq '$EncodedEmail' or userPrincipalName eq '$EncodedEmail'&`$select=id,displayName,userType" -tenantid $TenantFilter -AsApp $true
-                    if (-not $UserLookup -or $UserLookup.Count -eq 0) {
-                        # Guest not in directory — auto-invite via B2B invitation
-                        $InviteBody = @{
-                            invitedUserEmailAddress = $UserID
-                            inviteRedirectUrl       = 'https://myapps.microsoft.com'
-                            sendInvitationMessage   = $false
-                        } | ConvertTo-Json -Depth 5
-                        $InviteResult = New-GraphPostRequest -uri 'https://graph.microsoft.com/beta/invitations' -tenantid $TenantFilter -type POST -body $InviteBody
-                        $UserID = $InviteResult.invitedUser.id
-                        if (-not $UserID) { throw "Guest invitation succeeded but no user ID was returned for '$($Request.Body.UserID)'" }
-                        $GuestInvited = $true
-                        Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Auto-invited guest '$($Request.Body.UserID)' to tenant for shared channel access" -Sev Info
-                    } else {
+                    if ($ChannelType -eq 'shared') {
+                        # Shared channels use B2B direct connect — guests are NOT allowed.
+                        # First check if the user already exists in the local tenant as a member (not guest).
+                        $EncodedEmail = $UserID -replace '#', '%23'
+                        $UserLookup = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users?`$filter=mail eq '$EncodedEmail' or userPrincipalName eq '$EncodedEmail'&`$select=id,displayName,userType" -tenantid $TenantFilter -AsApp $true
                         $ResolvedUser = if ($UserLookup -is [array]) { $UserLookup[0] } else { $UserLookup }
-                        $UserID = $ResolvedUser.id
+
+                        if ($ResolvedUser -and $ResolvedUser.userType -eq 'Member') {
+                            $UserID = $ResolvedUser.id
+                        } else {
+                            # External user — resolve their home tenant ID from email domain
+                            $EmailDomain = ($UserID -split '@')[1]
+                            try {
+                                $OidcConfig = Invoke-RestMethod -Uri "https://login.microsoftonline.com/$EmailDomain/.well-known/openid-configuration" -Method GET -ErrorAction Stop
+                                $ExternalTenantId = ($OidcConfig.issuer -split '/')[3]
+                            } catch {
+                                throw "Could not resolve tenant for domain '$EmailDomain'. Ensure the domain belongs to a valid Microsoft 365 organization. Cross-tenant access policies must be configured on both tenants for shared channel access."
+                            }
+                            if (-not $ExternalTenantId -or $ExternalTenantId -eq '9188040d-6c67-4c5b-b112-36a304b66dad') {
+                                throw "The domain '$EmailDomain' does not belong to a Microsoft 365 organization (it resolved to a consumer/MSA tenant). Shared channels require a work or school account."
+                            }
+                            # Use the email as the user identifier — Graph resolves it within the external tenant
+                            $UserID = $UserID
+                            Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Adding external user '$UserID' from tenant $ExternalTenantId to shared channel via B2B direct connect" -Sev Info
+                        }
+                    } else {
+                        # Non-shared channel — look up user or auto-invite as B2B guest
+                        $EncodedEmail = $UserID -replace '#', '%23'
+                        $UserLookup = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users?`$filter=mail eq '$EncodedEmail' or userPrincipalName eq '$EncodedEmail'&`$select=id,displayName,userType" -tenantid $TenantFilter -AsApp $true
+                        if (-not $UserLookup -or $UserLookup.Count -eq 0) {
+                            $InviteBody = @{
+                                invitedUserEmailAddress = $UserID
+                                inviteRedirectUrl       = 'https://myapps.microsoft.com'
+                                sendInvitationMessage   = $false
+                            } | ConvertTo-Json -Depth 5
+                            $InviteResult = New-GraphPostRequest -uri 'https://graph.microsoft.com/beta/invitations' -tenantid $TenantFilter -type POST -body $InviteBody
+                            $UserID = $InviteResult.invitedUser.id
+                            if (-not $UserID) { throw "Guest invitation succeeded but no user ID was returned for '$OriginalInput'" }
+                            $GuestInvited = $true
+                            Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Auto-invited guest '$OriginalInput' to tenant for channel access" -Sev Info
+                        } else {
+                            $ResolvedUser = if ($UserLookup -is [array]) { $UserLookup[0] } else { $UserLookup }
+                            $UserID = $ResolvedUser.id
+                        }
                     }
                 }
 
@@ -185,11 +214,17 @@ Function Invoke-ExecTeamAction {
                     '@odata.type'     = '#microsoft.graph.aadUserConversationMember'
                     'roles'           = $Roles
                     'user@odata.bind' = "https://graph.microsoft.com/v1.0/users('$UserID')"
-                } | ConvertTo-Json -Depth 5
+                }
+                if ($ExternalTenantId) {
+                    $MemberBody['tenantId'] = $ExternalTenantId
+                }
+                $MemberBodyJson = $MemberBody | ConvertTo-Json -Depth 5
 
-                $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels/$ChannelID/members" -tenantid $TenantFilter -type POST -body $MemberBody
+                $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels/$ChannelID/members" -tenantid $TenantFilter -type POST -body $MemberBodyJson
                 $Message = if ($GuestInvited) {
-                    "Successfully invited guest '$($Request.Body.UserID)' and added as $ChannelRole to channel '$ChannelLabel' in team '$TeamLabel'"
+                    "Successfully invited guest '$OriginalInput' and added as $ChannelRole to channel '$ChannelLabel' in team '$TeamLabel'"
+                } elseif ($ExternalTenantId) {
+                    "Successfully added external user '$OriginalInput' as $ChannelRole to shared channel '$ChannelLabel' in team '$TeamLabel' via B2B direct connect"
                 } else {
                     "Successfully added $ChannelRole to channel '$ChannelLabel' in team '$TeamLabel'"
                 }
@@ -216,9 +251,124 @@ Function Invoke-ExecTeamAction {
         $StatusCode = [HttpStatusCode]::OK
     } catch {
         $ErrorMessage = Get-CippException -Exception $_
-        $Message = "Failed to $Action team '$TeamLabel'. Error: $($ErrorMessage.NormalizedError)"
+        $NormError = [string]$ErrorMessage.NormalizedError
+        $RawError = [string]$ErrorMessage.Message
+        $Message = "Failed to $Action team '$TeamLabel'. Error: $NormError"
         Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message $Message -Sev Error -LogData $ErrorMessage
         $StatusCode = [HttpStatusCode]::Forbidden
+
+        # Run B2B / cross-tenant diagnostics for AddChannelMember failures
+        if ($Action -eq 'AddChannelMember') {
+            try {
+                $DiagMessages = [System.Collections.Generic.List[string]]::new()
+                $IsSharedChannel = $Request.Body.ChannelType -eq 'shared'
+                $IsExternalError = $NormError -match 'not allowed' -or $NormError -match 'external' -or $NormError -match 'guest' -or $NormError -match 'cross-tenant' -or $NormError -match 'collaboration' -or $RawError -match 'not allowed' -or $RawError -match 'Externally authenticated'
+
+                if ($IsExternalError) {
+                    $EmailInput = $Request.Body.UserID
+                    if ($EmailInput -is [hashtable] -or $EmailInput -is [PSCustomObject]) { $EmailInput = $EmailInput.value }
+                    $EmailDomain = if ($EmailInput -match '@') { ($EmailInput -split '@')[1] } else { $null }
+
+                    # --- Check Entra External Collaboration settings ---
+                    try {
+                        $AuthPolicy = New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/policies/authorizationPolicy/authorizationPolicy' -tenantid $TenantFilter -AsApp $true
+
+                        if ($AuthPolicy.allowInvitesFrom -eq 'none') {
+                            $DiagMessages.Add("[Entra External Collaboration] Guest invitations are completely disabled. The 'Guest invite restrictions' setting is set to 'No one in the organization can invite guest users'. Change this to allow at least admins to send invitations. CIPP Settings: /tenant/administration/cross-tenant-access/external-collaboration")
+                        }
+
+                        # Check B2B domain allow/block lists
+                        try {
+                            $B2BPolicy = New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/legacy/policies' -tenantid $TenantFilter -AsApp $true
+                            $B2BManagement = $B2BPolicy | Where-Object { $_.type -eq 6 }
+                            if ($B2BManagement -and $EmailDomain) {
+                                $B2BDefinition = ($B2BManagement.definition | ConvertFrom-Json).B2BManagementPolicy
+                                $DomainPolicy = $B2BDefinition.InvitationsAllowedAndBlockedDomainsPolicy
+
+                                if ($DomainPolicy.AllowedDomains -and $DomainPolicy.AllowedDomains.Count -gt 0) {
+                                    if ($EmailDomain -notin $DomainPolicy.AllowedDomains) {
+                                        $DiagMessages.Add("[Entra External Collaboration] Domain '$EmailDomain' is NOT in the allowed domains list. Currently allowed: $($DomainPolicy.AllowedDomains -join ', '). Add '$EmailDomain' to the allowed list or switch to a block-list approach. CIPP Settings: /tenant/administration/cross-tenant-access/external-collaboration")
+                                    }
+                                }
+
+                                if ($DomainPolicy.BlockedDomains -and $DomainPolicy.BlockedDomains.Count -gt 0) {
+                                    if ($EmailDomain -in $DomainPolicy.BlockedDomains) {
+                                        $DiagMessages.Add("[Entra External Collaboration] Domain '$EmailDomain' is BLOCKED. Remove it from the blocked domains list. CIPP Settings: /tenant/administration/cross-tenant-access/external-collaboration")
+                                    }
+                                }
+                            }
+                        } catch {
+                            # B2B management policy may not be available
+                        }
+                    } catch {
+                        # Could not retrieve Entra settings
+                    }
+
+                    # --- Check Teams guest access ---
+                    try {
+                        $ClientConfig = New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Get-CsTeamsClientConfiguration' -CmdParams @{Identity = 'Global' }
+                        if ($ClientConfig.AllowGuestUser -eq $false) {
+                            $DiagMessages.Add("[Teams Guest Access] Guest access is DISABLED for Microsoft Teams. Enable 'Allow guest access' in Teams Settings. CIPP Settings: /teams-share/teams/teams-settings")
+                        }
+                    } catch {
+                        # Teams settings may not be accessible
+                    }
+
+                    # --- Check cross-tenant access policies (critical for shared channels) ---
+                    if ($IsSharedChannel -and $EmailDomain) {
+                        try {
+                            $ExternalTenantIdDiag = $null
+                            try {
+                                $OidcDiag = Invoke-RestMethod -Uri "https://login.microsoftonline.com/$EmailDomain/.well-known/openid-configuration" -Method GET -ErrorAction Stop
+                                $ExternalTenantIdDiag = ($OidcDiag.issuer -split '/')[3]
+                            } catch {}
+
+                            # Check default cross-tenant access policy
+                            $DefaultPolicy = New-GraphGetRequest -uri 'https://graph.microsoft.com/v1.0/policies/crossTenantAccessPolicy/default' -tenantid $TenantFilter -AsApp $true
+
+                            $DefaultB2BDirect = $DefaultPolicy.b2bDirectConnectInbound
+                            $DefaultB2BDirectBlocked = ($DefaultB2BDirect.applications.accessType -eq 'blocked' -and $DefaultB2BDirect.applications.targets.target -eq 'AllApplications') -or ($DefaultB2BDirect.usersAndGroups.accessType -eq 'blocked' -and $DefaultB2BDirect.usersAndGroups.targets.target -eq 'AllUsers')
+
+                            # Check partner-specific policy if we resolved the external tenant
+                            $PartnerPolicy = $null
+                            if ($ExternalTenantIdDiag) {
+                                try {
+                                    $PartnerPolicy = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/policies/crossTenantAccessPolicy/partners/$ExternalTenantIdDiag" -tenantid $TenantFilter -AsApp $true
+                                } catch {
+                                    # No partner-specific policy — default policy applies
+                                }
+                            }
+
+                            if ($PartnerPolicy) {
+                                $PartnerB2BDirect = $PartnerPolicy.b2bDirectConnectInbound
+                                $PartnerB2BDirectBlocked = ($PartnerB2BDirect.applications.accessType -eq 'blocked') -or ($PartnerB2BDirect.usersAndGroups.accessType -eq 'blocked')
+                                $InheritDefault = -not $PartnerB2BDirect -or ($null -eq $PartnerB2BDirect.applications -and $null -eq $PartnerB2BDirect.usersAndGroups)
+
+                                if ($InheritDefault -and $DefaultB2BDirectBlocked) {
+                                    $DiagMessages.Add("[Cross-Tenant Access Policy] Partner policy for tenant '$EmailDomain' inherits the default policy, which BLOCKS B2B direct connect inbound. Shared channels require B2B direct connect. Update the default policy or create a partner-specific policy that allows B2B direct connect inbound for this tenant. CIPP Settings: /tenant/administration/cross-tenant-access/external-collaboration")
+                                } elseif (-not $InheritDefault -and $PartnerB2BDirectBlocked) {
+                                    $DiagMessages.Add("[Cross-Tenant Access Policy] Partner policy for tenant '$EmailDomain' explicitly BLOCKS B2B direct connect inbound. Shared channels require this to be allowed. Update the partner-specific cross-tenant access policy. CIPP Settings: /tenant/administration/cross-tenant-access/external-collaboration")
+                                }
+                            } elseif ($DefaultB2BDirectBlocked) {
+                                $DiagMessages.Add("[Cross-Tenant Access Policy] No partner-specific policy exists for '$EmailDomain', and the DEFAULT policy BLOCKS B2B direct connect inbound. Shared channels require B2B direct connect. Either update the default policy to allow B2B direct connect, or create a partner-specific policy for this tenant. CIPP Settings: /tenant/administration/cross-tenant-access/external-collaboration")
+                            }
+
+                            if ($DiagMessages.Count -eq 0 -or -not ($DiagMessages | Where-Object { $_ -match 'Cross-Tenant' })) {
+                                $DiagMessages.Add("[Cross-Tenant Access Policy] The inbound B2B direct connect policy on THIS tenant appears to allow access. However, the EXTERNAL tenant ($EmailDomain) must also configure their OUTBOUND cross-tenant access policy to allow B2B direct connect to this tenant. This must be configured by the external organization's admin.")
+                            }
+                        } catch {
+                            $DiagMessages.Add("[Cross-Tenant Access Policy] Could not retrieve cross-tenant access policies. Ensure the CIPP app has 'Policy.Read.All' permission. Shared channels require B2B direct connect policies to be configured on BOTH tenants.")
+                        }
+                    }
+
+                    if ($DiagMessages.Count -gt 0) {
+                        $Message = "Failed to $Action team '$TeamLabel'. Error: $NormError`n`nDiagnostics:`n" + ($DiagMessages -join "`n`n")
+                    }
+                }
+            } catch {
+                Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Channel member diagnostics failed: $($_.Exception.Message)" -Sev Debug
+            }
+        }
     }
 
     return ([HttpResponseContext]@{
