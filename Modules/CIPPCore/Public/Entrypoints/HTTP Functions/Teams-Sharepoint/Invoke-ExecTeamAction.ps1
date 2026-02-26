@@ -253,9 +253,10 @@ Function Invoke-ExecTeamAction {
         $ErrorMessage = Get-CippException -Exception $_
         $NormError = [string]$ErrorMessage.NormalizedError
         $RawError = [string]$ErrorMessage.Message
-        # Translate Microsoft's internal "xTap" abbreviation to something users can understand
+        # Translate Microsoft's internal "xTap" abbreviation and format the action name
         $FriendlyError = $NormError -replace 'due to xTap', 'due to a cross-tenant access policy restriction'
-        $Message = "Failed to $Action team '$TeamLabel'. Error: $FriendlyError"
+        $FriendlyAction = ($Action -creplace '([a-z])([A-Z])', '$1 $2').ToLower()
+        $Message = "Failed to $FriendlyAction team '$TeamLabel'. Error: $FriendlyError"
         Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message $Message -Sev Error -LogData $ErrorMessage
         $StatusCode = [HttpStatusCode]::Forbidden
 
@@ -364,7 +365,7 @@ Function Invoke-ExecTeamAction {
                     }
 
                     if ($DiagMessages.Count -gt 0) {
-                        $Message = "Failed to $Action team '$TeamLabel'. Error: $NormError`n`nDiagnostics:`n" + ($DiagMessages -join "`n`n")
+                        $Message = "Failed to $FriendlyAction team '$TeamLabel'. Error: $FriendlyError`n`nDiagnostics:`n" + ($DiagMessages -join "`n`n")
                     }
                 }
             } catch {
