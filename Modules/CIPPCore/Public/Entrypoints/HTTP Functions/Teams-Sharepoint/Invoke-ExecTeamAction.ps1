@@ -253,7 +253,9 @@ Function Invoke-ExecTeamAction {
         $ErrorMessage = Get-CippException -Exception $_
         $NormError = [string]$ErrorMessage.NormalizedError
         $RawError = [string]$ErrorMessage.Message
-        $Message = "Failed to $Action team '$TeamLabel'. Error: $NormError"
+        # Translate Microsoft's internal "xTap" abbreviation to something users can understand
+        $FriendlyError = $NormError -replace 'due to xTap', 'due to a cross-tenant access policy restriction'
+        $Message = "Failed to $Action team '$TeamLabel'. Error: $FriendlyError"
         Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message $Message -Sev Error -LogData $ErrorMessage
         $StatusCode = [HttpStatusCode]::Forbidden
 
@@ -274,7 +276,7 @@ Function Invoke-ExecTeamAction {
                         $AuthPolicy = New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/policies/authorizationPolicy/authorizationPolicy' -tenantid $TenantFilter -AsApp $true
 
                         if ($AuthPolicy.allowInvitesFrom -eq 'none') {
-                            $DiagMessages.Add("[Entra External Collaboration] Guest invitations are completely disabled. The 'Guest invite restrictions' setting is set to 'No one in the organization can invite guest users'. Change this to allow at least admins to send invitations. Risk(warning): Enabling guest invitations allows external users to be invited into this tenant's directory. Use the 'Only admins and Guest Inviter role' option for the most controlled approach. CIPP Settings: /tenant/administration/cross-tenant-access/external-collaboration")
+                            $DiagMessages.Add("[Entra External Collaboration] Guest invitations are completely disabled ('No one in the organization can invite guest users'). Change this to allow at least admins to send invitations. CIPP Settings: /tenant/administration/cross-tenant-access/external-collaboration")
                         }
 
                         # Check B2B domain allow/block lists
@@ -287,13 +289,13 @@ Function Invoke-ExecTeamAction {
 
                                 if ($DomainPolicy.AllowedDomains -and $DomainPolicy.AllowedDomains.Count -gt 0) {
                                     if ($EmailDomain -notin $DomainPolicy.AllowedDomains) {
-                                        $DiagMessages.Add("[Entra External Collaboration] Domain '$EmailDomain' is NOT in the allowed domains list. Currently allowed: $($DomainPolicy.AllowedDomains -join ', '). Add '$EmailDomain' to the allowed list or switch to a block-list approach. Risk(info): Adding a domain to the allow list enables B2B guest invitations from that organization. This is a scoped change that only affects this one domain. CIPP Settings: /tenant/administration/cross-tenant-access/external-collaboration")
+                                        $DiagMessages.Add("[Entra External Collaboration] Domain '$EmailDomain' is NOT in the allowed domains list. Currently allowed: $($DomainPolicy.AllowedDomains -join ', '). Add '$EmailDomain' to the allowed list or switch to a block-list approach. CIPP Settings: /tenant/administration/cross-tenant-access/external-collaboration")
                                     }
                                 }
 
                                 if ($DomainPolicy.BlockedDomains -and $DomainPolicy.BlockedDomains.Count -gt 0) {
                                     if ($EmailDomain -in $DomainPolicy.BlockedDomains) {
-                                        $DiagMessages.Add("[Entra External Collaboration] Domain '$EmailDomain' is BLOCKED. Remove it from the blocked domains list to allow collaboration. Risk(info): Removing a domain from the block list allows B2B guest invitations from that organization. Other domains remain blocked. CIPP Settings: /tenant/administration/cross-tenant-access/external-collaboration")
+                                        $DiagMessages.Add("[Entra External Collaboration] Domain '$EmailDomain' is BLOCKED. Remove it from the blocked domains list to allow collaboration. CIPP Settings: /tenant/administration/cross-tenant-access/external-collaboration")
                                     }
                                 }
                             }
@@ -308,7 +310,7 @@ Function Invoke-ExecTeamAction {
                     try {
                         $ClientConfig = New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Get-CsTeamsClientConfiguration' -CmdParams @{Identity = 'Global' }
                         if ($ClientConfig.AllowGuestUser -eq $false) {
-                            $DiagMessages.Add("[Teams Guest Access] Guest access is DISABLED for Microsoft Teams. Enable 'Allow guest access' in Teams Settings. Risk(warning): Enabling Teams guest access allows external users to participate in all teams they are added to, including chat, meetings, and file access. Review which teams contain sensitive data before enabling. CIPP Settings: /teams-share/teams/teams-settings")
+                            $DiagMessages.Add("[Teams Guest Access] Guest access is DISABLED for Microsoft Teams. Enable 'Allow guest access' in Teams Settings. CIPP Settings: /teams-share/teams/teams-settings")
                         }
                     } catch {
                         # Teams settings may not be accessible
@@ -345,16 +347,16 @@ Function Invoke-ExecTeamAction {
                                 $InheritDefault = -not $PartnerB2BDirect -or ($null -eq $PartnerB2BDirect.applications -and $null -eq $PartnerB2BDirect.usersAndGroups)
 
                                 if ($InheritDefault -and $DefaultB2BDirectBlocked) {
-                                    $DiagMessages.Add("[Cross-Tenant Access Policy] Partner policy for '$EmailDomain' inherits the default policy, which BLOCKS B2B direct connect inbound. Shared channels require B2B direct connect. The recommended fix is to update the partner-specific policy to allow B2B direct connect inbound for just this organization. Risk(warning): B2B direct connect lets external users access shared channels without creating guest accounts in your directory. Unlike B2B collaboration, these users have no footprint in your tenant and are not subject to your Conditional Access policies unless inbound trust is configured. Creating a partner-specific policy scopes the change to this one organization. Changing the default policy would open B2B direct connect to ALL external organizations. CIPP Settings: /tenant/administration/cross-tenant-access/policy")
+                                    $DiagMessages.Add("[Cross-Tenant Access Policy] Partner policy for '$EmailDomain' inherits the default policy, which BLOCKS B2B direct connect inbound. Shared channels require B2B direct connect. Create or update a partner-specific policy to allow B2B direct connect inbound for this organization. CIPP Settings: /tenant/administration/cross-tenant-access/partners/partner")
                                 } elseif (-not $InheritDefault -and $PartnerB2BDirectBlocked) {
-                                    $DiagMessages.Add("[Cross-Tenant Access Policy] Partner policy for '$EmailDomain' explicitly BLOCKS B2B direct connect inbound. Shared channels require this to be allowed. Update the partner-specific policy to allow B2B direct connect inbound. Risk(info): This is a scoped change that only affects collaboration with '$EmailDomain'. B2B direct connect lets their users access shared channels without guest accounts in your directory. CIPP Settings: /tenant/administration/cross-tenant-access/policy")
+                                    $DiagMessages.Add("[Cross-Tenant Access Policy] Partner policy for '$EmailDomain' explicitly BLOCKS B2B direct connect inbound. Shared channels require this to be allowed. Update the partner-specific policy to allow B2B direct connect inbound. CIPP Settings: /tenant/administration/cross-tenant-access/partners/partner")
                                 }
                             } elseif ($DefaultB2BDirectBlocked) {
-                                $DiagMessages.Add("[Cross-Tenant Access Policy] No partner-specific policy exists for '$EmailDomain', and the DEFAULT policy BLOCKS B2B direct connect inbound. Shared channels require B2B direct connect. The recommended approach is to create a partner-specific policy for '$EmailDomain' that allows B2B direct connect inbound, rather than changing the default. Risk(warning): B2B direct connect lets external users access shared channels without creating guest accounts in your directory. Unlike B2B collaboration, these users have no footprint in your tenant and are not subject to your Conditional Access policies unless inbound trust is configured. A partner-specific policy scopes the change to just this organization. Changing the default policy would open B2B direct connect to ALL external organizations, which is a significant security change. CIPP Settings: /tenant/administration/cross-tenant-access/policy")
+                                $DiagMessages.Add("[Cross-Tenant Access Policy] No partner-specific policy exists for '$EmailDomain', and the DEFAULT policy BLOCKS B2B direct connect inbound. Shared channels require B2B direct connect. Create a partner-specific policy for '$EmailDomain' that allows B2B direct connect inbound. CIPP Settings: /tenant/administration/cross-tenant-access/partners/partner")
                             }
 
                             if ($DiagMessages.Count -eq 0 -or -not ($DiagMessages | Where-Object { $_ -match 'Cross-Tenant' })) {
-                                $DiagMessages.Add("[Cross-Tenant Access Policy] The inbound B2B direct connect policy on THIS tenant appears to allow access. However, the EXTERNAL tenant ($EmailDomain) must also configure their OUTBOUND cross-tenant access policy to allow B2B direct connect to this tenant. This must be configured by the external organization's admin. Both sides must allow B2B direct connect for shared channels to work.")
+                                $DiagMessages.Add("[Cross-Tenant Access Policy] The inbound B2B direct connect policy on THIS tenant appears to allow access. However, the EXTERNAL tenant ($EmailDomain) must also configure their OUTBOUND cross-tenant access policy to allow B2B direct connect to this tenant. This must be configured by the external organization's admin.")
                             }
                         } catch {
                             $DiagMessages.Add("[Cross-Tenant Access Policy] Could not retrieve cross-tenant access policies. Ensure the CIPP app has 'Policy.Read.All' permission. Shared channels require B2B direct connect policies to be configured on BOTH tenants.")
