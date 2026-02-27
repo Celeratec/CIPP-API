@@ -193,18 +193,16 @@ function Invoke-EditUser {
 
         if ($licenses -or $UserObj.removeLicenses) {
             $CurrentLicenses = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/users/$($UserObj.id)" -tenantid $UserObj.tenantFilter
-            #if the list of skuIds in $CurrentLicenses.assignedLicenses is EXACTLY the same as $licenses, we don't need to do anything, but the order in both can be different.
             if (($CurrentLicenses.assignedLicenses.skuId -join ',') -eq ($licenses -join ',') -and $UserObj.removeLicenses -eq $false) {
                 Write-Host "$($CurrentLicenses.assignedLicenses.skuId -join ',') $(($licenses -join ','))"
                 $Results.Add( 'Success. User license is already correct.' )
             } else {
                 if ($UserObj.removeLicenses) {
-                    $licResults = Set-CIPPUserLicense -UserId $UserObj.id -TenantFilter $UserObj.tenantFilter -RemoveLicenses $CurrentLicenses.assignedLicenses.skuId -Headers $Headers -APIName $APIName
+                    $licResults = Set-CIPPUserLicense -UserPrincipalName $UserPrincipalName -UserId $UserObj.id -TenantFilter $UserObj.tenantFilter -RemoveLicenses $CurrentLicenses.assignedLicenses.skuId -Headers $Headers -APIName $APIName
                     $Results.Add($licResults)
                 } else {
-                    #Remove all objects from $CurrentLicenses.assignedLicenses.skuId that are in $licenses
                     $RemoveLicenses = $CurrentLicenses.assignedLicenses.skuId | Where-Object { $_ -notin $licenses }
-                    $licResults = Set-CIPPUserLicense -UserId $UserObj.id -TenantFilter $UserObj.tenantFilter -RemoveLicenses $RemoveLicenses -AddLicenses $licenses -Headers $Headers -APIName $APIName
+                    $licResults = Set-CIPPUserLicense -UserPrincipalName $UserPrincipalName -UserId $UserObj.id -TenantFilter $UserObj.tenantFilter -RemoveLicenses $RemoveLicenses -AddLicenses $licenses -Headers $Headers -APIName $APIName
                     $Results.Add($licResults)
                 }
             }

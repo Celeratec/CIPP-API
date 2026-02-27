@@ -363,7 +363,7 @@ function Invoke-NinjaOneTenantSync {
 
         # Get the license overview for the tenant
         if ($Licenses) {
-            $LicensesParsed = $Licenses | Where-Object { $_.PrepaidUnits.Enabled -gt 0 } | Select-Object @{N = 'License Name'; E = { (Get-Culture).TextInfo.ToTitleCase((convert-skuname -skuname $_.SkuPartNumber).Tolower()) } }, @{N = 'Active'; E = { $_.PrepaidUnits.Enabled } }, @{N = 'Consumed'; E = { $_.ConsumedUnits } }, @{N = 'Unused'; E = { $_.PrepaidUnits.Enabled - $_.ConsumedUnits } }
+            $LicensesParsed = $Licenses | Where-Object { $_.PrepaidUnits.Enabled -gt 0 } | Select-Object @{N = 'License Name'; E = { $_.skuPartNumber } }, @{N = 'Active'; E = { $_.PrepaidUnits.Enabled } }, @{N = 'Consumed'; E = { $_.ConsumedUnits } }, @{N = 'Unused'; E = { $_.PrepaidUnits.Enabled - $_.ConsumedUnits } }
         }
 
         Write-Verbose "$(Get-Date) - Parsing Device Compliance Policies"
@@ -1663,13 +1663,8 @@ function Invoke-NinjaOneTenantSync {
 
             $LicenseDetails = foreach ($License in $Licenses) {
                 $MatchedSubscriptions = $Subscriptions | Where-Object -Property skuid -EQ $License.skuId
-
-                try {
-                    $FriendlyLicenseName = $((Get-Culture).TextInfo.ToTitleCase((convert-skuname -skuname $License.SkuPartNumber).Tolower()))
-                } catch {
-                    $FriendlyLicenseName = $License.SkuPartNumber
-                }
-
+                Write-Information "License info: $($License | ConvertTo-Json -Depth 100)"
+                $FriendlyLicenseName = $License.skuPartNumber
 
                 $LicenseUsers = foreach ($SubUser in $Users) {
                     $MatchedLicense = $SubUser.assignedLicenses | Where-Object { $License.skuId -in $_.skuId }
