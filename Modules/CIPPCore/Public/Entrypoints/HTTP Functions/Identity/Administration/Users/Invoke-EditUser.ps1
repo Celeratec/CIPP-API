@@ -113,8 +113,78 @@ function Invoke-EditUser {
         }
     } catch {
         $ErrorMessage = Get-CippException -Exception $_
-        Write-LogMessage -API $APIName -tenant ($UserObj.tenantFilter) -headers $Headers -message "User edit API failed. $($ErrorMessage.NormalizedError)" -Sev Error -LogData $ErrorMessage
-        $Results.Add( "Failed to edit user. $($ErrorMessage.NormalizedError)")
+        $NormalizedError = $ErrorMessage.NormalizedError
+        $ConflictInfo = $null
+
+        if ($NormalizedError -match 'Another object with the same value for property') {
+            try {
+                $ConflictSearches = @()
+                if ($UserPrincipalName) {
+                    $ConflictSearches += "userPrincipalName eq '$UserPrincipalName'"
+                    $ConflictSearches += "mail eq '$UserPrincipalName'"
+                    $ConflictSearches += "proxyAddresses/any(x:x eq 'smtp:$UserPrincipalName')"
+                }
+
+                foreach ($Filter in $ConflictSearches) {
+                    try {
+                        $ConflictUsers = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/users?`$filter=$Filter&`$select=id,displayName,userPrincipalName,mail,accountEnabled" -tenantid $UserObj.tenantFilter -ComplexFilter
+                        foreach ($ConflictUser in $ConflictUsers) {
+                            if ($ConflictUser.id -ne $UserObj.id) {
+                                $ConflictInfo = @{
+                                    type              = 'User'
+                                    displayName       = $ConflictUser.displayName
+                                    userPrincipalName = $ConflictUser.userPrincipalName
+                                    mail              = $ConflictUser.mail
+                                    id                = $ConflictUser.id
+                                    accountEnabled    = $ConflictUser.accountEnabled
+                                }
+                                break
+                            }
+                        }
+                    } catch {}
+                    if ($ConflictInfo) { break }
+                }
+
+                if (-not $ConflictInfo) {
+                    foreach ($Filter in $ConflictSearches) {
+                        try {
+                            $ConflictGroups = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/groups?`$filter=$Filter&`$select=id,displayName,mail,groupTypes,mailEnabled,securityEnabled" -tenantid $UserObj.tenantFilter -ComplexFilter
+                            foreach ($ConflictGroup in $ConflictGroups) {
+                                $GroupType = if ($ConflictGroup.groupTypes -contains 'Unified') { 'Microsoft 365 Group' }
+                                elseif ($ConflictGroup.mailEnabled -and $ConflictGroup.securityEnabled) { 'Mail-Enabled Security Group' }
+                                elseif ($ConflictGroup.mailEnabled) { 'Distribution List' }
+                                else { 'Security Group' }
+                                $ConflictInfo = @{
+                                    type        = $GroupType
+                                    displayName = $ConflictGroup.displayName
+                                    mail        = $ConflictGroup.mail
+                                    id          = $ConflictGroup.id
+                                }
+                                break
+                            }
+                        } catch {}
+                        if ($ConflictInfo) { break }
+                    }
+                }
+            } catch {
+                Write-Verbose "Failed to look up conflicting object: $($_.Exception.Message)"
+            }
+        }
+
+        Write-LogMessage -API $APIName -tenant ($UserObj.tenantFilter) -headers $Headers -message "User edit API failed. $NormalizedError" -Sev Error -LogData $ErrorMessage
+
+        if ($ConflictInfo) {
+            $ConflictDetails = "Conflicting $($ConflictInfo.type): '$($ConflictInfo.displayName)'"
+            if ($ConflictInfo.userPrincipalName) { $ConflictDetails += " (UPN: $($ConflictInfo.userPrincipalName))" }
+            if ($ConflictInfo.mail) { $ConflictDetails += " (Mail: $($ConflictInfo.mail))" }
+            $ConflictDetails += " [ID: $($ConflictInfo.id)]"
+            if ($null -ne $ConflictInfo.accountEnabled) {
+                $ConflictDetails += if ($ConflictInfo.accountEnabled) { ' - Account is enabled' } else { ' - Account is disabled' }
+            }
+            $Results.Add("Failed to edit user. $NormalizedError Conflict: $ConflictDetails")
+        } else {
+            $Results.Add("Failed to edit user. $NormalizedError")
+        }
     }
 
 
