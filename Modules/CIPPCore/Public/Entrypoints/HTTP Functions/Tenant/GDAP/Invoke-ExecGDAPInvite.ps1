@@ -45,10 +45,11 @@ function Invoke-ExecGDAPInvite {
 
             try {
                 $Step = 'Creating GDAP relationship'
+                $UniqueRoles = @($RoleMappings | Select-Object roleDefinitionId -Unique)
                 $JSONBody = @{
                     'displayName'        = "CIPP_$((New-Guid).GUID)"
                     'accessDetails'      = @{
-                        'unifiedRoles' = @($RoleMappings | Select-Object roleDefinitionId)
+                        'unifiedRoles' = $UniqueRoles
                     }
                     'autoExtendDuration' = $AutoExtendDuration
                     'duration'           = 'P730D'

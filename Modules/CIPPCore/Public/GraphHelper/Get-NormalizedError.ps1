@@ -27,9 +27,14 @@ function Get-NormalizedError {
     } elseif ($JSONMsg.error.message) {
         Write-Information "error.message found: $($JSONMsg.error.message)"
         $message = $JSONMsg.error.message
+        if ($JSONMsg.error.details.message) {
+            $detailMessages = @($JSONMsg.error.details.message) -join '; '
+            Write-Information "error.details.message found: $detailMessages"
+            $message = "$message $detailMessages"
+        }
     } elseif ($JSONMsg.error.details.message) {
         Write-Information "error.details.message found: $($JSONMsg.error.details.message)"
-        $message = $JSONMsg.error.details.message
+        $message = @($JSONMsg.error.details.message) -join '; '
     } elseif ($JSONMsg.error.innererror.internalException.message) {
         Write-Information "error.innererror.internalException.message found: $($JSONMsg.error.innererror.internalException.message)"
         $message = $JSONMsg.error.innererror.internalException.message
