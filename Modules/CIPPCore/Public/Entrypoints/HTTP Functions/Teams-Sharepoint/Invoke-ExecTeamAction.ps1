@@ -210,7 +210,11 @@ Function Invoke-ExecTeamAction {
                     }
                 }
 
-                [string[]]$Roles = if ($ChannelRole -eq 'owner') { @('owner') } else { @() }
+                # Shared channels require the beta endpoint with app-only permissions
+                $GraphVersion = if ($ChannelType -eq 'shared') { 'beta' } else { 'v1.0' }
+
+                $Roles = [System.Collections.Generic.List[string]]::new()
+                if ($ChannelRole -eq 'owner') { $Roles.Add('owner') }
 
                 $MemberBody = @{
                     '@odata.type'     = '#microsoft.graph.aadUserConversationMember'
@@ -222,8 +226,6 @@ Function Invoke-ExecTeamAction {
                 }
                 $MemberBodyJson = $MemberBody | ConvertTo-Json -Depth 5 -Compress
 
-                # Shared channels require the beta endpoint with app-only permissions
-                $GraphVersion = if ($ChannelType -eq 'shared') { 'beta' } else { 'v1.0' }
                 $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/$GraphVersion/teams/$TeamID/channels/$ChannelID/members" -tenantid $TenantFilter -type POST -body $MemberBodyJson
                 $Message = if ($GuestInvited) {
                     "Successfully invited guest '$OriginalInput' and added as $ChannelRole to channel '$ChannelLabel' in team '$TeamLabel'"
@@ -268,12 +270,18 @@ Function Invoke-ExecTeamAction {
 
         # Run B2B / cross-tenant diagnostics for AddChannelMember failures
         if ($Action -eq 'AddChannelMember') {
+            Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "AddChannelMember debug: ChannelType=$($Request.Body.ChannelType), UserID=$($Request.Body.UserID), ChannelID=$($Request.Body.ChannelID), RawError=$RawError" -Sev Debug
             try {
                 $DiagMessages = [System.Collections.Generic.List[string]]::new()
                 $IsSharedChannel = $Request.Body.ChannelType -eq 'shared'
+                $IsBackendError = $NormError -match 'backend request' -or $RawError -match 'backend request'
                 $IsExternalError = $NormError -match 'not allowed' -or $NormError -match 'external' -or $NormError -match 'guest' -or $NormError -match 'cross-tenant' -or $NormError -match 'collaboration' -or $RawError -match 'not allowed' -or $RawError -match 'Externally authenticated'
 
-                if ($IsExternalError) {
+                if ($IsBackendError -and $IsSharedChannel) {
+                    $DiagMessages.Add("[Teams Service] 'Failed to execute backend request' on a shared channel typically indicates a permissions or provisioning issue. Verify: (1) The CIPP app has ChannelMember.ReadWrite.All application permission granted and consented. (2) The shared channel is fully provisioned. (3) If adding an external user, cross-tenant access policies must allow B2B direct connect on BOTH tenants.")
+                }
+
+                if ($IsExternalError -or $IsBackendError) {
                     $EmailInput = $Request.Body.UserID
                     if ($EmailInput -is [hashtable] -or $EmailInput -is [PSCustomObject]) { $EmailInput = $EmailInput.value }
                     $EmailDomain = if ($EmailInput -match '@') { ($EmailInput -split '@')[1] } else { $null }
