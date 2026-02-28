@@ -114,9 +114,11 @@ Function Invoke-ExecTeamAction {
             }
             'ListChannelMembers' {
                 $ChannelID = $Request.Body.ChannelID
+                $ChannelType = $Request.Body.ChannelType
                 if (-not $ChannelID) { throw 'ChannelID is required' }
 
-                $ChannelMembers = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels/$ChannelID/members" -tenantid $TenantFilter -AsApp $true
+                $GraphVersion = if ($ChannelType -eq 'shared') { 'beta' } else { 'v1.0' }
+                $ChannelMembers = New-GraphGetRequest -uri "https://graph.microsoft.com/$GraphVersion/teams/$TeamID/channels/$ChannelID/members" -tenantid $TenantFilter -AsApp $true
                 $MemberList = @($ChannelMembers | ForEach-Object {
                     [PSCustomObject]@{
                         id              = $_.id
@@ -218,9 +220,11 @@ Function Invoke-ExecTeamAction {
                 if ($ExternalTenantId) {
                     $MemberBody['tenantId'] = $ExternalTenantId
                 }
-                $MemberBodyJson = $MemberBody | ConvertTo-Json -Depth 5
+                $MemberBodyJson = $MemberBody | ConvertTo-Json -Depth 5 -Compress
 
-                $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels/$ChannelID/members" -tenantid $TenantFilter -type POST -body $MemberBodyJson
+                # Shared channels require the beta endpoint with app-only permissions
+                $GraphVersion = if ($ChannelType -eq 'shared') { 'beta' } else { 'v1.0' }
+                $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/$GraphVersion/teams/$TeamID/channels/$ChannelID/members" -tenantid $TenantFilter -type POST -body $MemberBodyJson
                 $Message = if ($GuestInvited) {
                     "Successfully invited guest '$OriginalInput' and added as $ChannelRole to channel '$ChannelLabel' in team '$TeamLabel'"
                 } elseif ($ExternalTenantId) {
@@ -232,6 +236,7 @@ Function Invoke-ExecTeamAction {
             'RemoveChannelMember' {
                 $ChannelID = $Request.Body.ChannelID
                 $ChannelName = $Request.Body.ChannelName
+                $ChannelType = $Request.Body.ChannelType
                 $MembershipID = $Request.Body.MembershipID
                 $MemberName = $Request.Body.MemberName
                 if (-not $ChannelID) { throw 'ChannelID is required' }
@@ -239,7 +244,8 @@ Function Invoke-ExecTeamAction {
                 $ChannelLabel = if ($ChannelName) { $ChannelName } else { $ChannelID }
                 $MemberLabel = if ($MemberName) { $MemberName } else { $MembershipID }
 
-                $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels/$ChannelID/members/$MembershipID" -tenantid $TenantFilter -type DELETE
+                $GraphVersion = if ($ChannelType -eq 'shared') { 'beta' } else { 'v1.0' }
+                $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/$GraphVersion/teams/$TeamID/channels/$ChannelID/members/$MembershipID" -tenantid $TenantFilter -type DELETE
                 $Message = "Successfully removed '$MemberLabel' from channel '$ChannelLabel' in team '$TeamLabel'"
             }
             default {
