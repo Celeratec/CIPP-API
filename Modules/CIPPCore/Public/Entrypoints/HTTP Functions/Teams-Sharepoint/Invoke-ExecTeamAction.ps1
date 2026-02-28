@@ -117,8 +117,14 @@ Function Invoke-ExecTeamAction {
                 $ChannelType = $Request.Body.ChannelType
                 if (-not $ChannelID) { throw 'ChannelID is required' }
 
-                $GraphVersion = if ($ChannelType -eq 'shared') { 'beta' } else { 'v1.0' }
-                $ChannelMembers = New-GraphGetRequest -uri "https://graph.microsoft.com/$GraphVersion/teams/$TeamID/channels/$ChannelID/members" -tenantid $TenantFilter -AsApp $true
+                $ListTeamID = $TeamID
+                if ($ChannelType -eq 'shared' -or $ChannelType -eq 'private') {
+                    try {
+                        $ChInfo = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels/$ChannelID" -tenantid $TenantFilter -AsApp $true -NoAuthCheck $true
+                        if ($ChInfo.webUrl -match 'groupId=([0-9a-fA-F-]+)') { $ListTeamID = $Matches[1] }
+                    } catch { }
+                }
+                $ChannelMembers = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/teams/$ListTeamID/channels/$ChannelID/members" -tenantid $TenantFilter -AsApp $true
                 $MemberList = @($ChannelMembers | ForEach-Object {
                     [PSCustomObject]@{
                         id              = $_.id
@@ -163,6 +169,24 @@ Function Invoke-ExecTeamAction {
                 $GuestInvited = $false
                 $ExternalTenantId = $null
                 $IsNonStandard = $ChannelType -eq 'shared' -or $ChannelType -eq 'private'
+
+                # For shared/private channels, the host team may differ from the viewing team.
+                # POST /teams/{id}/channels/{id}/members requires the HOST team's ID.
+                $EffectiveTeamID = $TeamID
+                if ($IsNonStandard) {
+                    try {
+                        $ChannelInfo = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels/$ChannelID" -tenantid $TenantFilter -AsApp $true -NoAuthCheck $true
+                        if ($ChannelInfo.webUrl -match 'groupId=([0-9a-fA-F-]+)') {
+                            $HostTeamID = $Matches[1]
+                            if ($HostTeamID -ne $TeamID) {
+                                Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Shared channel '$ChannelLabel' is hosted by team $HostTeamID (viewing from $TeamID)" -Sev Debug
+                                $EffectiveTeamID = $HostTeamID
+                            }
+                        }
+                    } catch {
+                        Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Could not resolve host team for channel '$ChannelLabel': $($_.Exception.Message)" -Sev Debug
+                    }
+                }
 
                 if ($UserID -match '@') {
                     if ($ChannelType -eq 'shared') {
@@ -216,14 +240,10 @@ Function Invoke-ExecTeamAction {
                 }
                 $MemberBodyJson = $MemberBody | ConvertTo-Json -Depth 5 -Compress
 
-                $GraphUri = "https://graph.microsoft.com/v1.0/teams/$TeamID/channels/$ChannelID/members"
-                Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "AddChannelMember: URI=$GraphUri ChannelType=$ChannelType IsNonStandard=$IsNonStandard TeamID=$TeamID ChannelID=$ChannelID Body=$MemberBodyJson" -Sev Debug
+                $GraphUri = "https://graph.microsoft.com/v1.0/teams/$EffectiveTeamID/channels/$ChannelID/members"
+                Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "AddChannelMember: URI=$GraphUri ChannelType=$ChannelType EffectiveTeamID=$EffectiveTeamID (original=$TeamID) ChannelID=$ChannelID Body=$MemberBodyJson" -Sev Debug
 
-                if ($IsNonStandard) {
-                    $null = New-GraphPostRequest -uri $GraphUri -tenantid $TenantFilter -type POST -body $MemberBodyJson -NoAuthCheck $true
-                } else {
-                    $null = New-GraphPostRequest -AsApp $true -uri $GraphUri -tenantid $TenantFilter -type POST -body $MemberBodyJson
-                }
+                $null = New-GraphPostRequest -AsApp $true -uri $GraphUri -tenantid $TenantFilter -type POST -body $MemberBodyJson
 
                 $Message = if ($GuestInvited) {
                     "Successfully invited guest '$OriginalInput' and added as $ChannelRole to channel '$ChannelLabel' in team '$TeamLabel'"
@@ -244,8 +264,14 @@ Function Invoke-ExecTeamAction {
                 $ChannelLabel = if ($ChannelName) { $ChannelName } else { $ChannelID }
                 $MemberLabel = if ($MemberName) { $MemberName } else { $MembershipID }
 
-                $GraphVersion = if ($ChannelType -eq 'shared') { 'beta' } else { 'v1.0' }
-                $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/$GraphVersion/teams/$TeamID/channels/$ChannelID/members/$MembershipID" -tenantid $TenantFilter -type DELETE
+                $RemoveTeamID = $TeamID
+                if ($ChannelType -eq 'shared' -or $ChannelType -eq 'private') {
+                    try {
+                        $ChInfo = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels/$ChannelID" -tenantid $TenantFilter -AsApp $true -NoAuthCheck $true
+                        if ($ChInfo.webUrl -match 'groupId=([0-9a-fA-F-]+)') { $RemoveTeamID = $Matches[1] }
+                    } catch { }
+                }
+                $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$RemoveTeamID/channels/$ChannelID/members/$MembershipID" -tenantid $TenantFilter -type DELETE
                 $Message = "Successfully removed '$MemberLabel' from channel '$ChannelLabel' in team '$TeamLabel'"
             }
             default {
