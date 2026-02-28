@@ -45,8 +45,13 @@ function Invoke-ExecDomainMigration {
 
                 $MailNickname = ($CurrentUPN -split '@')[0]
                 $CurrentDomain = ($CurrentUPN -split '@')[1]
+                $CurrentMail = $User.mail
+                $CurrentMailDomain = if ($CurrentMail) { ($CurrentMail -split '@')[1] } else { $null }
 
-                if ($CurrentDomain -eq $TargetDomain) {
+                $UPNAlreadyOnTarget = $CurrentDomain -eq $TargetDomain
+                $MailAlreadyOnTarget = -not $CurrentMailDomain -or $CurrentMailDomain -eq $TargetDomain
+
+                if ($UPNAlreadyOnTarget -and $MailAlreadyOnTarget) {
                     $Results.Add("Skipped $DisplayName - already on $TargetDomain")
                     continue
                 }
@@ -95,40 +100,50 @@ function Invoke-ExecDomainMigration {
 
                 if ($ConflictFound) { continue }
 
-                $Body = @{
-                    userPrincipalName = $NewUPN
-                } | ConvertTo-Json -Compress
-                $null = New-GraphPostRequest -uri "https://graph.microsoft.com/beta/users/$UserId" -tenantid $TenantFilter -type PATCH -body $Body
+                # Only change UPN if it's not already on the target domain
+                if (-not $UPNAlreadyOnTarget) {
+                    $Body = @{
+                        userPrincipalName = $NewUPN
+                    } | ConvertTo-Json -Compress
+                    $null = New-GraphPostRequest -uri "https://graph.microsoft.com/beta/users/$UserId" -tenantid $TenantFilter -type PATCH -body $Body
+                }
 
-                # Add old email as alias via Exchange
+                # Update primary SMTP and preserve old addresses as aliases via Exchange
                 try {
                     $CurrentMailbox = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Get-Mailbox' -cmdParams @{ Identity = $UserId } -UseSystemMailbox $true
                     if ($CurrentMailbox) {
                         $CurrentProxyAddresses = @($CurrentMailbox.EmailAddresses)
-                        $OldSmtp = "smtp:$CurrentUPN"
+                        $OldMail = $User.mail
 
-                        $AliasExists = $CurrentProxyAddresses | Where-Object { $_.ToLower() -eq $OldSmtp.ToLower() }
-                        if (-not $AliasExists) {
-                            $NewProxyAddresses = @("SMTP:$NewUPN") + @($CurrentProxyAddresses | ForEach-Object {
-                                if ($_ -cmatch '^SMTP:') { $_.ToLower() } else { $_ }
-                            }) + @($OldSmtp)
-                            $Seen = @{}
-                            $NewProxyAddresses = $NewProxyAddresses | Where-Object {
-                                $lower = $_.ToLower()
-                                if ($Seen.ContainsKey($lower)) { $false } else { $Seen[$lower] = $true; $true }
-                            }
-                            $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Set-Mailbox' -cmdParams @{
-                                Identity       = $UserId
-                                EmailAddresses = $NewProxyAddresses
-                            } -UseSystemMailbox $true
+                        # Build new proxy address list: new primary + all existing (demoted) + old UPN alias + old mail alias
+                        $NewProxyAddresses = @("SMTP:$NewUPN")
+                        $NewProxyAddresses += @($CurrentProxyAddresses | ForEach-Object {
+                            if ($_ -cmatch '^SMTP:') { $_.ToLower() } else { $_ }
+                        })
+                        $NewProxyAddresses += @("smtp:$CurrentUPN")
+                        if ($OldMail -and $OldMail -ne $CurrentUPN -and $OldMail -ne $NewUPN) {
+                            $NewProxyAddresses += @("smtp:$OldMail")
                         }
-                        $Results.Add("Successfully migrated $DisplayName from $CurrentUPN to $NewUPN (old address kept as alias)")
+
+                        # Deduplicate case-insensitively
+                        $Seen = @{}
+                        $NewProxyAddresses = $NewProxyAddresses | Where-Object {
+                            $lower = $_.ToLower()
+                            if ($Seen.ContainsKey($lower)) { $false } else { $Seen[$lower] = $true; $true }
+                        }
+
+                        $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Set-Mailbox' -cmdParams @{
+                            Identity       = $UserId
+                            EmailAddresses = $NewProxyAddresses
+                        } -UseSystemMailbox $true
+
+                        $Results.Add("Successfully migrated $DisplayName from $CurrentUPN to $NewUPN (old addresses kept as aliases)")
                     } else {
-                        $Results.Add("Migrated $DisplayName UPN to $NewUPN (no mailbox found - alias not created)")
+                        $Results.Add("Migrated $DisplayName UPN to $NewUPN (no mailbox found - aliases not created)")
                     }
                 } catch {
                     $AliasError = Get-CippException -Exception $_
-                    $Results.Add("Migrated $DisplayName UPN to $NewUPN but failed to add alias: $($AliasError.NormalizedError)")
+                    $Results.Add("Migrated $DisplayName UPN to $NewUPN but failed to update aliases: $($AliasError.NormalizedError)")
                 }
 
                 Write-LogMessage -API $APIName -tenant $TenantFilter -headers $Headers -message "Migrated $DisplayName from $CurrentUPN to $NewUPN" -Sev Info
