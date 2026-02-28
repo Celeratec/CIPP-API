@@ -160,29 +160,32 @@ Function Invoke-ExecTeamAction {
                 $ChannelLabel = if ($ChannelName) { $ChannelName } else { $ChannelID }
                 $OriginalInput = $UserID
 
-                if ($ChannelType -eq 'shared' -or $ChannelType -eq 'private') {
-                    # Use Teams PowerShell for shared/private channels -- Graph app-only is unreliable
-                    $UserIdentifier = $UserID
-                    if ($UserID -notmatch '@') {
-                        $UserObj = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users/$UserID`?`$select=userPrincipalName,displayName,mail" -tenantid $TenantFilter -AsApp $true
-                        $UserIdentifier = $UserObj.userPrincipalName
-                    }
+                $GuestInvited = $false
+                $ExternalTenantId = $null
+                $IsNonStandard = $ChannelType -eq 'shared' -or $ChannelType -eq 'private'
 
-                    $TeamsCmdParams = @{
-                        GroupId     = $TeamID
-                        DisplayName = $ChannelName
-                        User        = $UserIdentifier
-                    }
-                    if ($ChannelRole -eq 'owner') {
-                        $TeamsCmdParams['Role'] = 'Owner'
-                    }
+                if ($UserID -match '@') {
+                    if ($ChannelType -eq 'shared') {
+                        $EncodedEmail = $UserID -replace '#', '%23'
+                        $UserLookup = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users?`$filter=mail eq '$EncodedEmail' or userPrincipalName eq '$EncodedEmail'&`$select=id,displayName,userType" -tenantid $TenantFilter -AsApp $true
+                        $ResolvedUser = if ($UserLookup -is [array]) { $UserLookup[0] } else { $UserLookup }
 
-                    $null = New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Add-TeamChannelUser' -CmdParams $TeamsCmdParams
-                    $Message = "Successfully added $ChannelRole to channel '$ChannelLabel' in team '$TeamLabel'"
-                } else {
-                    # Standard channels — use Graph API
-                    $GuestInvited = $false
-                    if ($UserID -match '@') {
+                        if ($ResolvedUser -and $ResolvedUser.userType -eq 'Member') {
+                            $UserID = $ResolvedUser.id
+                        } else {
+                            $EmailDomain = ($UserID -split '@')[1]
+                            try {
+                                $OidcConfig = Invoke-RestMethod -Uri "https://login.microsoftonline.com/$EmailDomain/.well-known/openid-configuration" -Method GET -ErrorAction Stop
+                                $ExternalTenantId = ($OidcConfig.issuer -split '/')[3]
+                            } catch {
+                                throw "Could not resolve tenant for domain '$EmailDomain'. Ensure the domain belongs to a valid Microsoft 365 organization."
+                            }
+                            if (-not $ExternalTenantId -or $ExternalTenantId -eq '9188040d-6c67-4c5b-b112-36a304b66dad') {
+                                throw "The domain '$EmailDomain' does not belong to a Microsoft 365 organization. Shared channels require a work or school account."
+                            }
+                            Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Adding external user '$UserID' from tenant $ExternalTenantId to shared channel via B2B direct connect" -Sev Info
+                        }
+                    } else {
                         $EncodedEmail = $UserID -replace '#', '%23'
                         $UserLookup = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users?`$filter=mail eq '$EncodedEmail' or userPrincipalName eq '$EncodedEmail'&`$select=id,displayName,userType" -tenantid $TenantFilter -AsApp $true
                         if (-not $UserLookup -or $UserLookup.Count -eq 0) {
@@ -201,19 +204,31 @@ Function Invoke-ExecTeamAction {
                             $UserID = $ResolvedUser.id
                         }
                     }
+                }
 
-                    $MemberBody = @{
-                        '@odata.type'     = '#microsoft.graph.aadUserConversationMember'
-                        'roles'           = if ($ChannelRole -eq 'owner') { @('owner') } else { @() }
-                        'user@odata.bind' = "https://graph.microsoft.com/v1.0/users('$UserID')"
-                    } | ConvertTo-Json -Depth 5 -Compress
+                $MemberBody = @{
+                    '@odata.type'     = '#microsoft.graph.aadUserConversationMember'
+                    'roles'           = if ($ChannelRole -eq 'owner') { @('owner') } else { @() }
+                    'user@odata.bind' = "https://graph.microsoft.com/v1.0/users('$UserID')"
+                }
+                if ($ExternalTenantId) {
+                    $MemberBody['tenantId'] = $ExternalTenantId
+                }
+                $MemberBodyJson = $MemberBody | ConvertTo-Json -Depth 5 -Compress
 
-                    $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels/$ChannelID/members" -tenantid $TenantFilter -type POST -body $MemberBody
-                    $Message = if ($GuestInvited) {
-                        "Successfully invited guest '$OriginalInput' and added as $ChannelRole to channel '$ChannelLabel' in team '$TeamLabel'"
-                    } else {
-                        "Successfully added $ChannelRole to channel '$ChannelLabel' in team '$TeamLabel'"
-                    }
+                if ($IsNonStandard) {
+                    # Shared/private channels: use delegated auth — app-only returns UnknownError
+                    $null = New-GraphPostRequest -uri "https://graph.microsoft.com/beta/teams/$TeamID/channels/$ChannelID/members" -tenantid $TenantFilter -type POST -body $MemberBodyJson
+                } else {
+                    $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels/$ChannelID/members" -tenantid $TenantFilter -type POST -body $MemberBodyJson
+                }
+
+                $Message = if ($GuestInvited) {
+                    "Successfully invited guest '$OriginalInput' and added as $ChannelRole to channel '$ChannelLabel' in team '$TeamLabel'"
+                } elseif ($ExternalTenantId) {
+                    "Successfully added external user '$OriginalInput' as $ChannelRole to shared channel '$ChannelLabel' in team '$TeamLabel' via B2B direct connect"
+                } else {
+                    "Successfully added $ChannelRole to channel '$ChannelLabel' in team '$TeamLabel'"
                 }
             }
             'RemoveChannelMember' {
