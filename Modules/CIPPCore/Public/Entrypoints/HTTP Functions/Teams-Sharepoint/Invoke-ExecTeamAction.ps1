@@ -216,11 +216,13 @@ Function Invoke-ExecTeamAction {
                 }
                 $MemberBodyJson = $MemberBody | ConvertTo-Json -Depth 5 -Compress
 
+                $GraphUri = "https://graph.microsoft.com/v1.0/teams/$TeamID/channels/$ChannelID/members"
+                Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "AddChannelMember: URI=$GraphUri ChannelType=$ChannelType IsNonStandard=$IsNonStandard TeamID=$TeamID ChannelID=$ChannelID Body=$MemberBodyJson" -Sev Debug
+
                 if ($IsNonStandard) {
-                    # Shared/private channels: use delegated auth on v1.0 — app-only fails with Teams backend errors
-                    $null = New-GraphPostRequest -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels/$ChannelID/members" -tenantid $TenantFilter -type POST -body $MemberBodyJson -NoAuthCheck $true
+                    $null = New-GraphPostRequest -uri $GraphUri -tenantid $TenantFilter -type POST -body $MemberBodyJson -NoAuthCheck $true
                 } else {
-                    $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels/$ChannelID/members" -tenantid $TenantFilter -type POST -body $MemberBodyJson
+                    $null = New-GraphPostRequest -AsApp $true -uri $GraphUri -tenantid $TenantFilter -type POST -body $MemberBodyJson
                 }
 
                 $Message = if ($GuestInvited) {
