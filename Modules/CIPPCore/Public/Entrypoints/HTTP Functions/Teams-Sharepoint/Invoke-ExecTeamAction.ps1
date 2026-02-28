@@ -217,8 +217,8 @@ Function Invoke-ExecTeamAction {
                 $MemberBodyJson = $MemberBody | ConvertTo-Json -Depth 5 -Compress
 
                 if ($IsNonStandard) {
-                    # Shared/private channels: use delegated auth — app-only returns UnknownError
-                    $null = New-GraphPostRequest -uri "https://graph.microsoft.com/beta/teams/$TeamID/channels/$ChannelID/members" -tenantid $TenantFilter -type POST -body $MemberBodyJson
+                    # Shared/private channels: use delegated auth on v1.0 — app-only fails with Teams backend errors
+                    $null = New-GraphPostRequest -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels/$ChannelID/members" -tenantid $TenantFilter -type POST -body $MemberBodyJson -NoAuthCheck $true
                 } else {
                     $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels/$ChannelID/members" -tenantid $TenantFilter -type POST -body $MemberBodyJson
                 }
