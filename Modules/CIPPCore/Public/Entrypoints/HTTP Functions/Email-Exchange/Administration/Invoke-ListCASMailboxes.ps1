@@ -14,8 +14,8 @@ function Invoke-ListCASMailboxes {
         $APIName = $Request.Params.CIPPEndpoint
         Write-LogMessage -headers $Request.Headers -API $APINAME -message 'Accessed this API' -Sev 'Debug'
 
-        # Get CAS mailbox settings for all mailboxes
-        $Select = 'Identity,PrimarySmtpAddress,ImapEnabled,PopEnabled,EwsEnabled,MAPIEnabled,OWAEnabled,ActiveSyncEnabled'
+        # Keep this endpoint lean for Users page badges: only fields needed for IMAP/POP checks.
+        $Select = 'PrimarySmtpAddress,ImapEnabled,PopEnabled'
 
         $ExoRequest = @{
             tenantid  = $TenantFilter
@@ -26,14 +26,12 @@ function Invoke-ListCASMailboxes {
             Select    = $Select
         }
 
-        $CASMailboxes = New-ExoRequest @ExoRequest | Select-Object `
+        $CASMailboxes = New-ExoRequest @ExoRequest |
+            Where-Object { $_.ImapEnabled -or $_.PopEnabled } |
+            Select-Object `
             @{ Name = 'userPrincipalName'; Expression = { $_.PrimarySmtpAddress } },
             @{ Name = 'ImapEnabled'; Expression = { $_.ImapEnabled } },
             @{ Name = 'PopEnabled'; Expression = { $_.PopEnabled } },
-            @{ Name = 'EwsEnabled'; Expression = { $_.EwsEnabled } },
-            @{ Name = 'MAPIEnabled'; Expression = { $_.MAPIEnabled } },
-            @{ Name = 'OWAEnabled'; Expression = { $_.OWAEnabled } },
-            @{ Name = 'ActiveSyncEnabled'; Expression = { $_.ActiveSyncEnabled } },
             @{ Name = 'LegacyProtocolsEnabled'; Expression = { $_.ImapEnabled -or $_.PopEnabled } }
 
         $StatusCode = [HttpStatusCode]::OK
