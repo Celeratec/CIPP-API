@@ -205,7 +205,7 @@ Function Invoke-ExecTeamAction {
                                 throw "Could not resolve tenant for domain '$EmailDomain'. Ensure the domain belongs to a valid Microsoft 365 organization."
                             }
                             if (-not $ExternalTenantId -or $ExternalTenantId -eq '9188040d-6c67-4c5b-b112-36a304b66dad') {
-                                throw "The domain '$EmailDomain' does not belong to a Microsoft 365 organization. Shared channels require a work or school account."
+                                throw "The domain '$EmailDomain' does not belong to a Microsoft 365 organization. Shared channels use External Access (B2B Direct Connect) which requires a work or school account. To add users with personal email addresses (Gmail, Outlook.com, etc.), use a standard or private channel instead — these use Guest Access (B2B Collaboration) which supports personal emails."
                             }
                             Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Adding external user '$UserID' from tenant $ExternalTenantId to shared channel via B2B direct connect" -Sev Info
                         }
@@ -246,9 +246,9 @@ Function Invoke-ExecTeamAction {
                 $null = New-GraphPostRequest -AsApp $true -uri $GraphUri -tenantid $TenantFilter -type POST -body $MemberBodyJson
 
                 $Message = if ($GuestInvited) {
-                    "Successfully invited guest '$OriginalInput' and added as $ChannelRole to channel '$ChannelLabel' in team '$TeamLabel'"
+                    "Successfully invited guest '$OriginalInput' and added as $ChannelRole to channel '$ChannelLabel' in team '$TeamLabel' (Guest Access — B2B Collaboration)"
                 } elseif ($ExternalTenantId) {
-                    "Successfully added external user '$OriginalInput' as $ChannelRole to shared channel '$ChannelLabel' in team '$TeamLabel' via B2B direct connect"
+                    "Successfully added external user '$OriginalInput' as $ChannelRole to shared channel '$ChannelLabel' in team '$TeamLabel' (External Access — B2B Direct Connect)"
                 } else {
                     "Successfully added $ChannelRole to channel '$ChannelLabel' in team '$TeamLabel'"
                 }

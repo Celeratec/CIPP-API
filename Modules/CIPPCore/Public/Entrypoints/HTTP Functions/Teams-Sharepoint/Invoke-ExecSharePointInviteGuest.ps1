@@ -30,9 +30,9 @@ function Invoke-ExecSharePointInviteGuest {
         $GuestUPN = $InviteResult.invitedUser.userPrincipalName
 
         if ($Request.Body.sendInvite -eq $true) {
-            $ResultMessages.Add("Invited guest $($Request.Body.displayName) ($($Request.Body.mail)) with email invite.")
+            $ResultMessages.Add("Invited guest $($Request.Body.displayName) ($($Request.Body.mail)) with email invite (Guest Access — B2B Collaboration).")
         } else {
-            $ResultMessages.Add("Invited guest $($Request.Body.displayName) ($($Request.Body.mail)) without email invite.")
+            $ResultMessages.Add("Invited guest $($Request.Body.displayName) ($($Request.Body.mail)) without email invite (Guest Access — B2B Collaboration).")
         }
 
         # Step 2: Add guest to the target resource

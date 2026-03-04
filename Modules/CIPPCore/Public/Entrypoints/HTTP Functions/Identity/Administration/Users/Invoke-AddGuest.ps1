@@ -38,9 +38,9 @@ function Invoke-AddGuest {
         $BodyToShipJson = ConvertTo-Json -Depth 5 -InputObject $BodyToShip
         $null = New-GraphPostRequest -uri 'https://graph.microsoft.com/beta/invitations' -tenantid $TenantFilter -type POST -body $BodyToShipJson
         if ($SendInvite -eq $true) {
-            $Result = "Invited Guest $($DisplayName) with Email Invite"
+            $Result = "Invited Guest $($DisplayName) with Email Invite (Guest Access — B2B Collaboration)"
         } else {
-            $Result = "Invited Guest $($DisplayName) with no Email Invite"
+            $Result = "Invited Guest $($DisplayName) with no Email Invite (Guest Access — B2B Collaboration)"
         }
         Write-LogMessage -headers $Headers -API $APIName -tenant $($TenantFilter) -message $Result -Sev 'Info'
         $StatusCode = [HttpStatusCode]::OK
