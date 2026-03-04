@@ -106,6 +106,21 @@ function Invoke-ListUserMailboxDetails {
         } else {
             $BlockedForSpam = $false
         }
+
+        # Check if user is blocked for external outbound via transport rule
+        $BlockExternalOutbound = $false
+        try {
+            $AllTransportRules = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Get-TransportRule' -useSystemMailbox $true
+            $OutboundRule = $AllTransportRules | Where-Object -Property Identity -EQ 'Manage365 - Block External Outbound'
+            if ($OutboundRule -and $OutboundRule.From) {
+                $RuleFromList = @($OutboundRule.From | ForEach-Object { $_ })
+                if ($UserMail -in $RuleFromList -or $UserID -in $RuleFromList) {
+                    $BlockExternalOutbound = $true
+                }
+            }
+        } catch {
+            Write-Verbose "Could not check outbound transport rule: $($_.Exception.Message)"
+        }
     } catch {
         Write-Error "Failed Fetching Data $($_.Exception.message): $($_.InvocationInfo.ScriptLineNumber)"
     }
@@ -247,7 +262,7 @@ function Invoke-ListUserMailboxDetails {
         ExcludedFromOrgWideHold  = $ExcludedFromOrgWideHold
         HiddenFromAddressLists   = $MailboxDetailedRequest.HiddenFromAddressListsEnabled
         BlockExternalInbound     = ($MailboxDetailedRequest.RequireSenderAuthenticationEnabled -eq $true)
-        BlockExternalOutbound    = ($MailboxDetailedRequest.CustomAttribute15 -eq 'BlockOutbound')
+        BlockExternalOutbound    = $BlockExternalOutbound
         EWSEnabled               = $CASRequest.EwsEnabled
         MailboxMAPIEnabled       = $CASRequest.MAPIEnabled
         MailboxOWAEnabled        = $CASRequest.OWAEnabled
