@@ -39,29 +39,39 @@ function Invoke-ExecSearchFiles {
     }
 
     try {
-        $SearchBody = @{
-            requests = @(
-                @{
-                    entityTypes = @('driveItem')
-                    query       = @{
-                        queryString = $SearchQuery
-                    }
-                    from        = $From
-                    size        = $Size
-                    fields      = @(
-                        'name', 'webUrl', 'lastModifiedDateTime', 'lastModifiedBy',
-                        'createdBy', 'size', 'parentReference', 'file', 'folder',
-                        'id', 'createdDateTime'
-                    )
-                }
+        $RootSite = New-GraphGetRequest `
+            -uri 'https://graph.microsoft.com/v1.0/sites/root?$select=siteCollection' `
+            -tenantid $TenantFilter `
+            -asApp $true
+        $Region = $RootSite.siteCollection.dataLocationCode
+        if (-not $Region) { $Region = 'NAM' }
+
+        $SearchRequest = @{
+            entityTypes              = @('driveItem')
+            query                    = @{
+                queryString = $SearchQuery
+            }
+            from                     = $From
+            size                     = $Size
+            region                   = $Region
+            sharePointOneDriveOptions = @{
+                includeContent = 'privateContent,sharedContent'
+            }
+            fields                   = @(
+                'name', 'webUrl', 'lastModifiedDateTime', 'lastModifiedBy',
+                'createdBy', 'size', 'parentReference', 'file', 'folder',
+                'id', 'createdDateTime'
             )
-        } | ConvertTo-Json -Depth 5
+        }
+
+        $SearchBody = @{ requests = @($SearchRequest) } | ConvertTo-Json -Depth 5
 
         $SearchResults = New-GraphPostRequest `
             -uri 'https://graph.microsoft.com/v1.0/search/query' `
             -tenantid $TenantFilter `
             -body $SearchBody `
             -type POST `
+            -AsApp $true `
             -NoAuthCheck $true
 
         $Hits = @()
@@ -150,12 +160,14 @@ function Invoke-ExecSearchFiles {
         $ErrorMessage = Get-CippException -Exception $_
         $RawError = $_.Exception.Message
         if ($RawError -match '403' -or $RawError -match 'Forbidden' -or $RawError -match 'Authorization') {
-            $Message = "File search failed with a 403 Forbidden error. The Files.Read.All permission may not be granted for this tenant. Please run a CPV Refresh from CIPP Settings to push the required permissions, then try again. Raw error: $($ErrorMessage.NormalizedError)"
+            $Message = "File search failed with a 403 Forbidden error. The Files.Read.All application permission may not be granted for this tenant. Please run a CPV Refresh from CIPP Settings to push the required permissions, then try again. Raw error: $($ErrorMessage.NormalizedError)"
+        } elseif ($RawError -match 'Region' -or $RawError -match 'region') {
+            $Message = "File search failed because the tenant region could not be determined. Raw error: $($ErrorMessage.NormalizedError)"
         } else {
             $Message = "File search failed. Error: $($ErrorMessage.NormalizedError)"
         }
         Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message $Message -Sev Error -LogData $ErrorMessage
-        $StatusCode = [HttpStatusCode]::Forbidden
+        $StatusCode = [HttpStatusCode]::InternalServerError
         $Body = @{ Results = $Message }
     }
 
