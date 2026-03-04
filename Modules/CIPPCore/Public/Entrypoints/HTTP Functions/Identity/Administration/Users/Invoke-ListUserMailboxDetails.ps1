@@ -246,6 +246,8 @@ function Invoke-ListUserMailboxDetails {
         PurviewRetentionHold     = $PurviewRetentionHold
         ExcludedFromOrgWideHold  = $ExcludedFromOrgWideHold
         HiddenFromAddressLists   = $MailboxDetailedRequest.HiddenFromAddressListsEnabled
+        BlockExternalInbound     = [bool]$MailboxDetailedRequest.RequireSenderAuthenticationEnabled
+        BlockExternalOutbound    = ($MailboxDetailedRequest.CustomAttribute15 -eq 'BlockOutbound')
         EWSEnabled               = $CASRequest.EwsEnabled
         MailboxMAPIEnabled       = $CASRequest.MAPIEnabled
         MailboxOWAEnabled        = $CASRequest.OWAEnabled
