@@ -148,7 +148,12 @@ function Invoke-ExecSearchFiles {
         $StatusCode = [HttpStatusCode]::OK
     } catch {
         $ErrorMessage = Get-CippException -Exception $_
-        $Message = "File search failed. Error: $($ErrorMessage.NormalizedError)"
+        $RawError = $_.Exception.Message
+        if ($RawError -match '403' -or $RawError -match 'Forbidden' -or $RawError -match 'Authorization') {
+            $Message = "File search failed with a 403 Forbidden error. The Files.Read.All permission may not be granted for this tenant. Please run a CPV Refresh from CIPP Settings to push the required permissions, then try again. Raw error: $($ErrorMessage.NormalizedError)"
+        } else {
+            $Message = "File search failed. Error: $($ErrorMessage.NormalizedError)"
+        }
         Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message $Message -Sev Error -LogData $ErrorMessage
         $StatusCode = [HttpStatusCode]::Forbidden
         $Body = @{ Results = $Message }
