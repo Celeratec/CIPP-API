@@ -44,29 +44,31 @@ function Invoke-ExecSetMailboxRestriction {
             'Outbound' {
                 if ($Enable) {
                     $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Set-Mailbox' -cmdParams @{
-                        Identity         = $UserId
+                        Identity          = $UserId
                         CustomAttribute15 = 'BlockOutbound'
                     } -Anchor $UserId
                     $null = $ResultMessages.Add("Flagged $UserId for external outbound blocking.")
 
-                    $ExistingRule = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Get-TransportRule' -cmdParams @{
-                        Filter = "Name -eq '$TransportRuleName'"
-                    } -useSystemMailbox $true
+                    $AllRules = New-ExoRequest -ErrorAction SilentlyContinue -tenantid $TenantFilter -cmdlet 'Get-TransportRule' -useSystemMailbox $true
+                    $ExistingRule = $AllRules | Where-Object -Property Identity -EQ $TransportRuleName
 
                     if (-not $ExistingRule) {
                         $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'New-TransportRule' -cmdParams @{
-                            Name                             = $TransportRuleName
-                            SenderADAttributeContainsWords   = @{ CustomAttribute15 = 'BlockOutbound' }
-                            SentToScope                      = 'NotInOrganization'
-                            RejectMessageReasonText          = 'This mailbox is restricted from sending to external recipients.'
-                            RejectMessageEnhancedStatusCode  = '5.7.1'
-                            Comments                         = 'Auto-created by Manage365. Blocks external outbound for mailboxes with CustomAttribute15=BlockOutbound.'
+                            Name                            = $TransportRuleName
+                            SenderADAttributeContainsWords  = @{
+                                '@odata.type'    = '#Exchange.GenericHashTable'
+                                CustomAttribute15 = 'BlockOutbound'
+                            }
+                            SentToScope                     = 'NotInOrganization'
+                            RejectMessageReasonText         = 'This mailbox is restricted from sending to external recipients.'
+                            RejectMessageEnhancedStatusCode = '5.7.1'
+                            Comments                        = 'Auto-created by Manage365. Blocks external outbound for mailboxes with CustomAttribute15=BlockOutbound.'
                         } -useSystemMailbox $true
                         $null = $ResultMessages.Add("Created transport rule '$TransportRuleName' to enforce outbound restriction.")
                     }
                 } else {
                     $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Set-Mailbox' -cmdParams @{
-                        Identity         = $UserId
+                        Identity          = $UserId
                         CustomAttribute15 = $null
                     } -Anchor $UserId
                     $null = $ResultMessages.Add("Allowed external outbound mail for $UserId.")
