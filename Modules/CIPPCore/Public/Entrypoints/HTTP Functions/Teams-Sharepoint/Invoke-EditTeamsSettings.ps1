@@ -182,8 +182,30 @@ function Invoke-EditTeamsSettings {
                 }
             }
 
+            'backgrounds' {
+                # Update Meeting Branding Policy (background images toggle)
+                if ($null -ne $Request.Body.enableMeetingBackgroundImages) {
+                    $cmdParams = @{
+                        Identity                     = 'Global'
+                        EnableMeetingBackgroundImages = [bool]$Request.Body.enableMeetingBackgroundImages
+                    }
+                    New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Set-CsTeamsMeetingBrandingPolicy' -CmdParams $cmdParams
+                    $Results.Add('Successfully updated meeting background settings.')
+                }
+
+                # Assign branding policy to a specific user
+                if ($Request.Body.assignUser -and $Request.Body.policyName) {
+                    $grantParams = @{
+                        Identity   = $Request.Body.assignUser
+                        PolicyName = $Request.Body.policyName
+                    }
+                    New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Grant-CsTeamsMeetingBrandingPolicy' -CmdParams $grantParams
+                    $Results.Add("Successfully assigned branding policy '$($Request.Body.policyName)' to user '$($Request.Body.assignUser)'.")
+                }
+            }
+
             default {
-                throw "Invalid section: $Section. Valid values are: federation, client, meeting, messaging."
+                throw "Invalid section: $Section. Valid values are: federation, client, meeting, messaging, backgrounds."
             }
         }
 

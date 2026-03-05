@@ -58,6 +58,13 @@ function Invoke-ListTeamsSettings {
             Write-LogMessage -API $APIName -tenant $TenantFilter -message "Could not get messaging policy: $($_.Exception.Message)" -Sev 'Debug'
         }
 
+        # Meeting Branding Policy
+        try {
+            $BrandingPolicy = New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Get-CsTeamsMeetingBrandingPolicy'
+        } catch {
+            Write-LogMessage -API $APIName -tenant $TenantFilter -message "Could not get meeting branding policy: $($_.Exception.Message)" -Sev 'Debug'
+        }
+
         # Parse federation allowed/blocked domains
         $FederationAllowedDomains = @()
         $FederationBlockedDomains = @()
@@ -72,6 +79,26 @@ function Invoke-ListTeamsSettings {
             } elseif ($FederationConfig.BlockedDomains -and $FederationConfig.BlockedDomains.Count -gt 0) {
                 $FederationMode = 'BlockSpecificExternal'
                 $FederationBlockedDomains = @($FederationConfig.BlockedDomains)
+            }
+        }
+
+        # Parse branding policy data
+        $BrandingPolicies = @()
+        $MeetingBackgroundImages = @()
+        $EnableMeetingBackgroundImages = $false
+
+        if ($BrandingPolicy) {
+            if ($BrandingPolicy -is [array]) {
+                $BrandingPolicies = @($BrandingPolicy | Select-Object Identity, Description, EnableMeetingBackgroundImages, MeetingBackgroundImages)
+                $GlobalBranding = $BrandingPolicy | Where-Object { $_.Identity -eq 'Global' } | Select-Object -First 1
+                if ($GlobalBranding) {
+                    $EnableMeetingBackgroundImages = $GlobalBranding.EnableMeetingBackgroundImages ?? $false
+                    $MeetingBackgroundImages = @($GlobalBranding.MeetingBackgroundImages)
+                }
+            } else {
+                $BrandingPolicies = @($BrandingPolicy | Select-Object Identity, Description, EnableMeetingBackgroundImages, MeetingBackgroundImages)
+                $EnableMeetingBackgroundImages = $BrandingPolicy.EnableMeetingBackgroundImages ?? $false
+                $MeetingBackgroundImages = @($BrandingPolicy.MeetingBackgroundImages)
             }
         }
 
@@ -114,6 +141,11 @@ function Invoke-ListTeamsSettings {
             deleteCustomEmojis                           = $MessagingPolicy.DeleteCustomEmojis ?? $false
             allowSecurityEndUserReporting                = $MessagingPolicy.AllowSecurityEndUserReporting ?? $true
             allowCommunicationComplianceEndUserReporting = $MessagingPolicy.AllowCommunicationComplianceEndUserReporting ?? $true
+
+            # Meeting Branding / Backgrounds
+            enableMeetingBackgroundImages = $EnableMeetingBackgroundImages
+            meetingBackgroundImages       = $MeetingBackgroundImages
+            brandingPolicies              = $BrandingPolicies
         }
 
         $StatusCode = [HttpStatusCode]::OK
