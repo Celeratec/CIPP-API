@@ -340,6 +340,11 @@ function Compare-CIPPIntuneObject {
         }
     } else {
         $intuneCollection = Get-Content .\intuneCollection.json | ConvertFrom-Json -ErrorAction SilentlyContinue
+        # Build a hashtable index for O(1) lookups instead of O(n) Where-Object scans
+        $intuneCollectionIndex = @{}
+        foreach ($item in $intuneCollection) {
+            if ($item.id) { $intuneCollectionIndex[$item.id] = $item }
+        }
 
         # Recursive function to process group setting collections at any depth
         function Process-GroupSettingChildren {
@@ -349,7 +354,7 @@ function Compare-CIPPIntuneObject {
                 [Parameter(Mandatory = $true)]
                 [string]$Source,
                 [Parameter(Mandatory = $true)]
-                $IntuneCollection,
+                $IntuneCollectionIndex,
                 [int]$CurrentDepth = 0,
                 [int]$MaxDepth = 25
             )
@@ -362,7 +367,7 @@ function Compare-CIPPIntuneObject {
             $results = [System.Collections.Generic.List[PSCustomObject]]::new()
 
             foreach ($child in $Children) {
-                $childIntuneObj = $IntuneCollection | Where-Object { $_.id -eq $child.settingDefinitionId }
+                $childIntuneObj = $IntuneCollectionIndex[$child.settingDefinitionId]
                 $childLabel = if ($childIntuneObj?.displayName) {
                     $childIntuneObj.displayName
                 } else {
@@ -374,7 +379,7 @@ function Compare-CIPPIntuneObject {
                         if ($child.groupSettingCollectionValue) {
                             foreach ($groupValue in $child.groupSettingCollectionValue) {
                                 if ($groupValue.children) {
-                                    $nestedResults = Process-GroupSettingChildren -Children $groupValue.children -Source $Source -IntuneCollection $IntuneCollection -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth
+                                    $nestedResults = Process-GroupSettingChildren -Children $groupValue.children -Source $Source -IntuneCollectionIndex $IntuneCollectionIndex -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth
                                     $results.AddRange($nestedResults)
                                 }
                             }
@@ -460,7 +465,7 @@ function Compare-CIPPIntuneObject {
 
                 # Also process any children within choice setting values
                 if ($child.choiceSettingValue?.children) {
-                    $nestedResults = Process-GroupSettingChildren -Children $child.choiceSettingValue.children -Source $Source -IntuneCollection $IntuneCollection -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth
+                    $nestedResults = Process-GroupSettingChildren -Children $child.choiceSettingValue.children -Source $Source -IntuneCollectionIndex $IntuneCollectionIndex -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth
                     $results.AddRange($nestedResults)
                 }
             }
@@ -471,14 +476,14 @@ function Compare-CIPPIntuneObject {
         # Process reference object settings
         $referenceItems = $ReferenceObject.settings | ForEach-Object {
             $settingInstance = $_.settingInstance
-            $intuneObj = $intuneCollection | Where-Object { $_.id -eq $settingInstance.settingDefinitionId }
+            $intuneObj = $intuneCollectionIndex[$settingInstance.settingDefinitionId]
             $tempOutput = switch ($settingInstance.'@odata.type') {
                 '#microsoft.graph.deviceManagementConfigurationGroupSettingCollectionInstance' {
                     if ($null -ne $settingInstance.groupSettingCollectionValue) {
                         $groupResults = [System.Collections.Generic.List[PSCustomObject]]::new()
                         foreach ($groupValue in $settingInstance.groupSettingCollectionValue) {
                             if ($groupValue.children -is [System.Array]) {
-                                $childResults = Process-GroupSettingChildren -Children $groupValue.children -Source 'Reference' -IntuneCollection $intuneCollection
+                                $childResults = Process-GroupSettingChildren -Children $groupValue.children -Source 'Reference' -IntuneCollectionIndex $intuneCollectionIndex
                                 foreach ($cr in $childResults) { $groupResults.Add($cr) }
                             }
                         }
@@ -543,14 +548,14 @@ function Compare-CIPPIntuneObject {
         # Process difference object settings
         $differenceItems = $DifferenceObject.settings | ForEach-Object {
             $settingInstance = $_.settingInstance
-            $intuneObj = $intuneCollection | Where-Object { $_.id -eq $settingInstance.settingDefinitionId }
+            $intuneObj = $intuneCollectionIndex[$settingInstance.settingDefinitionId]
             $tempOutput = switch ($settingInstance.'@odata.type') {
                 '#microsoft.graph.deviceManagementConfigurationGroupSettingCollectionInstance' {
                     if ($null -ne $settingInstance.groupSettingCollectionValue) {
                         $groupResults = [System.Collections.Generic.List[PSCustomObject]]::new()
                         foreach ($groupValue in $settingInstance.groupSettingCollectionValue) {
                             if ($groupValue.children -is [System.Array]) {
-                                $childResults = Process-GroupSettingChildren -Children $groupValue.children -Source 'Difference' -IntuneCollection $intuneCollection
+                                $childResults = Process-GroupSettingChildren -Children $groupValue.children -Source 'Difference' -IntuneCollectionIndex $intuneCollectionIndex
                                 foreach ($cr in $childResults) { $groupResults.Add($cr) }
                             }
                         }
@@ -631,7 +636,7 @@ function Compare-CIPPIntuneObject {
                 $settingId = $key.Substring(8)
             }
 
-            $settingDefinition = $intuneCollection | Where-Object { $_.id -eq $settingId }
+            $settingDefinition = $intuneCollectionIndex[$settingId]
 
             $refRawValue = if ($refItem) { $refItem.Value } else { $null }
             $diffRawValue = if ($diffItem) { $diffItem.Value } else { $null }

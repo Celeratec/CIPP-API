@@ -13,12 +13,20 @@ function Invoke-ExecUniversalSearchV2 {
     $Type = if ($Request.Query.type) { $Request.Query.type } else { 'Users' }
     $TenantFilter = $Request.Query.tenantFilter
 
-    $SearchParams = @{
-        SearchTerms = $SearchTerms
-        Limit       = $Limit
+    $AllowedTenants = Test-CIPPAccess -Request $Request -TenantList
+
+    if (-not $TenantFilter) {
+        if ($AllowedTenants -notcontains 'AllTenants') {
+            $TenantFilter = Get-Tenants | Select-Object -ExpandProperty defaultDomainName
+        } else {
+            $TenantFilter = 'allTenants'
+        }
     }
-    if ($TenantFilter) {
-        $SearchParams.TenantFilter = $TenantFilter
+
+    $SearchParams = @{
+        SearchTerms  = $SearchTerms
+        Limit        = $Limit
+        TenantFilter = $TenantFilter
     }
 
     switch ($Type) {
