@@ -1,3 +1,103 @@
+function Compare-CrossDriveFolders {
+    param(
+        [string]$SrcDriveId,
+        [string]$SrcFolderId,
+        [string]$DestDriveId,
+        [string]$DestFolderId,
+        [string]$TenantFilter
+    )
+
+    $SrcChildren = @(New-GraphGetRequest -AsApp $true `
+        -uri "https://graph.microsoft.com/v1.0/drives/$SrcDriveId/items/$SrcFolderId/children?`$select=id,name,size,folder" `
+        -tenantid $TenantFilter)
+
+    $DestChildren = @(New-GraphGetRequest -AsApp $true `
+        -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestFolderId/children?`$select=id,name,folder" `
+        -tenantid $TenantFilter)
+
+    $DestLookup = @{}
+    foreach ($dc in $DestChildren) {
+        $DestLookup[$dc.name] = $dc
+    }
+
+    $NeedsMerge = $false
+    foreach ($sc in $SrcChildren) {
+        $DestMatch = $DestLookup[$sc.name]
+        if (-not $DestMatch) {
+            $NeedsMerge = $true
+            break
+        }
+        if ($null -ne $sc.folder -and $null -ne $DestMatch.folder) {
+            $SubResult = Compare-CrossDriveFolders `
+                -SrcDriveId $SrcDriveId -SrcFolderId $sc.id `
+                -DestDriveId $DestDriveId -DestFolderId $DestMatch.id `
+                -TenantFilter $TenantFilter
+            if ($SubResult) {
+                $NeedsMerge = $true
+                break
+            }
+        }
+    }
+
+    return $NeedsMerge
+}
+
+function Invoke-CrossDriveMerge {
+    param(
+        [string]$SrcDriveId,
+        [string]$SrcFolderId,
+        [string]$DestDriveId,
+        [string]$DestFolderId,
+        [string]$TenantFilter
+    )
+
+    $SrcChildren = @(New-GraphGetRequest -AsApp $true `
+        -uri "https://graph.microsoft.com/v1.0/drives/$SrcDriveId/items/$SrcFolderId/children?`$select=id,name,size,folder" `
+        -tenantid $TenantFilter)
+
+    $DestChildren = @(New-GraphGetRequest -AsApp $true `
+        -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestFolderId/children?`$select=id,name,folder" `
+        -tenantid $TenantFilter)
+
+    $DestLookup = @{}
+    foreach ($dc in $DestChildren) {
+        $DestLookup[$dc.name] = $dc
+    }
+
+    $Result = @{ copied = 0; skipped = 0; errors = [System.Collections.Generic.List[string]]::new() }
+
+    foreach ($sc in $SrcChildren) {
+        $DestMatch = $DestLookup[$sc.name]
+        $IsFolder = ($null -ne $sc.folder)
+
+        if (-not $DestMatch) {
+            try {
+                $CopyBody = @{
+                    parentReference = @{ driveId = $DestDriveId; id = $DestFolderId }
+                } | ConvertTo-Json -Depth 3
+                $null = New-GraphPostRequest -AsApp $true `
+                    -uri "https://graph.microsoft.com/v1.0/drives/$SrcDriveId/items/$($sc.id)/copy" `
+                    -tenantid $TenantFilter -type POST -body $CopyBody
+                $Result.copied++
+            } catch {
+                $Result.errors.Add("Failed to copy '$($sc.name)': $($_.Exception.Message)")
+            }
+        } elseif ($IsFolder -and $null -ne $DestMatch.folder) {
+            $SubResult = Invoke-CrossDriveMerge `
+                -SrcDriveId $SrcDriveId -SrcFolderId $sc.id `
+                -DestDriveId $DestDriveId -DestFolderId $DestMatch.id `
+                -TenantFilter $TenantFilter
+            $Result.copied += $SubResult.copied
+            $Result.skipped += $SubResult.skipped
+            foreach ($e in $SubResult.errors) { $Result.errors.Add($e) }
+        } else {
+            $Result.skipped++
+        }
+    }
+
+    return $Result
+}
+
 function Invoke-ExecOneDriveFileAction {
     <#
     .FUNCTIONALITY
@@ -261,16 +361,41 @@ function Invoke-ExecOneDriveFileAction {
                 $SourceIsFolder = ($null -ne $SourceItem.folder)
 
                 $SkipItem = $false
+                $MergeHandled = $false
                 $EscName = $SourceName -replace "'", "''"
                 if ($ConflictBehavior -eq 'skip' -or $ConflictBehavior -eq 'replace') {
                     try {
                         $Existing = New-GraphGetRequest -AsApp $true `
-                            -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestParentId/children?`$filter=name eq '$EscName'&`$select=id,name" `
+                            -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestParentId/children?`$filter=name eq '$EscName'&`$select=id,name,folder" `
                             -tenantid $TenantFilter
                         $Match = $Existing | Where-Object { $_.name -eq $SourceName } | Select-Object -First 1
                         if ($Match) {
                             if ($ConflictBehavior -eq 'skip') {
-                                $SkipItem = $true
+                                if ($SourceIsFolder -and $null -ne $Match.folder) {
+                                    $NeedsMerge = Compare-CrossDriveFolders `
+                                        -SrcDriveId $DriveId -SrcFolderId $ItemId `
+                                        -DestDriveId $DestDriveId -DestFolderId $Match.id `
+                                        -TenantFilter $TenantFilter
+                                    if ($NeedsMerge) {
+                                        $MergeResult = Invoke-CrossDriveMerge `
+                                            -SrcDriveId $DriveId -SrcFolderId $ItemId `
+                                            -DestDriveId $DestDriveId -DestFolderId $Match.id `
+                                            -TenantFilter $TenantFilter
+                                        $MergeParts = @()
+                                        if ($MergeResult.copied -gt 0) { $MergeParts += "$($MergeResult.copied) copied" }
+                                        if ($MergeResult.skipped -gt 0) { $MergeParts += "$($MergeResult.skipped) skipped" }
+                                        if ($MergeResult.errors.Count -gt 0) { $MergeParts += "$($MergeResult.errors.Count) failed" }
+                                        $Message = "Merged '$ItemLabel': $($MergeParts -join ', ')."
+                                        if ($MergeResult.errors.Count -gt 0) {
+                                            $Message += " Errors: $($MergeResult.errors -join '; ')"
+                                        }
+                                        $MergeHandled = $true
+                                    } else {
+                                        $SkipItem = $true
+                                    }
+                                } else {
+                                    $SkipItem = $true
+                                }
                             } elseif ($ConflictBehavior -eq 'replace') {
                                 $null = New-GraphPostRequest -AsApp $true `
                                     -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$($Match.id)" `
@@ -281,8 +406,10 @@ function Invoke-ExecOneDriveFileAction {
                     } catch { }
                 }
 
-                if ($SkipItem) {
-                    $Message = "Skipped '$ItemLabel' — an item with the same name already exists at the destination."
+                if ($MergeHandled) {
+                    # Message already set by merge logic above
+                } elseif ($SkipItem) {
+                    $Message = "Skipped '$ItemLabel' — all contents already exist at the destination."
                 } else {
                     $Body = $CopyBody | ConvertTo-Json -Depth 3
                     $CopyComplete = $false
@@ -447,16 +574,41 @@ function Invoke-ExecOneDriveFileAction {
                 $SourceName = $SourceItem.name
 
                 $SkipItem = $false
+                $MergeHandled = $false
                 $EscName = $SourceName -replace "'", "''"
                 if ($ConflictBehavior -eq 'skip' -or $ConflictBehavior -eq 'replace') {
                     try {
                         $ExistCheck = New-GraphGetRequest -AsApp $true `
-                            -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestParentId/children?`$filter=name eq '$EscName'&`$select=id,name" `
+                            -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestParentId/children?`$filter=name eq '$EscName'&`$select=id,name,folder" `
                             -tenantid $TenantFilter
                         $Match = $ExistCheck | Where-Object { $_.name -eq $SourceName } | Select-Object -First 1
                         if ($Match) {
                             if ($ConflictBehavior -eq 'skip') {
-                                $SkipItem = $true
+                                if ($SourceIsFolder -and $null -ne $Match.folder) {
+                                    $NeedsMerge = Compare-CrossDriveFolders `
+                                        -SrcDriveId $DriveId -SrcFolderId $ItemId `
+                                        -DestDriveId $DestDriveId -DestFolderId $Match.id `
+                                        -TenantFilter $TenantFilter
+                                    if ($NeedsMerge) {
+                                        $MergeResult = Invoke-CrossDriveMerge `
+                                            -SrcDriveId $DriveId -SrcFolderId $ItemId `
+                                            -DestDriveId $DestDriveId -DestFolderId $Match.id `
+                                            -TenantFilter $TenantFilter
+                                        $MergeParts = @()
+                                        if ($MergeResult.copied -gt 0) { $MergeParts += "$($MergeResult.copied) copied" }
+                                        if ($MergeResult.skipped -gt 0) { $MergeParts += "$($MergeResult.skipped) skipped" }
+                                        if ($MergeResult.errors.Count -gt 0) { $MergeParts += "$($MergeResult.errors.Count) failed" }
+                                        $Message = "Merged '$ItemLabel': $($MergeParts -join ', ')."
+                                        if ($MergeResult.errors.Count -gt 0) {
+                                            $Message += " Errors: $($MergeResult.errors -join '; ')"
+                                        }
+                                        $MergeHandled = $true
+                                    } else {
+                                        $SkipItem = $true
+                                    }
+                                } else {
+                                    $SkipItem = $true
+                                }
                             } elseif ($ConflictBehavior -eq 'replace') {
                                 $null = New-GraphPostRequest -AsApp $true `
                                     -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$($Match.id)" `
@@ -467,8 +619,10 @@ function Invoke-ExecOneDriveFileAction {
                     } catch { }
                 }
 
-                if ($SkipItem) {
-                    $Message = "Skipped '$ItemLabel' — an item with the same name already exists at the destination. Source was not deleted."
+                if ($MergeHandled) {
+                    # Message already set by merge logic above
+                } elseif ($SkipItem) {
+                    $Message = "Skipped '$ItemLabel' — all contents already exist at the destination. Source was not deleted."
                 } else {
                     $Body = $CopyBody | ConvertTo-Json -Depth 3
                     $CopyComplete = $false
