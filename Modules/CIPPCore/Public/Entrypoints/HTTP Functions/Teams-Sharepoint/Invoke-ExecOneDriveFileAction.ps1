@@ -24,6 +24,8 @@ function Invoke-ExecOneDriveFileAction {
     $DestinationDriveId = $Request.Body.DestinationDriveId
     $DestinationUserId = $Request.Body.DestinationUserId
     $DestinationSiteId = $Request.Body.DestinationSiteId
+    $ConflictBehavior = $Request.Body.ConflictBehavior
+    if (-not $ConflictBehavior) { $ConflictBehavior = 'rename' }
 
     if (-not $TenantFilter) {
         return ([HttpResponseContext]@{
@@ -243,11 +245,119 @@ function Invoke-ExecOneDriveFileAction {
                     $CopyBody['parentReference']['id'] = $DestRoot.id
                 }
 
-                $Body = $CopyBody | ConvertTo-Json -Depth 3
-                $null = New-GraphPostRequest -AsApp $true `
-                    -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId/copy" `
-                    -tenantid $TenantFilter -type POST -body $Body
-                $Message = "Cross-drive copy of '$ItemLabel' has been initiated. This may take a moment to complete."
+                $DestParentId = $CopyBody['parentReference']['id']
+
+                $SourceItem = New-GraphGetRequest -AsApp $true `
+                    -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId?`$select=id,name,size,folder" `
+                    -tenantid $TenantFilter
+                $SourceName = $SourceItem.name
+                $SourceSize = [long]($SourceItem.size ?? 0)
+                $SourceIsFolder = ($null -ne $SourceItem.folder)
+
+                $SkipItem = $false
+                if ($ConflictBehavior -eq 'skip') {
+                    $EscName = $SourceName -replace "'", "''"
+                    try {
+                        $Existing = New-GraphGetRequest -AsApp $true `
+                            -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestParentId/children?`$filter=name eq '$EscName'&`$select=id,name" `
+                            -tenantid $TenantFilter
+                        $Match = $Existing | Where-Object { $_.name -eq $SourceName } | Select-Object -First 1
+                        if ($Match) { $SkipItem = $true }
+                    } catch { }
+                }
+
+                if ($SkipItem) {
+                    $Message = "Skipped '$ItemLabel' — an item with the same name already exists at the destination."
+                } else {
+                    if ($ConflictBehavior -eq 'replace') {
+                        $CopyBody['@microsoft.graph.conflictBehavior'] = 'replace'
+                    }
+
+                    $Body = $CopyBody | ConvertTo-Json -Depth 3
+                    $CopyHeaders = New-GraphPostRequest -AsApp $true `
+                        -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId/copy" `
+                        -tenantid $TenantFilter -type POST -body $Body `
+                        -returnHeaders $true
+
+                    $MonitorUrl = $null
+                    if ($CopyHeaders -and $CopyHeaders['Location']) {
+                        $MonitorUrl = ($CopyHeaders['Location'] | Select-Object -First 1)
+                    }
+
+                    $CopyComplete = $false
+                    if ($MonitorUrl) {
+                        for ($i = 0; $i -lt 150; $i++) {
+                            Start-Sleep -Seconds 2
+                            try {
+                                $Status = Invoke-RestMethod -Uri $MonitorUrl -Method GET -ErrorAction Stop
+                                if ($Status.status -eq 'completed') {
+                                    $CopyComplete = $true
+                                    break
+                                } elseif ($Status.status -eq 'failed') {
+                                    throw "Copy operation failed: $($Status.error.message)"
+                                }
+                            } catch {
+                                if ($_.Exception.Message -match 'Copy operation failed') { throw }
+                            }
+                        }
+                    } else {
+                        $EscName = $SourceName -replace "'", "''"
+                        for ($i = 0; $i -lt 15; $i++) {
+                            Start-Sleep -Seconds 4
+                            try {
+                                $DestChildren = New-GraphGetRequest -AsApp $true `
+                                    -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestParentId/children?`$filter=name eq '$EscName'&`$select=id,name,size,folder" `
+                                    -tenantid $TenantFilter
+                                $DestItem = $DestChildren | Where-Object { $_.name -eq $SourceName } | Select-Object -First 1
+                                if ($DestItem) {
+                                    $CopyComplete = $true
+                                    break
+                                }
+                            } catch { }
+                        }
+                    }
+
+                    if (-not $CopyComplete) {
+                        $Message = "Copy of '$ItemLabel' was initiated but could not be confirmed as complete within the timeout. Please check the destination to verify."
+                    } else {
+                        $Verified = $false
+                        $VerifyDetail = ''
+                        try {
+                            $EscapedName = $SourceName -replace "'", "''"
+                            $DestChildren = New-GraphGetRequest -AsApp $true `
+                                -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestParentId/children?`$filter=name eq '$EscapedName'&`$select=id,name,size,folder" `
+                                -tenantid $TenantFilter
+                            $DestItem = $DestChildren | Where-Object { $_.name -eq $SourceName } | Select-Object -First 1
+
+                            if ($DestItem) {
+                                $DestSize = [long]($DestItem.size ?? 0)
+                                if ($SourceIsFolder) {
+                                    if ($DestSize -ge $SourceSize) {
+                                        $Verified = $true
+                                    } else {
+                                        $VerifyDetail = "Destination folder size ($DestSize bytes) is less than source ($SourceSize bytes)."
+                                    }
+                                } else {
+                                    if ($DestSize -eq $SourceSize) {
+                                        $Verified = $true
+                                    } else {
+                                        $VerifyDetail = "Destination file size ($DestSize bytes) does not match source ($SourceSize bytes)."
+                                    }
+                                }
+                            } else {
+                                $VerifyDetail = 'Destination item not found after copy.'
+                            }
+                        } catch {
+                            $VerifyDetail = "Verification query failed: $($_.Exception.Message)"
+                        }
+
+                        if ($Verified) {
+                            $Message = "Successfully copied '$ItemLabel' to the destination (verified)."
+                        } else {
+                            $Message = "Copy of '$ItemLabel' completed but verification failed — $VerifyDetail Please check the destination manually."
+                        }
+                    }
+                }
             }
 
             'CrossMove' {
@@ -297,98 +407,116 @@ function Invoke-ExecOneDriveFileAction {
                     -tenantid $TenantFilter
                 $SourceIsFolder = ($null -ne $SourceItem.folder)
                 $SourceSize = [long]($SourceItem.size ?? 0)
-                $SourceChildCount = [int]($SourceItem.folder.childCount ?? 0)
                 $SourceName = $SourceItem.name
 
-                # Step 1: Initiate copy and capture the monitor URL from response headers
-                $Body = $CopyBody | ConvertTo-Json -Depth 3
-                $CopyHeaders = New-GraphPostRequest -AsApp $true `
-                    -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId/copy" `
-                    -tenantid $TenantFilter -type POST -body $Body `
-                    -returnHeaders $true
-
-                $MonitorUrl = $null
-                if ($CopyHeaders -and $CopyHeaders['Location']) {
-                    $MonitorUrl = ($CopyHeaders['Location'] | Select-Object -First 1)
+                # Handle skip: check for existing item at destination before copying
+                $SkipItem = $false
+                if ($ConflictBehavior -eq 'skip') {
+                    $EscName = $SourceName -replace "'", "''"
+                    try {
+                        $ExistCheck = New-GraphGetRequest -AsApp $true `
+                            -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestParentId/children?`$filter=name eq '$EscName'&`$select=id,name" `
+                            -tenantid $TenantFilter
+                        $Match = $ExistCheck | Where-Object { $_.name -eq $SourceName } | Select-Object -First 1
+                        if ($Match) { $SkipItem = $true }
+                    } catch { }
                 }
 
-                # Step 2: Poll the monitor URL until the copy completes (up to ~5 minutes)
-                $CopyComplete = $false
-                if ($MonitorUrl) {
-                    for ($i = 0; $i -lt 150; $i++) {
-                        Start-Sleep -Seconds 2
-                        try {
-                            $Status = Invoke-RestMethod -Uri $MonitorUrl -Method GET -ErrorAction Stop
-                            if ($Status.status -eq 'completed') {
-                                $CopyComplete = $true
-                                break
-                            } elseif ($Status.status -eq 'failed') {
-                                throw "Copy operation failed: $($Status.error.message)"
+                if ($SkipItem) {
+                    $Message = "Skipped '$ItemLabel' — an item with the same name already exists at the destination. Source was not deleted."
+                } else {
+                    if ($ConflictBehavior -eq 'replace') {
+                        $CopyBody['@microsoft.graph.conflictBehavior'] = 'replace'
+                    }
+
+                    # Step 1: Initiate copy and capture the monitor URL from response headers
+                    $Body = $CopyBody | ConvertTo-Json -Depth 3
+                    $CopyHeaders = New-GraphPostRequest -AsApp $true `
+                        -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId/copy" `
+                        -tenantid $TenantFilter -type POST -body $Body `
+                        -returnHeaders $true
+
+                    $MonitorUrl = $null
+                    if ($CopyHeaders -and $CopyHeaders['Location']) {
+                        $MonitorUrl = ($CopyHeaders['Location'] | Select-Object -First 1)
+                    }
+
+                    # Step 2: Poll the monitor URL until the copy completes (up to ~5 minutes)
+                    $CopyComplete = $false
+                    if ($MonitorUrl) {
+                        for ($i = 0; $i -lt 150; $i++) {
+                            Start-Sleep -Seconds 2
+                            try {
+                                $Status = Invoke-RestMethod -Uri $MonitorUrl -Method GET -ErrorAction Stop
+                                if ($Status.status -eq 'completed') {
+                                    $CopyComplete = $true
+                                    break
+                                } elseif ($Status.status -eq 'failed') {
+                                    throw "Copy operation failed: $($Status.error.message)"
+                                }
+                            } catch {
+                                if ($_.Exception.Message -match 'Copy operation failed') { throw }
                             }
-                        } catch {
-                            if ($_.Exception.Message -match 'Copy operation failed') { throw }
+                        }
+                    } else {
+                        for ($i = 0; $i -lt 15; $i++) {
+                            Start-Sleep -Seconds 4
+                            try {
+                                $DestChildren = New-GraphGetRequest -AsApp $true `
+                                    -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestParentId/children?`$filter=name eq '$($SourceName -replace "'","''")'&`$select=id,name,size,folder" `
+                                    -tenantid $TenantFilter
+                                $DestItem = $DestChildren | Where-Object { $_.name -eq $SourceName } | Select-Object -First 1
+                                if ($DestItem) {
+                                    $CopyComplete = $true
+                                    break
+                                }
+                            } catch { }
                         }
                     }
-                } else {
-                    for ($i = 0; $i -lt 15; $i++) {
-                        Start-Sleep -Seconds 4
+
+                    if (-not $CopyComplete) {
+                        $Message = "Copy of '$ItemLabel' was initiated but could not be confirmed as complete. The source item was NOT deleted to prevent data loss. Please verify the copy completed at the destination and remove the source manually if needed."
+                    } else {
+                        # Step 3: Verify the destination item exists and matches the source
+                        $Verified = $false
+                        $VerifyDetail = ''
                         try {
+                            $EscapedName = $SourceName -replace "'", "''"
                             $DestChildren = New-GraphGetRequest -AsApp $true `
-                                -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestParentId/children?`$filter=name eq '$($SourceName -replace "'","''")'&`$select=id,name,size,folder" `
+                                -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestParentId/children?`$filter=name eq '$EscapedName'&`$select=id,name,size,folder" `
                                 -tenantid $TenantFilter
                             $DestItem = $DestChildren | Where-Object { $_.name -eq $SourceName } | Select-Object -First 1
+
                             if ($DestItem) {
-                                $CopyComplete = $true
-                                break
-                            }
-                        } catch { }
-                    }
-                }
-
-                if (-not $CopyComplete) {
-                    $Message = "Copy of '$ItemLabel' was initiated but could not be confirmed as complete. The source item was NOT deleted to prevent data loss. Please verify the copy completed at the destination and remove the source manually if needed."
-                } else {
-                    # Step 3: Verify the destination item exists and matches the source
-                    # For files: exact size match
-                    # For folders: total recursive size match (covers all subfolders and nested files)
-                    $Verified = $false
-                    $VerifyDetail = ''
-                    try {
-                        $EscapedName = $SourceName -replace "'", "''"
-                        $DestChildren = New-GraphGetRequest -AsApp $true `
-                            -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestParentId/children?`$filter=name eq '$EscapedName'&`$select=id,name,size,folder" `
-                            -tenantid $TenantFilter
-                        $DestItem = $DestChildren | Where-Object { $_.name -eq $SourceName } | Select-Object -First 1
-
-                        if ($DestItem) {
-                            $DestSize = [long]($DestItem.size ?? 0)
-                            if ($SourceIsFolder) {
-                                if ($DestSize -ge $SourceSize) {
-                                    $Verified = $true
+                                $DestSize = [long]($DestItem.size ?? 0)
+                                if ($SourceIsFolder) {
+                                    if ($DestSize -ge $SourceSize) {
+                                        $Verified = $true
+                                    } else {
+                                        $VerifyDetail = "Destination folder size ($DestSize bytes) is less than source ($SourceSize bytes)."
+                                    }
                                 } else {
-                                    $VerifyDetail = "Destination folder size ($DestSize bytes) is less than source ($SourceSize bytes)."
+                                    if ($DestSize -eq $SourceSize) {
+                                        $Verified = $true
+                                    } else {
+                                        $VerifyDetail = "Destination file size ($DestSize bytes) does not match source ($SourceSize bytes)."
+                                    }
                                 }
                             } else {
-                                if ($DestSize -eq $SourceSize) {
-                                    $Verified = $true
-                                } else {
-                                    $VerifyDetail = "Destination file size ($DestSize bytes) does not match source ($SourceSize bytes)."
-                                }
+                                $VerifyDetail = 'Destination item not found.'
                             }
-                        } else {
-                            $VerifyDetail = 'Destination item not found.'
+                        } catch {
+                            $VerifyDetail = "Verification query failed: $($_.Exception.Message)"
                         }
-                    } catch {
-                        $VerifyDetail = "Verification query failed: $($_.Exception.Message)"
-                    }
 
-                    if ($Verified) {
-                        $null = New-GraphPostRequest -AsApp $true `
-                            -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId" `
-                            -tenantid $TenantFilter -type DELETE -body '{}'
-                        $Message = "Successfully moved '$ItemLabel' to the destination (verified). The source has been removed."
-                    } else {
-                        $Message = "Copy of '$ItemLabel' completed but verification failed — $VerifyDetail The source was NOT deleted to prevent data loss. Please verify manually."
+                        if ($Verified) {
+                            $null = New-GraphPostRequest -AsApp $true `
+                                -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId" `
+                                -tenantid $TenantFilter -type DELETE -body '{}'
+                            $Message = "Successfully moved '$ItemLabel' to the destination (verified). The source has been removed."
+                        } else {
+                            $Message = "Copy of '$ItemLabel' completed but verification failed — $VerifyDetail The source was NOT deleted to prevent data loss. Please verify manually."
+                        }
                     }
                 }
             }
