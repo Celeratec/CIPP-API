@@ -4,42 +4,42 @@ function Compare-CrossDriveFolders {
         [string]$SrcFolderId,
         [string]$DestDriveId,
         [string]$DestFolderId,
-        [string]$TenantFilter
+        [string]$TenantFilter,
+        [int]$Depth = 0
     )
 
-    $SrcChildren = @(New-GraphGetRequest -AsApp $true `
-        -uri "https://graph.microsoft.com/v1.0/drives/$SrcDriveId/items/$SrcFolderId/children?`$select=id,name,size,folder" `
-        -tenantid $TenantFilter)
+    if ($Depth -ge 10) { return $true }
 
-    $DestChildren = @(New-GraphGetRequest -AsApp $true `
-        -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestFolderId/children?`$select=id,name,folder" `
-        -tenantid $TenantFilter)
+    try {
+        $SrcChildren = @(New-GraphGetRequest -AsApp $true `
+            -uri "https://graph.microsoft.com/v1.0/drives/$SrcDriveId/items/$SrcFolderId/children?`$select=id,name,folder&`$top=200" `
+            -tenantid $TenantFilter -noPagination $true)
+    } catch { return $true }
+
+    try {
+        $DestChildren = @(New-GraphGetRequest -AsApp $true `
+            -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestFolderId/children?`$select=id,name,folder&`$top=200" `
+            -tenantid $TenantFilter -noPagination $true)
+    } catch { return $true }
 
     $DestLookup = @{}
     foreach ($dc in $DestChildren) {
         $DestLookup[$dc.name] = $dc
     }
 
-    $NeedsMerge = $false
     foreach ($sc in $SrcChildren) {
         $DestMatch = $DestLookup[$sc.name]
-        if (-not $DestMatch) {
-            $NeedsMerge = $true
-            break
-        }
+        if (-not $DestMatch) { return $true }
         if ($null -ne $sc.folder -and $null -ne $DestMatch.folder) {
             $SubResult = Compare-CrossDriveFolders `
                 -SrcDriveId $SrcDriveId -SrcFolderId $sc.id `
                 -DestDriveId $DestDriveId -DestFolderId $DestMatch.id `
-                -TenantFilter $TenantFilter
-            if ($SubResult) {
-                $NeedsMerge = $true
-                break
-            }
+                -TenantFilter $TenantFilter -Depth ($Depth + 1)
+            if ($SubResult) { return $true }
         }
     }
 
-    return $NeedsMerge
+    return $false
 }
 
 function Invoke-CrossDriveMerge {
@@ -48,23 +48,39 @@ function Invoke-CrossDriveMerge {
         [string]$SrcFolderId,
         [string]$DestDriveId,
         [string]$DestFolderId,
-        [string]$TenantFilter
+        [string]$TenantFilter,
+        [int]$Depth = 0
     )
 
-    $SrcChildren = @(New-GraphGetRequest -AsApp $true `
-        -uri "https://graph.microsoft.com/v1.0/drives/$SrcDriveId/items/$SrcFolderId/children?`$select=id,name,size,folder" `
-        -tenantid $TenantFilter)
+    $Result = @{ copied = 0; skipped = 0; errors = [System.Collections.Generic.List[string]]::new() }
 
-    $DestChildren = @(New-GraphGetRequest -AsApp $true `
-        -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestFolderId/children?`$select=id,name,folder" `
-        -tenantid $TenantFilter)
+    if ($Depth -ge 10) {
+        $Result.errors.Add('Merge depth limit (10 levels) reached; remaining subfolders skipped.')
+        return $Result
+    }
+
+    try {
+        $SrcChildren = @(New-GraphGetRequest -AsApp $true `
+            -uri "https://graph.microsoft.com/v1.0/drives/$SrcDriveId/items/$SrcFolderId/children?`$select=id,name,folder&`$top=200" `
+            -tenantid $TenantFilter -noPagination $true)
+    } catch {
+        $Result.errors.Add("Failed to list source folder: $($_.Exception.Message)")
+        return $Result
+    }
+
+    try {
+        $DestChildren = @(New-GraphGetRequest -AsApp $true `
+            -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestFolderId/children?`$select=id,name,folder&`$top=200" `
+            -tenantid $TenantFilter -noPagination $true)
+    } catch {
+        $Result.errors.Add("Failed to list destination folder: $($_.Exception.Message)")
+        return $Result
+    }
 
     $DestLookup = @{}
     foreach ($dc in $DestChildren) {
         $DestLookup[$dc.name] = $dc
     }
-
-    $Result = @{ copied = 0; skipped = 0; errors = [System.Collections.Generic.List[string]]::new() }
 
     foreach ($sc in $SrcChildren) {
         $DestMatch = $DestLookup[$sc.name]
@@ -86,7 +102,7 @@ function Invoke-CrossDriveMerge {
             $SubResult = Invoke-CrossDriveMerge `
                 -SrcDriveId $SrcDriveId -SrcFolderId $sc.id `
                 -DestDriveId $DestDriveId -DestFolderId $DestMatch.id `
-                -TenantFilter $TenantFilter
+                -TenantFilter $TenantFilter -Depth ($Depth + 1)
             $Result.copied += $SubResult.copied
             $Result.skipped += $SubResult.skipped
             foreach ($e in $SubResult.errors) { $Result.errors.Add($e) }
