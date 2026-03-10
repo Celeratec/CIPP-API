@@ -13,23 +13,12 @@ function Invoke-ExecOneDriveFileAction {
     $TenantFilter = $Request.Body.TenantFilter
     if (-not $TenantFilter) { $TenantFilter = $Request.Query.TenantFilter }
 
-    $BodyType = $Request.Body.GetType().FullName
-    $BodyKeys = if ($Request.Body -is [hashtable]) {
-        $Request.Body.Keys -join ', '
-    } elseif ($Request.Body.PSObject) {
-        ($Request.Body.PSObject.Properties | ForEach-Object { $_.Name }) -join ', '
-    } else {
-        'unknown'
-    }
-
     $DriveId = $Request.Body.DriveId
     $ItemId = $Request.Body.ItemId
     $Action = $Request.Body.Action
     $UserId = $Request.Body.UserId
     $SiteId = $Request.Body.SiteId
     $ItemName = $Request.Body.ItemName
-
-    Write-Host "DEBUG ExecOneDriveFileAction: BodyType=$BodyType Keys=$BodyKeys DriveId=$DriveId ItemId=$ItemId Action=$Action UserId=$UserId SiteId=$SiteId ItemName=$ItemName"
 
     # Cross-drive destination parameters
     $DestinationDriveId = $Request.Body.DestinationDriveId
@@ -259,7 +248,7 @@ function Invoke-ExecOneDriveFileAction {
                 $DestParentId = $CopyBody['parentReference']['id']
 
                 $SourceItem = New-GraphGetRequest -AsApp $true `
-                    -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId?`$select=id,name,size,folder" `
+                    -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/${ItemId}?`$select=id,name,size,folder" `
                     -tenantid $TenantFilter
                 $SourceName = $SourceItem.name
                 $SourceSize = [long]($SourceItem.size ?? 0)
@@ -414,7 +403,7 @@ function Invoke-ExecOneDriveFileAction {
 
                 # Snapshot the source item before copying so we can verify the destination
                 $SourceItem = New-GraphGetRequest -AsApp $true `
-                    -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId?`$select=id,name,size,folder" `
+                    -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/${ItemId}?`$select=id,name,size,folder" `
                     -tenantid $TenantFilter
                 $SourceIsFolder = ($null -ne $SourceItem.folder)
                 $SourceSize = [long]($SourceItem.size ?? 0)
