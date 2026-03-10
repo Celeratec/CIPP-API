@@ -279,10 +279,15 @@ function Invoke-ExecOneDriveFileAction {
                     for ($copyAttempt = 1; $copyAttempt -le 3; $copyAttempt++) {
                         $RetryNeeded = $false
                         try {
-                            $CopyHeaders = New-GraphPostRequest -AsApp $true `
-                                -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId/copy" `
-                                -tenantid $TenantFilter -type POST -body $Body `
-                                -returnHeaders $true
+                            $CopyHeaders = $null
+                            try {
+                                $CopyHeaders = New-GraphPostRequest -AsApp $true `
+                                    -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId/copy" `
+                                    -tenantid $TenantFilter -type POST -body $Body `
+                                    -returnHeaders $true
+                            } catch {
+                                if ($_.Exception.Message -notmatch 'did not match the expected pattern') { throw }
+                            }
 
                             $MonitorUrl = $null
                             if ($CopyHeaders -and $CopyHeaders['Location']) {
@@ -306,7 +311,7 @@ function Invoke-ExecOneDriveFileAction {
                                 }
                             } else {
                                 $EscName = $SourceName -replace "'", "''"
-                                for ($i = 0; $i -lt 15; $i++) {
+                                for ($i = 0; $i -lt 30; $i++) {
                                     Start-Sleep -Seconds 4
                                     try {
                                         $DestChildren = New-GraphGetRequest -AsApp $true `
@@ -451,10 +456,15 @@ function Invoke-ExecOneDriveFileAction {
                     for ($copyAttempt = 1; $copyAttempt -le 3; $copyAttempt++) {
                         $RetryNeeded = $false
                         try {
-                            $CopyHeaders = New-GraphPostRequest -AsApp $true `
-                                -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId/copy" `
-                                -tenantid $TenantFilter -type POST -body $Body `
-                                -returnHeaders $true
+                            $CopyHeaders = $null
+                            try {
+                                $CopyHeaders = New-GraphPostRequest -AsApp $true `
+                                    -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId/copy" `
+                                    -tenantid $TenantFilter -type POST -body $Body `
+                                    -returnHeaders $true
+                            } catch {
+                                if ($_.Exception.Message -notmatch 'did not match the expected pattern') { throw }
+                            }
 
                             $MonitorUrl = $null
                             if ($CopyHeaders -and $CopyHeaders['Location']) {
@@ -477,7 +487,7 @@ function Invoke-ExecOneDriveFileAction {
                                     }
                                 }
                             } else {
-                                for ($i = 0; $i -lt 15; $i++) {
+                                for ($i = 0; $i -lt 30; $i++) {
                                     Start-Sleep -Seconds 4
                                     try {
                                         $DestChildren = New-GraphGetRequest -AsApp $true `
