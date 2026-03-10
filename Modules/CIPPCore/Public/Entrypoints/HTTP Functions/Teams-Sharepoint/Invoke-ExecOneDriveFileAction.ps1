@@ -276,7 +276,6 @@ function Invoke-ExecOneDriveFileAction {
                     $DestinationFolderId = $DestinationFolderId.value
                 }
 
-                # Build the parent reference for the destination drive
                 $CopyBody = @{
                     parentReference = @{
                         driveId = $DestDriveId
@@ -290,24 +289,33 @@ function Invoke-ExecOneDriveFileAction {
                         -tenantid $TenantFilter -asApp $true
                     $CopyBody['parentReference']['id'] = $DestRoot.id
                 }
+                $DestParentId = $CopyBody['parentReference']['id']
 
-                # Step 1: Copy to destination drive
+                # Snapshot the source item before copying so we can verify the destination
+                $SourceItem = New-GraphGetRequest -AsApp $true `
+                    -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId?`$select=id,name,size,folder" `
+                    -tenantid $TenantFilter
+                $SourceIsFolder = ($null -ne $SourceItem.folder)
+                $SourceSize = [long]($SourceItem.size ?? 0)
+                $SourceChildCount = [int]($SourceItem.folder.childCount ?? 0)
+                $SourceName = $SourceItem.name
+
+                # Step 1: Initiate copy and capture the monitor URL from response headers
                 $Body = $CopyBody | ConvertTo-Json -Depth 3
-                $CopyResponse = New-GraphPostRequest -AsApp $true `
+                $CopyHeaders = New-GraphPostRequest -AsApp $true `
                     -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId/copy" `
-                    -tenantid $TenantFilter -type POST -body $Body
+                    -tenantid $TenantFilter -type POST -body $Body `
+                    -returnHeaders $true
 
-                # Step 2: Poll the copy monitor URL until complete, then delete source
-                # The Graph copy API returns a Location header with a monitor URL.
-                # We attempt to wait for completion before deleting the source.
                 $MonitorUrl = $null
-                if ($CopyResponse -and $CopyResponse.'Location') {
-                    $MonitorUrl = $CopyResponse.'Location'
+                if ($CopyHeaders -and $CopyHeaders['Location']) {
+                    $MonitorUrl = ($CopyHeaders['Location'] | Select-Object -First 1)
                 }
 
+                # Step 2: Poll the monitor URL until the copy completes (up to ~5 minutes)
                 $CopyComplete = $false
                 if ($MonitorUrl) {
-                    for ($i = 0; $i -lt 30; $i++) {
+                    for ($i = 0; $i -lt 150; $i++) {
                         Start-Sleep -Seconds 2
                         try {
                             $Status = Invoke-RestMethod -Uri $MonitorUrl -Method GET -ErrorAction Stop
@@ -318,24 +326,61 @@ function Invoke-ExecOneDriveFileAction {
                                 throw "Copy operation failed: $($Status.error.message)"
                             }
                         } catch {
-                            # If we can't reach the monitor URL, wait and retry
                             if ($_.Exception.Message -match 'Copy operation failed') { throw }
                         }
                     }
                 } else {
-                    # No monitor URL - wait a fixed period for small files
-                    Start-Sleep -Seconds 5
-                    $CopyComplete = $true
+                    for ($i = 0; $i -lt 15; $i++) {
+                        Start-Sleep -Seconds 4
+                        try {
+                            $DestChildren = New-GraphGetRequest -AsApp $true `
+                                -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestParentId/children?`$filter=name eq '$($SourceName -replace "'","''")'&`$select=id,name,size,folder" `
+                                -tenantid $TenantFilter
+                            $DestItem = $DestChildren | Where-Object { $_.name -eq $SourceName } | Select-Object -First 1
+                            if ($DestItem) {
+                                $CopyComplete = $true
+                                break
+                            }
+                        } catch { }
+                    }
                 }
 
-                if ($CopyComplete) {
-                    # Delete the source item
-                    $null = New-GraphPostRequest -AsApp $true `
-                        -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId" `
-                        -tenantid $TenantFilter -type DELETE -body '{}'
-                    $Message = "Successfully moved '$ItemLabel' to the destination. The source has been removed."
+                if (-not $CopyComplete) {
+                    $Message = "Copy of '$ItemLabel' was initiated but could not be confirmed as complete. The source item was NOT deleted to prevent data loss. Please verify the copy completed at the destination and remove the source manually if needed."
                 } else {
-                    $Message = "Copy of '$ItemLabel' was initiated but is still in progress. The source item was NOT deleted. Please verify the copy completed and remove the source manually if needed."
+                    # Step 3: Verify the destination item exists and matches the source
+                    $Verified = $false
+                    try {
+                        $DestChildren = New-GraphGetRequest -AsApp $true `
+                            -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestParentId/children?`$filter=name eq '$($SourceName -replace "'","''")'&`$select=id,name,size,folder" `
+                            -tenantid $TenantFilter
+                        $DestItem = $DestChildren | Where-Object { $_.name -eq $SourceName } | Select-Object -First 1
+
+                        if ($DestItem) {
+                            if ($SourceIsFolder) {
+                                $DestChildCount = [int]($DestItem.folder.childCount ?? 0)
+                                if ($DestChildCount -ge $SourceChildCount) {
+                                    $Verified = $true
+                                }
+                            } else {
+                                $DestSize = [long]($DestItem.size ?? 0)
+                                if ($DestSize -eq $SourceSize) {
+                                    $Verified = $true
+                                }
+                            }
+                        }
+                    } catch {
+                        $Verified = $false
+                    }
+
+                    if ($Verified) {
+                        $null = New-GraphPostRequest -AsApp $true `
+                            -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId" `
+                            -tenantid $TenantFilter -type DELETE -body '{}'
+                        $Message = "Successfully moved '$ItemLabel' to the destination (verified). The source has been removed."
+                    } else {
+                        $Message = "Copy of '$ItemLabel' completed but verification failed — the destination item could not be confirmed to match the source. The source was NOT deleted to prevent data loss. Please verify manually."
+                    }
                 }
             }
 
