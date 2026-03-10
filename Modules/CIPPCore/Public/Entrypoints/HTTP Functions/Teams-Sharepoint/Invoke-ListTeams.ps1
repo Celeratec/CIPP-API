@@ -82,6 +82,40 @@ Function Invoke-ListTeams {
             Write-Host "Warning: Could not fetch SharePoint site URL for team $TeamID`: $_"
         }
 
+        # Batch-fetch filesFolder for each channel to get per-channel siteId/driveId
+        try {
+            $ChannelFilesBatch = $Channels | ForEach-Object {
+                @{
+                    id     = $_.id
+                    method = 'GET'
+                    url    = "/teams/$($TeamID)/channels/$($_.id)/filesFolder?`$select=id,name,webUrl,parentReference"
+                }
+            }
+            $ChannelFilesResults = if ($ChannelFilesBatch.Count -gt 0) {
+                New-GraphBulkRequest -Requests $ChannelFilesBatch -tenantid $TenantFilter -asapp $true
+            } else { @() }
+
+            $ChannelFilesLookup = @{}
+            foreach ($result in $ChannelFilesResults) {
+                if ($result.body -and $result.id -and -not $result.body.error) {
+                    $ChannelFilesLookup[$result.id] = @{
+                        siteId  = $result.body.parentReference.siteId
+                        driveId = $result.body.parentReference.driveId
+                        webUrl  = $result.body.webUrl
+                    }
+                }
+            }
+
+            $Channels = $Channels | ForEach-Object {
+                $filesInfo = $ChannelFilesLookup[$_.id]
+                $_ | Add-Member -NotePropertyName 'filesSiteId' -NotePropertyValue ($filesInfo.siteId) -Force -PassThru |
+                     Add-Member -NotePropertyName 'filesDriveId' -NotePropertyValue ($filesInfo.driveId) -Force -PassThru |
+                     Add-Member -NotePropertyName 'filesWebUrl' -NotePropertyValue ($filesInfo.webUrl) -Force -PassThru
+            }
+        } catch {
+            Write-Host "Warning: Could not fetch channel filesFolder batch for team $TeamID`: $_"
+        }
+
         $Owners = $UserList | Where-Object -Property Roles -EQ 'Owner'
         $Members = $UserList | Where-Object -Property email -NotIn $owners.email
         $GraphRequest = [PSCustomObject]@{
