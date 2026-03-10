@@ -349,28 +349,37 @@ function Invoke-ExecOneDriveFileAction {
                     $Message = "Copy of '$ItemLabel' was initiated but could not be confirmed as complete. The source item was NOT deleted to prevent data loss. Please verify the copy completed at the destination and remove the source manually if needed."
                 } else {
                     # Step 3: Verify the destination item exists and matches the source
+                    # For files: exact size match
+                    # For folders: total recursive size match (covers all subfolders and nested files)
                     $Verified = $false
+                    $VerifyDetail = ''
                     try {
+                        $EscapedName = $SourceName -replace "'", "''"
                         $DestChildren = New-GraphGetRequest -AsApp $true `
-                            -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestParentId/children?`$filter=name eq '$($SourceName -replace "'","''")'&`$select=id,name,size,folder" `
+                            -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestParentId/children?`$filter=name eq '$EscapedName'&`$select=id,name,size,folder" `
                             -tenantid $TenantFilter
                         $DestItem = $DestChildren | Where-Object { $_.name -eq $SourceName } | Select-Object -First 1
 
                         if ($DestItem) {
+                            $DestSize = [long]($DestItem.size ?? 0)
                             if ($SourceIsFolder) {
-                                $DestChildCount = [int]($DestItem.folder.childCount ?? 0)
-                                if ($DestChildCount -ge $SourceChildCount) {
+                                if ($DestSize -ge $SourceSize) {
                                     $Verified = $true
+                                } else {
+                                    $VerifyDetail = "Destination folder size ($DestSize bytes) is less than source ($SourceSize bytes)."
                                 }
                             } else {
-                                $DestSize = [long]($DestItem.size ?? 0)
                                 if ($DestSize -eq $SourceSize) {
                                     $Verified = $true
+                                } else {
+                                    $VerifyDetail = "Destination file size ($DestSize bytes) does not match source ($SourceSize bytes)."
                                 }
                             }
+                        } else {
+                            $VerifyDetail = 'Destination item not found.'
                         }
                     } catch {
-                        $Verified = $false
+                        $VerifyDetail = "Verification query failed: $($_.Exception.Message)"
                     }
 
                     if ($Verified) {
@@ -379,7 +388,7 @@ function Invoke-ExecOneDriveFileAction {
                             -tenantid $TenantFilter -type DELETE -body '{}'
                         $Message = "Successfully moved '$ItemLabel' to the destination (verified). The source has been removed."
                     } else {
-                        $Message = "Copy of '$ItemLabel' completed but verification failed — the destination item could not be confirmed to match the source. The source was NOT deleted to prevent data loss. Please verify manually."
+                        $Message = "Copy of '$ItemLabel' completed but verification failed — $VerifyDetail The source was NOT deleted to prevent data loss. Please verify manually."
                     }
                 }
             }
