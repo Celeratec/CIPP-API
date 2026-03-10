@@ -13,12 +13,23 @@ function Invoke-ExecOneDriveFileAction {
     $TenantFilter = $Request.Body.TenantFilter
     if (-not $TenantFilter) { $TenantFilter = $Request.Query.TenantFilter }
 
+    $BodyType = $Request.Body.GetType().FullName
+    $BodyKeys = if ($Request.Body -is [hashtable]) {
+        $Request.Body.Keys -join ', '
+    } elseif ($Request.Body.PSObject) {
+        ($Request.Body.PSObject.Properties | ForEach-Object { $_.Name }) -join ', '
+    } else {
+        'unknown'
+    }
+
     $DriveId = $Request.Body.DriveId
     $ItemId = $Request.Body.ItemId
     $Action = $Request.Body.Action
     $UserId = $Request.Body.UserId
     $SiteId = $Request.Body.SiteId
     $ItemName = $Request.Body.ItemName
+
+    Write-Host "DEBUG ExecOneDriveFileAction: BodyType=$BodyType Keys=$BodyKeys DriveId=$DriveId ItemId=$ItemId Action=$Action UserId=$UserId SiteId=$SiteId ItemName=$ItemName"
 
     # Cross-drive destination parameters
     $DestinationDriveId = $Request.Body.DestinationDriveId
