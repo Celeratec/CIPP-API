@@ -261,24 +261,29 @@ function Invoke-ExecOneDriveFileAction {
                 $SourceIsFolder = ($null -ne $SourceItem.folder)
 
                 $SkipItem = $false
-                if ($ConflictBehavior -eq 'skip') {
-                    $EscName = $SourceName -replace "'", "''"
+                $EscName = $SourceName -replace "'", "''"
+                if ($ConflictBehavior -eq 'skip' -or $ConflictBehavior -eq 'replace') {
                     try {
                         $Existing = New-GraphGetRequest -AsApp $true `
                             -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestParentId/children?`$filter=name eq '$EscName'&`$select=id,name" `
                             -tenantid $TenantFilter
                         $Match = $Existing | Where-Object { $_.name -eq $SourceName } | Select-Object -First 1
-                        if ($Match) { $SkipItem = $true }
+                        if ($Match) {
+                            if ($ConflictBehavior -eq 'skip') {
+                                $SkipItem = $true
+                            } elseif ($ConflictBehavior -eq 'replace') {
+                                $null = New-GraphPostRequest -AsApp $true `
+                                    -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$($Match.id)" `
+                                    -tenantid $TenantFilter -type DELETE -body '{}'
+                                Start-Sleep -Seconds 2
+                            }
+                        }
                     } catch { }
                 }
 
                 if ($SkipItem) {
                     $Message = "Skipped '$ItemLabel' — an item with the same name already exists at the destination."
                 } else {
-                    if ($ConflictBehavior -eq 'replace') {
-                        $CopyBody['@microsoft.graph.conflictBehavior'] = 'replace'
-                    }
-
                     $Body = $CopyBody | ConvertTo-Json -Depth 3
                     $CopyComplete = $false
 
@@ -441,26 +446,30 @@ function Invoke-ExecOneDriveFileAction {
                 $SourceSize = [long]($SourceItem.size ?? 0)
                 $SourceName = $SourceItem.name
 
-                # Handle skip: check for existing item at destination before copying
                 $SkipItem = $false
-                if ($ConflictBehavior -eq 'skip') {
-                    $EscName = $SourceName -replace "'", "''"
+                $EscName = $SourceName -replace "'", "''"
+                if ($ConflictBehavior -eq 'skip' -or $ConflictBehavior -eq 'replace') {
                     try {
                         $ExistCheck = New-GraphGetRequest -AsApp $true `
                             -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestParentId/children?`$filter=name eq '$EscName'&`$select=id,name" `
                             -tenantid $TenantFilter
                         $Match = $ExistCheck | Where-Object { $_.name -eq $SourceName } | Select-Object -First 1
-                        if ($Match) { $SkipItem = $true }
+                        if ($Match) {
+                            if ($ConflictBehavior -eq 'skip') {
+                                $SkipItem = $true
+                            } elseif ($ConflictBehavior -eq 'replace') {
+                                $null = New-GraphPostRequest -AsApp $true `
+                                    -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$($Match.id)" `
+                                    -tenantid $TenantFilter -type DELETE -body '{}'
+                                Start-Sleep -Seconds 2
+                            }
+                        }
                     } catch { }
                 }
 
                 if ($SkipItem) {
                     $Message = "Skipped '$ItemLabel' — an item with the same name already exists at the destination. Source was not deleted."
                 } else {
-                    if ($ConflictBehavior -eq 'replace') {
-                        $CopyBody['@microsoft.graph.conflictBehavior'] = 'replace'
-                    }
-
                     $Body = $CopyBody | ConvertTo-Json -Depth 3
                     $CopyComplete = $false
 
