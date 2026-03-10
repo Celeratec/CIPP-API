@@ -274,47 +274,63 @@ function Invoke-ExecOneDriveFileAction {
                     }
 
                     $Body = $CopyBody | ConvertTo-Json -Depth 3
-                    $CopyHeaders = New-GraphPostRequest -AsApp $true `
-                        -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId/copy" `
-                        -tenantid $TenantFilter -type POST -body $Body `
-                        -returnHeaders $true
-
-                    $MonitorUrl = $null
-                    if ($CopyHeaders -and $CopyHeaders['Location']) {
-                        $MonitorUrl = ($CopyHeaders['Location'] | Select-Object -First 1)
-                    }
-
                     $CopyComplete = $false
-                    if ($MonitorUrl) {
-                        for ($i = 0; $i -lt 150; $i++) {
-                            Start-Sleep -Seconds 2
-                            try {
-                                $Status = Invoke-RestMethod -Uri $MonitorUrl -Method GET -ErrorAction Stop
-                                if ($Status.status -eq 'completed') {
-                                    $CopyComplete = $true
-                                    break
-                                } elseif ($Status.status -eq 'failed') {
-                                    throw "Copy operation failed: $($Status.error.message)"
+
+                    for ($copyAttempt = 1; $copyAttempt -le 3; $copyAttempt++) {
+                        $RetryNeeded = $false
+                        try {
+                            $CopyHeaders = New-GraphPostRequest -AsApp $true `
+                                -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId/copy" `
+                                -tenantid $TenantFilter -type POST -body $Body `
+                                -returnHeaders $true
+
+                            $MonitorUrl = $null
+                            if ($CopyHeaders -and $CopyHeaders['Location']) {
+                                $MonitorUrl = ($CopyHeaders['Location'] | Select-Object -First 1)
+                            }
+
+                            if ($MonitorUrl) {
+                                for ($i = 0; $i -lt 150; $i++) {
+                                    Start-Sleep -Seconds 2
+                                    try {
+                                        $Status = Invoke-RestMethod -Uri $MonitorUrl -Method GET -ErrorAction Stop
+                                        if ($Status.status -eq 'completed') {
+                                            $CopyComplete = $true
+                                            break
+                                        } elseif ($Status.status -eq 'failed') {
+                                            throw "Copy operation failed: $($Status.error.message)"
+                                        }
+                                    } catch {
+                                        if ($_.Exception.Message -match 'Copy operation failed') { throw }
+                                    }
                                 }
-                            } catch {
-                                if ($_.Exception.Message -match 'Copy operation failed') { throw }
+                            } else {
+                                $EscName = $SourceName -replace "'", "''"
+                                for ($i = 0; $i -lt 15; $i++) {
+                                    Start-Sleep -Seconds 4
+                                    try {
+                                        $DestChildren = New-GraphGetRequest -AsApp $true `
+                                            -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestParentId/children?`$filter=name eq '$EscName'&`$select=id,name,size,folder" `
+                                            -tenantid $TenantFilter
+                                        $DestItem = $DestChildren | Where-Object { $_.name -eq $SourceName } | Select-Object -First 1
+                                        if ($DestItem) {
+                                            $CopyComplete = $true
+                                            break
+                                        }
+                                    } catch { }
+                                }
+                            }
+                        } catch {
+                            if ($_.Exception.Message -match 'being used in another operation' -and $copyAttempt -lt 3) {
+                                $RetryNeeded = $true
+                            } else {
+                                throw
                             }
                         }
-                    } else {
-                        $EscName = $SourceName -replace "'", "''"
-                        for ($i = 0; $i -lt 15; $i++) {
-                            Start-Sleep -Seconds 4
-                            try {
-                                $DestChildren = New-GraphGetRequest -AsApp $true `
-                                    -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestParentId/children?`$filter=name eq '$EscName'&`$select=id,name,size,folder" `
-                                    -tenantid $TenantFilter
-                                $DestItem = $DestChildren | Where-Object { $_.name -eq $SourceName } | Select-Object -First 1
-                                if ($DestItem) {
-                                    $CopyComplete = $true
-                                    break
-                                }
-                            } catch { }
-                        }
+
+                        if ($CopyComplete -or -not $RetryNeeded) { break }
+                        Write-Host "Copy attempt $copyAttempt for '$ItemLabel': item busy, retrying in 30s"
+                        Start-Sleep -Seconds 30
                     }
 
                     if (-not $CopyComplete) {
@@ -429,49 +445,63 @@ function Invoke-ExecOneDriveFileAction {
                         $CopyBody['@microsoft.graph.conflictBehavior'] = 'replace'
                     }
 
-                    # Step 1: Initiate copy and capture the monitor URL from response headers
                     $Body = $CopyBody | ConvertTo-Json -Depth 3
-                    $CopyHeaders = New-GraphPostRequest -AsApp $true `
-                        -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId/copy" `
-                        -tenantid $TenantFilter -type POST -body $Body `
-                        -returnHeaders $true
-
-                    $MonitorUrl = $null
-                    if ($CopyHeaders -and $CopyHeaders['Location']) {
-                        $MonitorUrl = ($CopyHeaders['Location'] | Select-Object -First 1)
-                    }
-
-                    # Step 2: Poll the monitor URL until the copy completes (up to ~5 minutes)
                     $CopyComplete = $false
-                    if ($MonitorUrl) {
-                        for ($i = 0; $i -lt 150; $i++) {
-                            Start-Sleep -Seconds 2
-                            try {
-                                $Status = Invoke-RestMethod -Uri $MonitorUrl -Method GET -ErrorAction Stop
-                                if ($Status.status -eq 'completed') {
-                                    $CopyComplete = $true
-                                    break
-                                } elseif ($Status.status -eq 'failed') {
-                                    throw "Copy operation failed: $($Status.error.message)"
+
+                    for ($copyAttempt = 1; $copyAttempt -le 3; $copyAttempt++) {
+                        $RetryNeeded = $false
+                        try {
+                            $CopyHeaders = New-GraphPostRequest -AsApp $true `
+                                -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId/copy" `
+                                -tenantid $TenantFilter -type POST -body $Body `
+                                -returnHeaders $true
+
+                            $MonitorUrl = $null
+                            if ($CopyHeaders -and $CopyHeaders['Location']) {
+                                $MonitorUrl = ($CopyHeaders['Location'] | Select-Object -First 1)
+                            }
+
+                            if ($MonitorUrl) {
+                                for ($i = 0; $i -lt 150; $i++) {
+                                    Start-Sleep -Seconds 2
+                                    try {
+                                        $Status = Invoke-RestMethod -Uri $MonitorUrl -Method GET -ErrorAction Stop
+                                        if ($Status.status -eq 'completed') {
+                                            $CopyComplete = $true
+                                            break
+                                        } elseif ($Status.status -eq 'failed') {
+                                            throw "Copy operation failed: $($Status.error.message)"
+                                        }
+                                    } catch {
+                                        if ($_.Exception.Message -match 'Copy operation failed') { throw }
+                                    }
                                 }
-                            } catch {
-                                if ($_.Exception.Message -match 'Copy operation failed') { throw }
+                            } else {
+                                for ($i = 0; $i -lt 15; $i++) {
+                                    Start-Sleep -Seconds 4
+                                    try {
+                                        $DestChildren = New-GraphGetRequest -AsApp $true `
+                                            -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestParentId/children?`$filter=name eq '$($SourceName -replace "'","''")'&`$select=id,name,size,folder" `
+                                            -tenantid $TenantFilter
+                                        $DestItem = $DestChildren | Where-Object { $_.name -eq $SourceName } | Select-Object -First 1
+                                        if ($DestItem) {
+                                            $CopyComplete = $true
+                                            break
+                                        }
+                                    } catch { }
+                                }
+                            }
+                        } catch {
+                            if ($_.Exception.Message -match 'being used in another operation' -and $copyAttempt -lt 3) {
+                                $RetryNeeded = $true
+                            } else {
+                                throw
                             }
                         }
-                    } else {
-                        for ($i = 0; $i -lt 15; $i++) {
-                            Start-Sleep -Seconds 4
-                            try {
-                                $DestChildren = New-GraphGetRequest -AsApp $true `
-                                    -uri "https://graph.microsoft.com/v1.0/drives/$DestDriveId/items/$DestParentId/children?`$filter=name eq '$($SourceName -replace "'","''")'&`$select=id,name,size,folder" `
-                                    -tenantid $TenantFilter
-                                $DestItem = $DestChildren | Where-Object { $_.name -eq $SourceName } | Select-Object -First 1
-                                if ($DestItem) {
-                                    $CopyComplete = $true
-                                    break
-                                }
-                            } catch { }
-                        }
+
+                        if ($CopyComplete -or -not $RetryNeeded) { break }
+                        Write-Host "Copy attempt $copyAttempt for '$ItemLabel': item busy, retrying in 30s"
+                        Start-Sleep -Seconds 30
                     }
 
                     if (-not $CopyComplete) {
