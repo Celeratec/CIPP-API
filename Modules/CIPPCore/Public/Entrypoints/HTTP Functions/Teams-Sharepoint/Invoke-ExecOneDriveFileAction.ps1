@@ -247,9 +247,15 @@ function Invoke-ExecOneDriveFileAction {
 
                 $DestParentId = $CopyBody['parentReference']['id']
 
-                $SourceItem = New-GraphGetRequest -AsApp $true `
-                    -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/${ItemId}?`$select=id,name,size,folder" `
-                    -tenantid $TenantFilter
+                try {
+                    $SourceItem = New-GraphGetRequest -AsApp $true `
+                        -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/${ItemId}?`$select=id,name,size,folder" `
+                        -tenantid $TenantFilter
+                } catch {
+                    $SourceItem = New-GraphGetRequest -AsApp $true `
+                        -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId" `
+                        -tenantid $TenantFilter
+                }
                 $SourceName = $SourceItem.name
                 $SourceSize = [long]($SourceItem.size ?? 0)
                 $SourceIsFolder = ($null -ne $SourceItem.folder)
@@ -422,10 +428,15 @@ function Invoke-ExecOneDriveFileAction {
                 }
                 $DestParentId = $CopyBody['parentReference']['id']
 
-                # Snapshot the source item before copying so we can verify the destination
-                $SourceItem = New-GraphGetRequest -AsApp $true `
-                    -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/${ItemId}?`$select=id,name,size,folder" `
-                    -tenantid $TenantFilter
+                try {
+                    $SourceItem = New-GraphGetRequest -AsApp $true `
+                        -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/${ItemId}?`$select=id,name,size,folder" `
+                        -tenantid $TenantFilter
+                } catch {
+                    $SourceItem = New-GraphGetRequest -AsApp $true `
+                        -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/items/$ItemId" `
+                        -tenantid $TenantFilter
+                }
                 $SourceIsFolder = ($null -ne $SourceItem.folder)
                 $SourceSize = [long]($SourceItem.size ?? 0)
                 $SourceName = $SourceItem.name
