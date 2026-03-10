@@ -37,10 +37,8 @@ function Invoke-EditUser {
         } else {
             $UserObj.userPrincipalName
         }
-        # Build the body with only properties that are explicitly provided
         $BodyToship = @{}
 
-        # Only add properties that are explicitly set in the request
         if ($null -ne $UserObj.givenName) { $BodyToship['givenName'] = $UserObj.givenName }
         if ($null -ne $UserObj.surname) { $BodyToship['surname'] = $UserObj.surname }
         if ($null -ne $UserObj.displayName) { $BodyToship['displayName'] = $UserObj.displayName }
@@ -67,9 +65,15 @@ function Invoke-EditUser {
             $BodyToship['businessPhones'] = @($filteredPhones)
         }
         if ($null -ne $UserObj.otherMails) {
-            $filteredMails = @($UserObj.otherMails) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-            if ($filteredMails.Count -gt 0) {
-                $BodyToship['otherMails'] = @($filteredMails)
+            $normalizedOtherMails = @(
+                @($UserObj.otherMails) | ForEach-Object {
+                    if ($null -ne $_) { [string]$_ -split ',' }
+                } | ForEach-Object { $_.Trim() } | Where-Object {
+                    -not [string]::IsNullOrWhiteSpace($_)
+                }
+            )
+            if ($normalizedOtherMails.Count -gt 0) {
+                $BodyToship['otherMails'] = $normalizedOtherMails
             }
         }
         if ($UserObj.MustChangePass) {
