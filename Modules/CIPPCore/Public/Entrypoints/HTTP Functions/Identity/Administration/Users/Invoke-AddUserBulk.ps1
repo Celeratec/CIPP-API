@@ -16,6 +16,7 @@ function Invoke-AddUserBulk {
     $AssignedLicenses = $Request.Body.licenses
     $UsageLocation = $Request.Body.usageLocation
     $DisableLegacyProtocols = $Request.Body.disableLegacyProtocols
+    $DefaultDomain = $Request.Body.primDomain.value ?? $Request.Body.primDomain
 
     if (!$BulkUsers) {
         $Body = @{
@@ -29,6 +30,9 @@ function Invoke-AddUserBulk {
         $Results = [System.Collections.Generic.List[object]]::new()
         $Messages = [System.Collections.Generic.List[object]]::new()
         foreach ($User in $BulkUsers) {
+            if (!$User.domain -and $DefaultDomain) {
+                $User | Add-Member -NotePropertyName 'domain' -NotePropertyValue $DefaultDomain -Force
+            }
             # User input validation
             $missingFields = [System.Collections.Generic.List[string]]::new()
             if (!$User.mailNickName) { $missingFields.Add('mailNickName') }
