@@ -328,5 +328,20 @@
     "type": "DetectedApps",
     "friendlyName": "Detected Apps",
     "description": "All detected applications with devices where each app is installed"
+  },
+  {
+    "type": "SharePointSiteUsage",
+    "friendlyName": "SharePoint Site Usage",
+    "description": "SharePoint site usage statistics and storage details"
+  },
+  {
+    "type": "SharePointQuota",
+    "friendlyName": "SharePoint Quota",
+    "description": "Tenant-level SharePoint storage quota"
+  },
+  {
+    "type": "SharePointSettings",
+    "friendlyName": "SharePoint Settings",
+    "description": "SharePoint tenant sharing and configuration settings"
   }
 ]

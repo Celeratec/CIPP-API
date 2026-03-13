@@ -57,6 +57,7 @@ function Push-CIPPDBCacheData {
             'LicenseOverview'
             'MFAState'
             'BitlockerKeys'
+            'SharePointSiteUsage'
         )
 
         foreach ($CacheFunction in $BasicCacheFunctions) {
