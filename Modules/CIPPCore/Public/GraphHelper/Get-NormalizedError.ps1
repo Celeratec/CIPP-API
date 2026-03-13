@@ -25,8 +25,13 @@ function Get-NormalizedError {
         Write-Information "innererror.message found: $($JSONMsg.error.innererror.message)"
         $message = $JSONMsg.error.innererror.message
     } elseif ($JSONMsg.error.message) {
-        Write-Information "error.message found: $($JSONMsg.error.message)"
-        $message = $JSONMsg.error.message
+        # SharePoint REST (OData verbose) returns message as { lang, value } object
+        if ($JSONMsg.error.message.value) {
+            $message = [string]$JSONMsg.error.message.value
+        } else {
+            $message = [string]$JSONMsg.error.message
+        }
+        Write-Information "error.message found: $message"
         if ($JSONMsg.error.details.message) {
             $detailMessages = @($JSONMsg.error.details.message) -join '; '
             Write-Information "error.details.message found: $detailMessages"
