@@ -21,14 +21,20 @@ function Invoke-ExecSetSharePointMember {
         $UserObjectId = $Request.Body.user.addedFields.id ?? $Request.Body.user.id
 
         if ($Request.Body.SharePointType -eq 'Group') {
-            if ($Request.Body.GroupID -match '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$') {
-                $GroupId = $Request.Body.GroupID
+            $RawGroupId = [string]$Request.Body.GroupID
+            if ($RawGroupId -match '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$') {
+                $GroupId = $RawGroupId
             } else {
-                $GroupId = (New-GraphGetRequest -uri "https://graph.microsoft.com/beta/groups?`$filter=mail eq '$($Request.Body.GroupID)' or proxyAddresses/any(x:endsWith(x,'$($Request.Body.GroupID)')) or mailNickname eq '$($Request.Body.GroupID)'" -ComplexFilter -tenantid $TenantFilter).id
+                $LookupResults = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/groups?`$filter=mail eq '$RawGroupId' or proxyAddresses/any(x:endsWith(x,'$RawGroupId')) or mailNickname eq '$RawGroupId'" -ComplexFilter -tenantid $TenantFilter
+                $GroupId = if ($LookupResults -is [array]) { [string]($LookupResults | Select-Object -First 1).id } else { [string]$LookupResults.id }
+            }
+
+            if (-not $GroupId -or $GroupId -eq '') {
+                throw "Could not resolve M365 Group for this site. The GroupID value '$RawGroupId' did not match any group. If this is a group-connected site, try using the site details page which performs a direct group lookup."
             }
 
             if ($Request.Body.Add -eq $true) {
-                $Results = Add-CIPPGroupMember -GroupType 'Team' -GroupID $GroupID -Member $Request.Body.user.value -TenantFilter $TenantFilter -Headers $Headers
+                $Results = Add-CIPPGroupMember -GroupType 'Team' -GroupID $GroupId -Member $UserEmail -TenantFilter $TenantFilter -Headers $Headers
             } else {
                 # Use the object ID directly if available, otherwise resolve via Graph
                 if ($UserObjectId) {
@@ -39,7 +45,7 @@ function Invoke-ExecSetSharePointMember {
                     $UserLookup = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users?`$filter=userPrincipalName eq '$SafeEmail'&`$select=id" -tenantid $TenantFilter -ComplexFilter
                     $UserID = $UserLookup.id
                 }
-                $Results = Remove-CIPPGroupMember -GroupType 'Team' -GroupID $GroupID -Member $UserID -TenantFilter $TenantFilter -Headers $Headers
+                $Results = Remove-CIPPGroupMember -GroupType 'Team' -GroupID $GroupId -Member $UserID -TenantFilter $TenantFilter -Headers $Headers
             }
             $StatusCode = [HttpStatusCode]::OK
         } else {
