@@ -1,23 +1,23 @@
 function Push-CIPPDBCacheData {
     <#
     .SYNOPSIS
-        Orchestrator function to collect and cache all data for a single tenant
+        List cache collection tasks for a single tenant (Phase 1 of fan-out/fan-in)
 
     .DESCRIPTION
-        Builds a dynamic batch of cache collection tasks based on tenant license capabilities
+        Checks tenant license capabilities and returns a list of cache collection work items.
+        Does NOT start sub-orchestrators. The returned items are aggregated by the PostExecution
+        function (CIPPDBCacheApplyBatch) and executed in a single flat orchestrator.
 
     .FUNCTIONALITY
         Entrypoint
     #>
     [CmdletBinding()]
     param($Item)
-    Write-Host "Starting cache collection orchestration for tenant: $($Item.TenantFilter) - Queue: $($Item.QueueName) (ID: $($Item.QueueId))"
+    Write-Host "Building cache task list for tenant: $($Item.TenantFilter)"
     $TenantFilter = $Item.TenantFilter
     $QueueId = $Item.QueueId
 
     try {
-        Write-Information "CIPPDBCache: Starting database cache orchestration for tenant $TenantFilter"
-
         # Check tenant capabilities for license-specific features
         $IntuneCapable = Test-CIPPStandardLicense -StandardName 'IntuneLicenseCheck' -TenantFilter $TenantFilter -RequiredCapabilities @('INTUNE_A', 'MDM_Services', 'EMS', 'SCCM', 'MICROSOFTINTUNEPLAN1') -SkipLog
         $ConditionalAccessCapable = Test-CIPPStandardLicense -StandardName 'ConditionalAccessLicenseCheck' -TenantFilter $TenantFilter -RequiredCapabilities @('AAD_PREMIUM', 'AAD_PREMIUM_P2') -SkipLog
@@ -25,10 +25,10 @@ function Push-CIPPDBCacheData {
         $ExchangeCapable = Test-CIPPStandardLicense -StandardName 'ExchangeLicenseCheck' -TenantFilter $TenantFilter -RequiredCapabilities @('EXCHANGE_S_STANDARD', 'EXCHANGE_S_ENTERPRISE', 'EXCHANGE_S_STANDARD_GOV', 'EXCHANGE_S_ENTERPRISE_GOV', 'EXCHANGE_LITE') -SkipLog
         $DefenderForOffice365Capable = Test-CIPPStandardLicense -StandardName 'DefenderForOffice365LicenseCheck' -TenantFilter $TenantFilter -RequiredCapabilities @('ATP_ENTERPRISE', 'THREAT_INTELLIGENCE') -SkipLog
 
-        Write-Information "CIPPDBCache: $TenantFilter - License capabilities - Intune: $IntuneCapable, CA: $ConditionalAccessCapable, P2: $AzureADPremiumP2Capable, Exchange: $ExchangeCapable, MDO: $DefenderForOffice365Capable"
+        Write-Information "License capabilities for $TenantFilter - Intune: $IntuneCapable, CA: $ConditionalAccessCapable, P2: $AzureADPremiumP2Capable, Exchange: $ExchangeCapable, MDO: $DefenderForOffice365Capable"
 
-        # Build dynamic batch of cache collection tasks based on license capabilities
-        $Batch = [System.Collections.Generic.List[object]]::new()
+        # Build list of cache collection tasks based on license capabilities
+        $Tasks = [System.Collections.Generic.List[object]]::new()
 
         #region All Licenses - Basic tenant data collection
         $BasicCacheFunctions = @(
@@ -61,7 +61,7 @@ function Push-CIPPDBCacheData {
         )
 
         foreach ($CacheFunction in $BasicCacheFunctions) {
-            $Batch.Add(@{
+            $Tasks.Add(@{
                     FunctionName = 'ExecCIPPDBCache'
                     Name         = $CacheFunction
                     TenantFilter = $TenantFilter
@@ -95,7 +95,7 @@ function Push-CIPPDBCacheData {
             )
 
             foreach ($CacheFunction in $ExchangeCacheFunctions) {
-                $Batch.Add(@{
+                $Tasks.Add(@{
                         FunctionName = 'ExecCIPPDBCache'
                         Name         = $CacheFunction
                         TenantFilter = $TenantFilter
@@ -127,7 +127,7 @@ function Push-CIPPDBCacheData {
             }
             #endregion Defender for Office 365 Licensed
         } else {
-            Write-Host 'Skipping Exchange Online data collection - tenant does not have required license'
+            Write-Host "Skipping Exchange Online data collection for $TenantFilter - no required license"
         }
         #endregion Exchange Licensed
 
@@ -140,7 +140,7 @@ function Push-CIPPDBCacheData {
                 'UserRegistrationDetails'
             )
             foreach ($CacheFunction in $ConditionalAccessCacheFunctions) {
-                $Batch.Add(@{
+                $Tasks.Add(@{
                         FunctionName = 'ExecCIPPDBCache'
                         Name         = $CacheFunction
                         TenantFilter = $TenantFilter
@@ -148,7 +148,7 @@ function Push-CIPPDBCacheData {
                     })
             }
         } else {
-            Write-Host 'Skipping Conditional Access data collection - tenant does not have required license'
+            Write-Host "Skipping Conditional Access data collection for $TenantFilter - no required license"
         }
         #endregion Conditional Access Licensed
 
@@ -166,7 +166,7 @@ function Push-CIPPDBCacheData {
                 'RoleAssignmentScheduleInstances'
             )
             foreach ($CacheFunction in $P2CacheFunctions) {
-                $Batch.Add(@{
+                $Tasks.Add(@{
                         FunctionName = 'ExecCIPPDBCache'
                         Name         = $CacheFunction
                         TenantFilter = $TenantFilter
@@ -174,7 +174,7 @@ function Push-CIPPDBCacheData {
                     })
             }
         } else {
-            Write-Host 'Skipping Azure AD Premium P2 Identity Protection and PIM data collection - tenant does not have required license'
+            Write-Host "Skipping Azure AD Premium P2 data collection for $TenantFilter - no required license"
         }
         #endregion Azure AD Premium P2
 
@@ -188,7 +188,7 @@ function Push-CIPPDBCacheData {
                 'DetectedApps'
             )
             foreach ($CacheFunction in $IntuneCacheFunctions) {
-                $Batch.Add(@{
+                $Tasks.Add(@{
                         FunctionName = 'ExecCIPPDBCache'
                         Name         = $CacheFunction
                         TenantFilter = $TenantFilter
@@ -196,40 +196,18 @@ function Push-CIPPDBCacheData {
                     })
             }
         } else {
-            Write-Host 'Skipping Intune data collection - tenant does not have required license'
+            Write-Host "Skipping Intune data collection for $TenantFilter - no required license"
         }
         #endregion Intune Licensed
 
-        Write-Information "Built batch of $($Batch.Count) cache collection activities for tenant $TenantFilter"
+        Write-Information "Built $($Tasks.Count) cache tasks for tenant $TenantFilter"
 
-        # Start orchestration for this tenant's cache collection
-        $InputObject = [PSCustomObject]@{
-            OrchestratorName = "CIPPDBCacheTenant_$TenantFilter"
-            Batch            = @($Batch)
-            SkipLog          = $true
-        }
-
-        if ($Item.TestRun -eq $true) {
-            $InputObject | Add-Member -NotePropertyName PostExecution -NotePropertyValue @{
-                FunctionName = 'CIPPDBTestsRun'
-                Parameters   = @{
-                    TenantFilter = $TenantFilter
-                }
-            }
-        }
-
-        $InstanceId = Start-NewOrchestration -FunctionName 'CIPPOrchestrator' -InputObject ($InputObject | ConvertTo-Json -Depth 5 -Compress)
-        Write-Information "CIPPDBCache: Started cache collection for $TenantFilter ($($Batch.Count) activities) ID='$InstanceId'"
-
-        return @{
-            InstanceId = $InstanceId
-            BatchCount = $Batch.Count
-            Message    = "Cache collection orchestration started for $TenantFilter"
-        }
+        # Return the task list — the PostExecution function will aggregate and start a flat orchestrator
+        return @($Tasks)
 
     } catch {
         $ErrorMessage = Get-CippException -Exception $_
-        Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message "Failed to start cache collection orchestration: $($ErrorMessage.NormalizedError)" -sev Error -LogData $ErrorMessage
-        throw $ErrorMessage
+        Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message "Failed to build cache task list: $($ErrorMessage.NormalizedError)" -sev Error -LogData $ErrorMessage
+        return @()
     }
 }
