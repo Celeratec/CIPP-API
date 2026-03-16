@@ -13,15 +13,15 @@
       "maxConcurrentRequests": 10
     },
     "durableTask": {
-      "maxConcurrentActivityFunctions": 5,
-      "maxConcurrentOrchestratorFunctions": 1,
+      "maxConcurrentActivityFunctions": 10,
+      "maxConcurrentOrchestratorFunctions": 5,
       "maxQueuePollingInterval": "00:00:10",
       "controlQueueBatchSize": 16,
       "tracing": {
         "distributedTracingEnabled": false,
         "version": "None"
       },
-      "defaultVersion": "10.2.2",
+      "defaultVersion": "10.2.3",
       "versionMatchStrategy": "Strict",
       "versionFailureStrategy": "Fail"
     }

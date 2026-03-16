@@ -20,7 +20,6 @@ function Invoke-ListLogs {
             }
         }
     } elseif ($Request.Query.logentryid) {
-        # Return single log entry by RowKey (and PartitionKey if provided for faster lookup)
         $AllowedTenants = Test-CIPPAccess -Request $Request -TenantList
         
         if ($Request.Query.datefilter) {
