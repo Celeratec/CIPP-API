@@ -171,18 +171,24 @@ function Invoke-ExecOneDriveCompare {
                 } elseif (-not $SrcIsFolder -and -not $DstIsFolder) {
                     $SrcSize = [long]($Src.size ?? 0)
                     $DstSize = [long]($Dst.size ?? 0)
-                    if ($SrcSize -ne $DstSize) {
+                    $SrcMod = $Src.lastModifiedDateTime
+                    $DstMod = $Dst.lastModifiedDateTime
+                    $SizeDiffers = $SrcSize -ne $DstSize
+                    $DateDiffers = $SrcMod -and $DstMod -and ($SrcMod -ne $DstMod)
+
+                    if ($SizeDiffers -or $DateDiffers) {
+                        $EntryStatus = if ($SizeDiffers) { 'size_differs' } else { 'modified_differs' }
                         $DiffEntries.Add([PSCustomObject]@{
                             path           = $ItemPath
                             name           = $ItemName
                             type           = 'file'
-                            status         = 'size_differs'
+                            status         = $EntryStatus
                             sourceId       = $Src.id
                             sourceSize     = $SrcSize
-                            sourceModified = $Src.lastModifiedDateTime
+                            sourceModified = $SrcMod
                             destId         = $Dst.id
                             destSize       = $DstSize
-                            destModified   = $Dst.lastModifiedDateTime
+                            destModified   = $DstMod
                             sourceDriveId  = $SrcDrive
                             destDriveId    = $DstDrive
                         })
