@@ -230,9 +230,11 @@ Function Invoke-ExecTeamAction {
                     }
                 }
 
+                $MemberRoles = @()
+                if ($ChannelRole -eq 'owner') { $MemberRoles = @('owner') }
                 $MemberBody = @{
                     '@odata.type'     = '#microsoft.graph.aadUserConversationMember'
-                    'roles'           = if ($ChannelRole -eq 'owner') { [string[]]@('owner') } else { [string[]]@() }
+                    'roles'           = $MemberRoles
                     'user@odata.bind' = "https://graph.microsoft.com/v1.0/users('$UserID')"
                 }
                 if ($ExternalTenantId) {
@@ -274,9 +276,11 @@ Function Invoke-ExecTeamAction {
                     } catch { }
                 }
 
+                $UpdateRoles = @()
+                if ($NewRole -eq 'owner') { $UpdateRoles = @('owner') }
                 $RoleBody = @{
                     '@odata.type' = '#microsoft.graph.aadUserConversationMember'
-                    'roles'       = if ($NewRole -eq 'owner') { [string[]]@('owner') } else { [string[]]@() }
+                    'roles'       = $UpdateRoles
                 } | ConvertTo-Json -Depth 5 -Compress
 
                 $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$UpdateTeamID/channels/$ChannelID/members/$MembershipID" -tenantid $TenantFilter -type PATCH -body $RoleBody
