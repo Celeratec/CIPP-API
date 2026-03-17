@@ -253,6 +253,36 @@ Function Invoke-ExecTeamAction {
                     "Successfully added $ChannelRole to channel '$ChannelLabel' in team '$TeamLabel'"
                 }
             }
+            'UpdateChannelMemberRole' {
+                $ChannelID = $Request.Body.ChannelID
+                $ChannelName = $Request.Body.ChannelName
+                $ChannelType = $Request.Body.ChannelType
+                $MembershipID = $Request.Body.MembershipID
+                $MemberName = $Request.Body.MemberName
+                $NewRole = $Request.Body.NewRole
+                if (-not $ChannelID) { throw 'ChannelID is required' }
+                if (-not $MembershipID) { throw 'MembershipID is required' }
+                if (-not $NewRole) { throw 'NewRole is required (owner or member)' }
+                $ChannelLabel = if ($ChannelName) { $ChannelName } else { $ChannelID }
+                $MemberLabel = if ($MemberName) { $MemberName } else { $MembershipID }
+
+                $UpdateTeamID = $TeamID
+                if ($ChannelType -eq 'shared' -or $ChannelType -eq 'private') {
+                    try {
+                        $ChInfo = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/teams/$TeamID/channels/$ChannelID" -tenantid $TenantFilter -AsApp $true -NoAuthCheck $true
+                        if ($ChInfo.webUrl -match 'groupId=([0-9a-fA-F-]+)') { $UpdateTeamID = $Matches[1] }
+                    } catch { }
+                }
+
+                $RoleBody = @{
+                    '@odata.type' = '#microsoft.graph.aadUserConversationMember'
+                    'roles'       = if ($NewRole -eq 'owner') { @('owner') } else { @() }
+                } | ConvertTo-Json -Depth 5 -Compress
+
+                $null = New-GraphPostRequest -AsApp $true -uri "https://graph.microsoft.com/v1.0/teams/$UpdateTeamID/channels/$ChannelID/members/$MembershipID" -tenantid $TenantFilter -type PATCH -body $RoleBody
+                $RoleLabel = if ($NewRole -eq 'owner') { 'owner' } else { 'member' }
+                $Message = "Successfully updated '$MemberLabel' to $RoleLabel in channel '$ChannelLabel' in team '$TeamLabel'"
+            }
             'RemoveChannelMember' {
                 $ChannelID = $Request.Body.ChannelID
                 $ChannelName = $Request.Body.ChannelName
@@ -275,7 +305,7 @@ Function Invoke-ExecTeamAction {
                 $Message = "Successfully removed '$MemberLabel' from channel '$ChannelLabel' in team '$TeamLabel'"
             }
             default {
-                throw "Unknown action: $Action. Supported actions: Archive, Unarchive, Clone, CreateChannel, DeleteChannel, RemoveApp, ListChannelMembers, AddChannelMember, RemoveChannelMember"
+                throw "Unknown action: $Action. Supported actions: Archive, Unarchive, Clone, CreateChannel, DeleteChannel, RemoveApp, ListChannelMembers, AddChannelMember, UpdateChannelMemberRole, RemoveChannelMember"
             }
         }
 
