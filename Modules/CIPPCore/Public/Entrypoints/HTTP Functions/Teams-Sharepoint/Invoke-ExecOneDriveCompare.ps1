@@ -103,13 +103,13 @@ function Invoke-ExecOneDriveCompare {
 
             try {
                 $SrcItems = @(New-GraphGetRequest -AsApp $true `
-                    -uri "https://graph.microsoft.com/v1.0/drives/$SrcDrive/items/$SrcFolder/children?`$select=id,name,size,folder&`$top=200" `
+                    -uri "https://graph.microsoft.com/v1.0/drives/$SrcDrive/items/$SrcFolder/children?`$select=id,name,size,folder,lastModifiedDateTime&`$top=200" `
                     -tenantid $Tenant -noPagination $true)
             } catch { $SrcItems = @() }
 
             try {
                 $DstItems = @(New-GraphGetRequest -AsApp $true `
-                    -uri "https://graph.microsoft.com/v1.0/drives/$DstDrive/items/$DstFolder/children?`$select=id,name,size,folder&`$top=200" `
+                    -uri "https://graph.microsoft.com/v1.0/drives/$DstDrive/items/$DstFolder/children?`$select=id,name,size,folder,lastModifiedDateTime&`$top=200" `
                     -tenantid $Tenant -noPagination $true)
             } catch { $DstItems = @() }
 
@@ -132,30 +132,34 @@ function Invoke-ExecOneDriveCompare {
 
                 if ($Src -and -not $Dst) {
                     $DiffEntries.Add([PSCustomObject]@{
-                        path         = $ItemPath
-                        name         = $ItemName
-                        type         = if ($SrcIsFolder) { 'folder' } else { 'file' }
-                        status       = 'source_only'
-                        sourceId     = $Src.id
-                        sourceSize   = [long]($Src.size ?? 0)
-                        destId       = $null
-                        destSize     = $null
-                        sourceDriveId = $SrcDrive
-                        destDriveId  = $DstDrive
-                        destParentId = $DstFolder
+                        path           = $ItemPath
+                        name           = $ItemName
+                        type           = if ($SrcIsFolder) { 'folder' } else { 'file' }
+                        status         = 'source_only'
+                        sourceId       = $Src.id
+                        sourceSize     = [long]($Src.size ?? 0)
+                        sourceModified = $Src.lastModifiedDateTime
+                        destId         = $null
+                        destSize       = $null
+                        destModified   = $null
+                        sourceDriveId  = $SrcDrive
+                        destDriveId    = $DstDrive
+                        destParentId   = $DstFolder
                     })
                 } elseif ($Dst -and -not $Src) {
                     $DiffEntries.Add([PSCustomObject]@{
-                        path         = $ItemPath
-                        name         = $ItemName
-                        type         = if ($DstIsFolder) { 'folder' } else { 'file' }
-                        status       = 'dest_only'
-                        sourceId     = $null
-                        sourceSize   = $null
-                        destId       = $Dst.id
-                        destSize     = [long]($Dst.size ?? 0)
-                        sourceDriveId = $SrcDrive
-                        destDriveId  = $DstDrive
+                        path           = $ItemPath
+                        name           = $ItemName
+                        type           = if ($DstIsFolder) { 'folder' } else { 'file' }
+                        status         = 'dest_only'
+                        sourceId       = $null
+                        sourceSize     = $null
+                        sourceModified = $null
+                        destId         = $Dst.id
+                        destSize       = [long]($Dst.size ?? 0)
+                        destModified   = $Dst.lastModifiedDateTime
+                        sourceDriveId  = $SrcDrive
+                        destDriveId    = $DstDrive
                         sourceParentId = $SrcFolder
                     })
                 } elseif ($SrcIsFolder -and $DstIsFolder) {
@@ -169,16 +173,18 @@ function Invoke-ExecOneDriveCompare {
                     $DstSize = [long]($Dst.size ?? 0)
                     if ($SrcSize -ne $DstSize) {
                         $DiffEntries.Add([PSCustomObject]@{
-                            path         = $ItemPath
-                            name         = $ItemName
-                            type         = 'file'
-                            status       = 'size_differs'
-                            sourceId     = $Src.id
-                            sourceSize   = $SrcSize
-                            destId       = $Dst.id
-                            destSize     = $DstSize
-                            sourceDriveId = $SrcDrive
-                            destDriveId  = $DstDrive
+                            path           = $ItemPath
+                            name           = $ItemName
+                            type           = 'file'
+                            status         = 'size_differs'
+                            sourceId       = $Src.id
+                            sourceSize     = $SrcSize
+                            sourceModified = $Src.lastModifiedDateTime
+                            destId         = $Dst.id
+                            destSize       = $DstSize
+                            destModified   = $Dst.lastModifiedDateTime
+                            sourceDriveId  = $SrcDrive
+                            destDriveId    = $DstDrive
                         })
                     } else {
                         $Counters.match++
