@@ -161,7 +161,7 @@ function Push-CIPPDBCacheData {
                 'RiskDetections'
                 'PIMSettings'
                 'RoleEligibilitySchedules'
-                'RoleAssignmentSchedules'
+                'RoleAssignmentScheduleInstances'
                 'RoleManagementPolicies'
                 'RoleAssignmentScheduleInstances'
             )
