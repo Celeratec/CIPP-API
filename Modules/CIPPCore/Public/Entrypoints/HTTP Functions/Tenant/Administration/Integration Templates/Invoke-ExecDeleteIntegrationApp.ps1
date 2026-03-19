@@ -44,15 +44,17 @@ function Invoke-ExecDeleteIntegrationApp {
             }
         }
 
-        # Delete the service principal first (if exists)
-        try {
-            $SP = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/servicePrincipals?`$filter=appId eq '$AppId'" -tenantid $TenantFilter -AsApp $true
-            if ($SP.value -and $SP.value.Count -gt 0) {
-                $null = New-GraphPostRequest -uri "https://graph.microsoft.com/v1.0/servicePrincipals/$($SP.value[0].id)" -type DELETE -tenantid $TenantFilter -AsApp $true
-                Write-LogMessage -headers $Headers -API $APIName -user $Username -tenant $TenantFilter -message "Deleted service principal for app '$AppDisplayName'" -Sev 'Info'
+        # Delete the service principal first (if exists and we have appId)
+        if ($AppId) {
+            try {
+                $SP = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/servicePrincipals?`$filter=appId eq '$AppId'" -tenantid $TenantFilter -AsApp $true
+                if ($SP.value -and $SP.value.Count -gt 0) {
+                    $null = New-GraphPostRequest -uri "https://graph.microsoft.com/v1.0/servicePrincipals/$($SP.value[0].id)" -type DELETE -tenantid $TenantFilter -AsApp $true
+                    Write-LogMessage -headers $Headers -API $APIName -user $Username -tenant $TenantFilter -message "Deleted service principal for app '$AppDisplayName'" -Sev 'Info'
+                }
+            } catch {
+                Write-LogMessage -headers $Headers -API $APIName -user $Username -tenant $TenantFilter -message "Warning: Could not delete service principal: $($_.Exception.Message)" -Sev 'Warning'
             }
-        } catch {
-            Write-LogMessage -headers $Headers -API $APIName -user $Username -tenant $TenantFilter -message "Warning: Could not delete service principal: $($_.Exception.Message)" -Sev 'Warning'
         }
 
         # Delete the application
