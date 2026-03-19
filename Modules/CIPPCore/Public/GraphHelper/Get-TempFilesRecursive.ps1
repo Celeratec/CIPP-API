@@ -17,7 +17,7 @@ function Get-TempFilesRecursive {
         [string]$DriveId,
 
         [Parameter(Mandatory = $false)]
-        [hashtable]$Filters = @{},
+        $Filters,
 
         [Parameter(Mandatory = $false)]
         [string]$FolderId = 'root',
