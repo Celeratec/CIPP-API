@@ -79,7 +79,7 @@ function Get-TempFilesRecursive {
                             id                   = $Item.id
                             driveId              = $DriveId
                             name                 = $Item.name
-                            path                 = $ParentPath
+                            path                 = if ($ParentPath) { "$ParentPath/$($Item.name)" } else { "/$($Item.name)" }
                             size                 = $Item.size
                             type                 = $MatchTypes[0]
                             matchTypes           = @($MatchTypes)
