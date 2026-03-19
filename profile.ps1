@@ -154,8 +154,19 @@ $SwVersion.Stop()
 $Timings['VersionCheck'] = $SwVersion.Elapsed.TotalMilliseconds
 
 if ($env:AzureWebJobsStorage -ne 'UseDevelopmentStorage=true' -and $env:NonLocalHostAzurite -ne 'true') {
-    Set-CIPPEnvVarBackup
-    Set-CIPPOffloadFunctionTriggers
+    try {
+        Set-CIPPEnvVarBackup
+    } catch {
+        Write-Warning "Failed to backup environment variables: $($_.Exception.Message)"
+    }
+
+    try {
+        Set-CIPPOffloadFunctionTriggers
+    } catch {
+        # Log warning but don't crash - offloading is non-critical for normal operation
+        Write-Warning "Failed to set offload function triggers: $($_.Exception.Message)"
+        Write-Warning 'This may indicate missing Azure RBAC permissions (Website Contributor or similar) on the Function App resource.'
+    }
 }
 
 $TotalStopwatch.Stop()

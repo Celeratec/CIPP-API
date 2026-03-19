@@ -85,7 +85,7 @@ function Set-CIPPOffloadFunctionTriggers {
                         Offloading   = $OffloadEnabled
                     }
                     Add-CIPPAzDataTableEntity @TriggerChangeTable -Entity $LastChange -Force | Out-Null
-                    Update-CIPPAzFunctionAppSetting -Name $FunctionAppName -ResourceGroupName $ResourceGroupName -AppSetting $AppSettings | Out-Null
+                    Update-CIPPAzFunctionAppSetting -Name $FunctionAppName -ResourceGroupName $ResourceGroupName -AppSetting $AppSettings -ErrorAction Stop | Out-Null
                     Write-Information "Successfully disabled $($AppSettings.Count) non-HTTP trigger(s) on $FunctionAppName"
                 }
             }
@@ -116,7 +116,7 @@ function Set-CIPPOffloadFunctionTriggers {
                         Offloading   = $OffloadEnabled
                     }
                     Add-CIPPAzDataTableEntity @TriggerChangeTable -Entity $LastChange -Force | Out-Null
-                    Update-CIPPAzFunctionAppSetting -Name $FunctionAppName -ResourceGroupName $ResourceGroupName -AppSetting @{} -RemoveKeys $RemoveKeys | Out-Null
+                    Update-CIPPAzFunctionAppSetting -Name $FunctionAppName -ResourceGroupName $ResourceGroupName -AppSetting @{} -RemoveKeys $RemoveKeys -ErrorAction Stop | Out-Null
                     Write-Information "Successfully re-enabled $($RemoveKeys.Count) non-HTTP trigger(s) on $FunctionAppName"
                 }
             }
@@ -124,8 +124,13 @@ function Set-CIPPOffloadFunctionTriggers {
 
         return $true
     } catch {
-        $ErrorMessage = Get-CippException -Exception $_
-        Write-Warning "Failed to update trigger settings: $($ErrorMessage.NormalizedError)"
+        # Gracefully handle errors - offloading management is non-critical
+        try {
+            $ErrorMessage = Get-CippException -Exception $_
+            Write-Warning "Failed to update trigger settings: $($ErrorMessage.NormalizedError)"
+        } catch {
+            Write-Warning "Failed to update trigger settings: $($_.Exception.Message)"
+        }
         return $false
     }
 }
