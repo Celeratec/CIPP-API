@@ -224,7 +224,7 @@ function Add-CIPPDbItem {
                     $StaleEntities = @($StaleRowKeys | ForEach-Object {
                         @{
                             PartitionKey = $TenantFilter
-                            RowKey       = $_
+                            RowKey       = [string]$_
                         }
                     })
                     if ($StaleEntities.Count -gt 0) {
