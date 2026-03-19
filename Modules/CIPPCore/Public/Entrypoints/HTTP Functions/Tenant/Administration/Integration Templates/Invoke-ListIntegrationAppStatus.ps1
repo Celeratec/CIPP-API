@@ -58,8 +58,9 @@ function Invoke-ListIntegrationAppStatus {
                 # Build expected app name
                 $ExpectedAppName = $Template.appNamePattern -replace '\{TenantName\}', $DisplayTenantName
 
-                # Search for existing apps matching the name
-                $ExistingApps = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/applications?`$filter=startswith(displayName,'$($Template.name)')" -tenantid $TenantDomain -AsApp $true
+                # Search for existing apps matching the name (escape single quotes for OData)
+                $EscapedTemplateName = $Template.name -replace "'", "''"
+                $ExistingApps = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/applications?`$filter=startswith(displayName,'$EscapedTemplateName')" -tenantid $TenantDomain -AsApp $true
 
                 $MatchingApps = @()
                 if ($ExistingApps.value) {
