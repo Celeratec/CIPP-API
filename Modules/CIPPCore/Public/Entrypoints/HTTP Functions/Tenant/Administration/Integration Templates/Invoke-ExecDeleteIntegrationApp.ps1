@@ -70,7 +70,7 @@ function Invoke-ExecDeleteIntegrationApp {
         $StatusCode = [HttpStatusCode]::OK
 
     } catch {
-        Write-LogMessage -headers $Headers -API $APIName -user $Username -message "Failed to delete integration app: $($_.Exception.Message)" -Sev 'Error'
+        Write-LogMessage -headers $Headers -API $APIName -user $Username -tenant $TenantFilter -message "Failed to delete integration app: $($_.Exception.Message)" -Sev 'Error'
         $Results = @{
             Results = "Failed to delete application: $($_.Exception.Message)"
         }
