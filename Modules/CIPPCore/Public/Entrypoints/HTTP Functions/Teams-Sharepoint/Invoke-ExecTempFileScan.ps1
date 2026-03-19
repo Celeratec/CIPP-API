@@ -30,32 +30,50 @@ function Invoke-ExecTempFileScan {
         })
     }
 
+    if ($Scope -eq 'site' -and -not $SiteId) {
+        return ([HttpResponseContext]@{
+            StatusCode = [HttpStatusCode]::BadRequest
+            Body       = @{ Results = 'SiteId is required when scope is site' }
+        })
+    }
+
+    if ($Scope -eq 'user' -and -not $UserId) {
+        return ([HttpResponseContext]@{
+            StatusCode = [HttpStatusCode]::BadRequest
+            Body       = @{ Results = 'UserId is required when scope is user' }
+        })
+    }
+
+    if ($Scope -notin @('site', 'user', 'allSites', 'allOneDrives')) {
+        return ([HttpResponseContext]@{
+            StatusCode = [HttpStatusCode]::BadRequest
+            Body       = @{ Results = "Invalid scope: $Scope. Must be one of: site, user, allSites, allOneDrives" }
+        })
+    }
+
     try {
-        $Results = @()
+        $Results = [System.Collections.Generic.List[object]]::new()
 
         $DrivesToScan = switch ($Scope) {
             'site' {
-                if (-not $SiteId) {
-                    throw 'SiteId is required when scope is site'
-                }
                 $SiteInfo = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/sites/$SiteId" -tenantid $TenantFilter -AsApp $true
                 $DriveInfo = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/sites/$SiteId/drive" -tenantid $TenantFilter -AsApp $true
-                @(@{ DriveId = $DriveInfo.id; SiteName = $SiteInfo.displayName; SiteUrl = $SiteInfo.webUrl })
+                $SiteName = $SiteInfo.displayName ?? $SiteInfo.name
+                @(@{ DriveId = $DriveInfo.id; SiteName = $SiteName; SiteUrl = $SiteInfo.webUrl })
             }
             'user' {
-                if (-not $UserId) {
-                    throw 'UserId is required when scope is user'
-                }
-                $DriveInfo = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users/$UserId/drive" -tenantid $TenantFilter -AsApp $true
-                $UserInfo = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users/$UserId" -tenantid $TenantFilter -AsApp $true
+                $EncodedUserId = if ($UserId -match '@') { $UserId -replace '#', '%23' } else { $UserId }
+                $DriveInfo = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users/$EncodedUserId/drive" -tenantid $TenantFilter -AsApp $true
+                $UserInfo = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users/$EncodedUserId" -tenantid $TenantFilter -AsApp $true
                 @(@{ DriveId = $DriveInfo.id; SiteName = "OneDrive - $($UserInfo.displayName)"; SiteUrl = $DriveInfo.webUrl })
             }
             'allSites' {
-                $Sites = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/sites?`$top=999" -tenantid $TenantFilter -AsApp $true
+                $Sites = New-GraphGetRequest -uri 'https://graph.microsoft.com/v1.0/sites/getAllSites?$top=999' -tenantid $TenantFilter -AsApp $true
                 $Sites | ForEach-Object {
                     try {
                         $DriveInfo = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/sites/$($_.id)/drive" -tenantid $TenantFilter -AsApp $true -NoAuthCheck $true
-                        @{ DriveId = $DriveInfo.id; SiteName = $_.displayName; SiteUrl = $_.webUrl }
+                        $SiteName = $_.displayName ?? $_.name
+                        @{ DriveId = $DriveInfo.id; SiteName = $SiteName; SiteUrl = $_.webUrl }
                     } catch { $null }
                 } | Where-Object { $_ }
             }
@@ -68,9 +86,6 @@ function Invoke-ExecTempFileScan {
                     } catch { $null }
                 } | Where-Object { $_ }
             }
-            default {
-                throw "Invalid scope: $Scope. Must be one of: site, user, allSites, allOneDrives"
-            }
         }
 
         foreach ($Drive in $DrivesToScan) {
@@ -79,13 +94,16 @@ function Invoke-ExecTempFileScan {
                 $_.SiteName = $Drive.SiteName
                 $_.SiteUrl = $Drive.SiteUrl
             }
-            $Results += $DriveFiles
+            if ($DriveFiles) {
+                $Results.AddRange([object[]]@($DriveFiles))
+            }
         }
 
+        $TotalSize = ($Results | Where-Object { $_.size }) | Measure-Object -Property size -Sum | Select-Object -ExpandProperty Sum
         $Body = @{
-            Results    = $Results
+            Results    = @($Results)
             TotalCount = $Results.Count
-            TotalSize  = ($Results | Measure-Object -Property size -Sum).Sum
+            TotalSize  = $TotalSize ?? 0
         }
         $StatusCode = [HttpStatusCode]::OK
 
