@@ -1,0 +1,31 @@
+[
+  {
+    "id": "unifi-identity",
+    "name": "UniFi Identity",
+    "description": "Entra ID sync for UniFi Identity Enterprise. Creates an app registration with User.Read.All and Group.Read.All permissions for directory synchronization.",
+    "appNamePattern": "UniFi Identity - {TenantName}",
+    "redirectUris": [],
+    "permissions": [
+      {
+        "resource": "Microsoft Graph",
+        "resourceAppId": "00000003-0000-0000-c000-000000000000",
+        "permissions": [
+          {
+            "id": "df021288-bdef-4463-88db-98f22de89214",
+            "name": "User.Read.All",
+            "type": "Role"
+          },
+          {
+            "id": "5b567255-7703-4780-807c-7be8301ae99b",
+            "name": "Group.Read.All",
+            "type": "Role"
+          }
+        ]
+      }
+    ],
+    "generateSecret": true,
+    "secretExpirationDays": 730,
+    "documentationUrl": "https://help.ui.com/hc/en-us/articles/24805196259607-UniFi-Identity-Enterprise-Entra-ID-Setup",
+    "isBuiltIn": true
+  }
+]
