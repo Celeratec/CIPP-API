@@ -104,9 +104,14 @@ function Invoke-ExecDeployIntegrationApp {
             Batch            = @($Batch)
             SkipLog          = $true
         }
-        $null = Start-CIPPOrchestrator -InputObject $InputObject
 
-        Write-LogMessage -headers $Headers -API $APIName -user $Username -message "Started integration app deployment: $($Template.name) to $TenantCount tenant(s)" -Sev 'Info'
+        Write-Information "Starting orchestrator with batch of $($Batch.Count) items"
+        Write-Information "Batch FunctionNames: $($Batch | ForEach-Object { $_.FunctionName } | Select-Object -Unique)"
+
+        $OrchestratorResult = Start-CIPPOrchestrator -InputObject $InputObject
+        Write-Information "Orchestrator result: $OrchestratorResult"
+
+        Write-LogMessage -headers $Headers -API $APIName -user $Username -message "Started integration app deployment: $($Template.name) to $TenantCount tenant(s). DeploymentId: $DeploymentId" -Sev 'Info'
 
         $Results = @{
             Results      = "Deployment started for $($Template.name) to $TenantCount tenant(s)"

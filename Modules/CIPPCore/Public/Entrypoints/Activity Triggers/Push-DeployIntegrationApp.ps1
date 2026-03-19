@@ -5,6 +5,8 @@ function Push-DeployIntegrationApp {
     #>
     param($Item)
 
+    Write-LogMessage -API 'Deploy Integration App' -message "Push-DeployIntegrationApp started with item: $($Item | ConvertTo-Json -Depth 5 -Compress)" -Sev 'Debug'
+
     try {
         $Item = $Item | ConvertTo-Json -Depth 10 | ConvertFrom-Json
         $TenantFilter = $Item.Tenant
@@ -12,6 +14,7 @@ function Push-DeployIntegrationApp {
         $DeploymentId = $Item.DeploymentId
         $TemplateName = $Item.TemplateName
 
+        Write-LogMessage -API 'Deploy Integration App' -tenant $TenantFilter -message "Starting deployment of '$TemplateName' (DeploymentId: $DeploymentId)" -Sev 'Info'
         Write-Information "Deploying integration app '$TemplateName' to tenant $TenantFilter"
 
         # Get tenant info for the app name pattern
@@ -150,6 +153,7 @@ function Push-DeployIntegrationApp {
         Write-LogMessage -message "Successfully deployed integration app '$AppDisplayName' to tenant $TenantFilter" -tenant $TenantFilter -API 'Deploy Integration App' -sev Info
 
         # Store result in deployment table
+        Write-Information "Storing deployment result for $TenantFilter (DeploymentId: $DeploymentId)"
         $DeploymentTable = Get-CIPPTable -TableName 'IntegrationDeployments'
         $ResultEntity = @{
             PartitionKey     = 'IntegrationDeploymentResult'
@@ -168,26 +172,33 @@ function Push-DeployIntegrationApp {
             CompletedAt      = (Get-Date).ToUniversalTime().ToString('o')
         }
         Add-CIPPAzDataTableEntity @DeploymentTable -Entity $ResultEntity -Force
+        Write-LogMessage -API 'Deploy Integration App' -tenant $TenantFilter -message "Stored deployment result: Success for $AppDisplayName (AppId: $AppId)" -Sev 'Info'
 
         return $true
 
     } catch {
         $ErrorMessage = $_.Exception.Message
-        Write-LogMessage -message "Error deploying integration app to tenant $($Item.Tenant): $ErrorMessage" -tenant $Item.Tenant -API 'Deploy Integration App' -sev Error
+        $ErrorDetails = Get-CippException -Exception $_
+        Write-LogMessage -message "Error deploying integration app to tenant $($Item.Tenant): $ErrorMessage" -tenant $Item.Tenant -API 'Deploy Integration App' -sev Error -LogData $ErrorDetails
 
         # Store error result
-        $DeploymentTable = Get-CIPPTable -TableName 'IntegrationDeployments'
-        $ResultEntity = @{
-            PartitionKey = 'IntegrationDeploymentResult'
-            RowKey       = "$($Item.DeploymentId)`_$($Item.Tenant)"
-            DeploymentId = $Item.DeploymentId
-            Tenant       = $Item.Tenant
-            TenantName   = $Item.TenantName
-            Status       = 'Failed'
-            Message      = $ErrorMessage
-            CompletedAt  = (Get-Date).ToUniversalTime().ToString('o')
+        try {
+            $DeploymentTable = Get-CIPPTable -TableName 'IntegrationDeployments'
+            $ResultEntity = @{
+                PartitionKey = 'IntegrationDeploymentResult'
+                RowKey       = "$($Item.DeploymentId)`_$($Item.Tenant)"
+                DeploymentId = $Item.DeploymentId
+                Tenant       = $Item.Tenant
+                TenantName   = $Item.TenantName
+                Status       = 'Failed'
+                Message      = $ErrorMessage
+                CompletedAt  = (Get-Date).ToUniversalTime().ToString('o')
+            }
+            Add-CIPPAzDataTableEntity @DeploymentTable -Entity $ResultEntity -Force
+            Write-LogMessage -API 'Deploy Integration App' -tenant $Item.Tenant -message "Stored deployment result: Failed - $ErrorMessage" -Sev 'Info'
+        } catch {
+            Write-LogMessage -API 'Deploy Integration App' -message "Failed to store error result: $($_.Exception.Message)" -Sev 'Error'
         }
-        Add-CIPPAzDataTableEntity @DeploymentTable -Entity $ResultEntity -Force
 
         return $false
     }
