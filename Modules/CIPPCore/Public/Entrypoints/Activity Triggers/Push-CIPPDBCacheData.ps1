@@ -4,7 +4,13 @@ function Push-CIPPDBCacheData {
         List cache collection tasks for a single tenant (Phase 1 of fan-out/fan-in)
 
     .DESCRIPTION
-        Checks tenant license capabilities and returns a list of cache collection work items.
+        Checks tenant license capabilities and returns a list of grouped cache collection work items.
+        Each item represents one collection type (Graph, ExchangeConfig, ExchangeData, etc.) that
+        will run all its cache functions sequentially within a single activity invocation.
+
+        This grouped approach reduces activity count from ~50-67 per tenant down to ~2-6 per tenant,
+        dramatically cutting orchestrator replay overhead and table storage I/O.
+
         Does NOT start sub-orchestrators. The returned items are aggregated by the PostExecution
         function (CIPPDBCacheApplyBatch) and executed in a single flat orchestrator.
 
@@ -27,180 +33,95 @@ function Push-CIPPDBCacheData {
 
         Write-Information "License capabilities for $TenantFilter - Intune: $IntuneCapable, CA: $ConditionalAccessCapable, P2: $AzureADPremiumP2Capable, Exchange: $ExchangeCapable, MDO: $DefenderForOffice365Capable"
 
-        # Build list of cache collection tasks based on license capabilities
+        # Build grouped collection tasks — one activity per license category instead of one per cache type
         $Tasks = [System.Collections.Generic.List[object]]::new()
 
-        #region All Licenses - Basic tenant data collection
-        $BasicCacheFunctions = @(
-            'Users'
-            'Groups'
-            'Guests'
-            'ServicePrincipals'
-            'Apps'
-            'Devices'
-            'Organization'
-            'Roles'
-            'AdminConsentRequestPolicy'
-            'AuthorizationPolicy'
-            'AuthenticationMethodsPolicy'
-            'DeviceSettings'
-            'DirectoryRecommendations'
-            'CrossTenantAccessPolicy'
-            'DefaultAppManagementPolicy'
-            'Settings'
-            'SecureScore'
-            'Domains'
-            'B2BManagementPolicy'
-            'DeviceRegistrationPolicy'
-            'OAuth2PermissionGrants'
-            'AppRoleAssignments'
-            'LicenseOverview'
-            'MFAState'
-            'BitlockerKeys'
-            'SharePointSiteUsage'
-        )
+        # Graph collection always runs (no special license needed) — 25 cache types in one activity
+        $Tasks.Add(@{
+                FunctionName   = 'ExecCIPPDBCache'
+                CollectionType = 'Graph'
+                TenantFilter   = $TenantFilter
+                QueueId        = $QueueId
+                QueueName      = "DB Cache Graph - $TenantFilter"
+            })
+        # MFAState runs as its own activity — it makes 6+ API calls, bulk group/role member
+        # resolution, and O(users × policies) CPU work that can take minutes on large tenants
+        $Tasks.Add(@{
+                FunctionName = 'ExecCIPPDBCache'
+                Name         = 'MFAState'
+                TenantFilter = $TenantFilter
+                QueueId      = $QueueId
+                QueueName    = "DB Cache MFAState - $TenantFilter"
+            })
 
-        foreach ($CacheFunction in $BasicCacheFunctions) {
+        # Exchange collections — split into config (quick policy calls), data (usage reports), and mailboxes (heavy, spawns permission/rule child orchestrators)
+        if ($ExchangeCapable) {
+            $Tasks.Add(@{
+                    FunctionName   = 'ExecCIPPDBCache'
+                    CollectionType = 'ExchangeConfig'
+                    TenantFilter   = $TenantFilter
+                    QueueId        = $QueueId
+                    QueueName      = "DB Cache ExchangeConfig - $TenantFilter"
+                })
+            $Tasks.Add(@{
+                    FunctionName   = 'ExecCIPPDBCache'
+                    CollectionType = 'ExchangeData'
+                    TenantFilter   = $TenantFilter
+                    QueueId        = $QueueId
+                    QueueName      = "DB Cache ExchangeData - $TenantFilter"
+                })
+            # Mailboxes runs as its own activity — it's heavy (fetches all mailboxes) and spawns
+            # child orchestrators for permission/calendar/rules batching that need their own time
             $Tasks.Add(@{
                     FunctionName = 'ExecCIPPDBCache'
-                    Name         = $CacheFunction
+                    Name         = 'Mailboxes'
                     TenantFilter = $TenantFilter
                     QueueId      = $QueueId
+                    QueueName    = "DB Cache Mailboxes - $TenantFilter"
                 })
-        }
-        #endregion All Licenses
 
-        #region Exchange Licensed - Exchange Online features
-        if ($ExchangeCapable) {
-            $ExchangeCacheFunctions = @(
-                'ExoAntiPhishPolicies'
-                'ExoMalwareFilterPolicies'
-                'ExoTransportRules'
-                'ExoDkimSigningConfig'
-                'ExoOrganizationConfig'
-                'ExoAcceptedDomains'
-                'ExoHostedContentFilterPolicy'
-                'ExoHostedOutboundSpamFilterPolicy'
-                'ExoAntiPhishPolicy'
-                'ExoMalwareFilterPolicy'
-                'ExoQuarantinePolicy'
-                'ExoRemoteDomain'
-                'ExoSharingPolicy'
-                'ExoAdminAuditLogConfig'
-                'ExoTenantAllowBlockList'
-                'Mailboxes'
-                'CASMailboxes'
-                'MailboxUsage'
-                'OneDriveUsage'
-            )
 
-            foreach ($CacheFunction in $ExchangeCacheFunctions) {
-                $Tasks.Add(@{
-                        FunctionName = 'ExecCIPPDBCache'
-                        Name         = $CacheFunction
-                        TenantFilter = $TenantFilter
-                        QueueId      = $QueueId
-                    })
-            }
-
-            #region Defender for Office 365 Licensed - ATP/MDO features (requires Exchange + MDO)
-            if ($DefenderForOffice365Capable) {
-                $MdoCacheFunctions = @(
-                    'ExoSafeLinksPolicies'
-                    'ExoSafeAttachmentPolicies'
-                    'ExoSafeLinksPolicy'
-                    'ExoSafeAttachmentPolicy'
-                    'ExoAtpPolicyForO365'
-                    'ExoPresetSecurityPolicy'
-                )
-
-                foreach ($CacheFunction in $MdoCacheFunctions) {
-                    $Batch.Add(@{
-                            FunctionName = 'ExecCIPPDBCache'
-                            Name         = $CacheFunction
-                            TenantFilter = $TenantFilter
-                            QueueId      = $QueueId
-                        })
-                }
-            } else {
-                Write-Host 'Skipping Defender for Office 365 data collection - tenant does not have required license'
-            }
-            #endregion Defender for Office 365 Licensed
         } else {
             Write-Host "Skipping Exchange Online data collection for $TenantFilter - no required license"
         }
-        #endregion Exchange Licensed
 
-        #region Conditional Access Licensed - Azure AD Premium features
         if ($ConditionalAccessCapable) {
-            $ConditionalAccessCacheFunctions = @(
-                'ConditionalAccessPolicies'
-                #'AuthenticationFlowsPolicy'
-                'CredentialUserRegistrationDetails'
-                'UserRegistrationDetails'
-            )
-            foreach ($CacheFunction in $ConditionalAccessCacheFunctions) {
-                $Tasks.Add(@{
-                        FunctionName = 'ExecCIPPDBCache'
-                        Name         = $CacheFunction
-                        TenantFilter = $TenantFilter
-                        QueueId      = $QueueId
-                    })
-            }
+            $Tasks.Add(@{
+                    FunctionName   = 'ExecCIPPDBCache'
+                    CollectionType = 'ConditionalAccess'
+                    TenantFilter   = $TenantFilter
+                    QueueId        = $QueueId
+                    QueueName      = "DB Cache ConditionalAccess - $TenantFilter"
+                })
         } else {
             Write-Host "Skipping Conditional Access data collection for $TenantFilter - no required license"
         }
-        #endregion Conditional Access Licensed
 
-        #region Azure AD Premium P2 - Identity Protection and PIM features
         if ($AzureADPremiumP2Capable) {
-            $P2CacheFunctions = @(
-                'RiskyUsers'
-                'RiskyServicePrincipals'
-                'ServicePrincipalRiskDetections'
-                'RiskDetections'
-                'PIMSettings'
-                'RoleEligibilitySchedules'
-                'RoleAssignmentScheduleInstances'
-                'RoleManagementPolicies'
-                'RoleAssignmentScheduleInstances'
-            )
-            foreach ($CacheFunction in $P2CacheFunctions) {
-                $Tasks.Add(@{
-                        FunctionName = 'ExecCIPPDBCache'
-                        Name         = $CacheFunction
-                        TenantFilter = $TenantFilter
-                        QueueId      = $QueueId
-                    })
-            }
+            $Tasks.Add(@{
+                    FunctionName   = 'ExecCIPPDBCache'
+                    CollectionType = 'IdentityProtection'
+                    TenantFilter   = $TenantFilter
+                    QueueId        = $QueueId
+                    QueueName      = "DB Cache IdentityProtection - $TenantFilter"
+                })
         } else {
             Write-Host "Skipping Azure AD Premium P2 data collection for $TenantFilter - no required license"
         }
-        #endregion Azure AD Premium P2
 
-        #region Intune Licensed - Intune management features
         if ($IntuneCapable) {
-            $IntuneCacheFunctions = @(
-                'ManagedDevices'
-                'IntunePolicies'
-                'ManagedDeviceEncryptionStates'
-                'IntuneAppProtectionPolicies'
-                'DetectedApps'
-            )
-            foreach ($CacheFunction in $IntuneCacheFunctions) {
-                $Tasks.Add(@{
-                        FunctionName = 'ExecCIPPDBCache'
-                        Name         = $CacheFunction
-                        TenantFilter = $TenantFilter
-                        QueueId      = $QueueId
-                    })
-            }
+            $Tasks.Add(@{
+                    FunctionName   = 'ExecCIPPDBCache'
+                    CollectionType = 'Intune'
+                    TenantFilter   = $TenantFilter
+                    QueueId        = $QueueId
+                    QueueName      = "DB Cache Intune - $TenantFilter"
+                })
         } else {
             Write-Host "Skipping Intune data collection for $TenantFilter - no required license"
         }
-        #endregion Intune Licensed
 
-        Write-Information "Built $($Tasks.Count) cache tasks for tenant $TenantFilter"
+        Write-Information "Built $($Tasks.Count) grouped cache tasks for tenant $TenantFilter (down from individual per-type tasks)"
 
         # Return the task list — the PostExecution function will aggregate and start a flat orchestrator
         return @($Tasks)
