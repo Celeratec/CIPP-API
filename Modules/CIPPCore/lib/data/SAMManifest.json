@@ -595,6 +595,14 @@
         {
           "id": "df85f4d6-205c-4ac5-a5ea-6bf408dba283",
           "type": "Scope"
+        },
+        {
+          "id": "50180013-6191-4d1e-a373-e590ff4e66af",
+          "type": "Role"
+        },
+        {
+          "id": "acb8f680-0834-4146-b69e-4ab1571b4e03",
+          "type": "Role"
         }
       ]
     },
