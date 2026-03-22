@@ -55,16 +55,17 @@ function Invoke-ExecEmailTroubleshoot {
         $s = $Request.Body.sender
         if ($s -is [array]) { ($s[0].value ?? $s[0]) } else { $s.value ?? $s }
     } else { $null }
-    if ($SenderValue) { $SenderValue = $SenderValue -replace '#', '%23' }
 
     $RecipientValue = if ($Request.Body.recipient) {
         $r = $Request.Body.recipient
         if ($r -is [array]) { ($r[0].value ?? $r[0]) } else { $r.value ?? $r }
     } else { $null }
-    if ($RecipientValue) { $RecipientValue = $RecipientValue -replace '#', '%23' }
 
-    if ($SenderValue) { $TraceParams['SenderAddress'] = $SenderValue }
-    if ($RecipientValue) { $TraceParams['RecipientAddress'] = $RecipientValue }
+    $SenderApi = if ($SenderValue) { $SenderValue -replace '#', '%23' } else { $null }
+    $RecipientApi = if ($RecipientValue) { $RecipientValue -replace '#', '%23' } else { $null }
+
+    if ($SenderApi) { $TraceParams['SenderAddress'] = $SenderApi }
+    if ($RecipientApi) { $TraceParams['RecipientAddress'] = $RecipientApi }
 
     try {
         $TraceResults = @(New-ExoRequest -TenantId $TenantFilter -Cmdlet 'Get-MessageTraceV2' -CmdParams $TraceParams |
@@ -77,7 +78,7 @@ function Invoke-ExecEmailTroubleshoot {
     }
 
     $QuarantineParams = @{ 'PageSize' = 1000 }
-    if ($SenderValue) { $QuarantineParams['SenderAddress'] = $SenderValue }
+    if ($SenderApi) { $QuarantineParams['SenderAddress'] = $SenderApi }
     if ($Request.Body.days) {
         $QuarantineParams['StartReceivedDate'] = (Get-Date).AddDays(-[int]$Request.Body.days).ToUniversalTime()
         $QuarantineParams['EndReceivedDate'] = (Get-Date).ToUniversalTime()
