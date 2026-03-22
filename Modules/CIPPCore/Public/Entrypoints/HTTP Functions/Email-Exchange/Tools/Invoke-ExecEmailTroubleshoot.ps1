@@ -78,7 +78,7 @@ function Invoke-ExecEmailTroubleshoot {
     }
 
     $QuarantineParams = @{ 'PageSize' = 1000 }
-    if ($SenderApi) { $QuarantineParams['SenderAddress'] = $SenderApi }
+    if ($SenderApi) { $QuarantineParams['SenderAddress'] = @($SenderApi) }
     if ($Request.Body.days) {
         $QuarantineParams['StartReceivedDate'] = (Get-Date).AddDays(-[int]$Request.Body.days).ToUniversalTime()
         $QuarantineParams['EndReceivedDate'] = (Get-Date).ToUniversalTime()
