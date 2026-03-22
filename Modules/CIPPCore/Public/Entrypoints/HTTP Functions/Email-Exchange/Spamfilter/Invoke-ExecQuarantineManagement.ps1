@@ -9,29 +9,81 @@ function Invoke-ExecQuarantineManagement {
     param($Request, $TriggerMetadata)
 
     $APIName = $Request.Params.CIPPEndpoint
-    # Interact with query parameters or the body of the request.
-    try {
-        $TenantFilter = $Request.Body.tenantFilter | Select-Object -First 1
-        $params = @{
-            AllowSender  = [boolean]$Request.Body.AllowSender
-            ReleaseToAll = $true
-            ActionType   = ($Request.Body.Type | Select-Object -First 1)
-        }
-        if ($Request.Body.Identity -is [string]) {
-            $params['Identity'] = $Request.Body.Identity
-        } else {
-            $params['Identities'] = $Request.Body.Identity
-        }
-        New-ExoRequest -tenantid $TenantFilter -cmdlet 'Release-QuarantineMessage' -cmdParams $Params
-        $Results = [pscustomobject]@{'Results' = "Successfully processed $($Request.Body.Identity)" }
-        Write-LogMessage -headers $Request.Headers -API $APINAME -tenant $TenantFilter -message "Successfully processed Quarantine ID $($Request.Body.Identity)" -Sev 'Info'
-    } catch {
-        Write-LogMessage -headers $Request.Headers -API $APINAME -tenant $TenantFilter -message "Quarantine Management failed: $($_.Exception.Message)" -Sev 'Error' -LogData $_
-        $Results = [pscustomobject]@{'Results' = "Failed. $($_.Exception.Message)" }
-    }
-    return ([HttpResponseContext]@{
-            StatusCode = [HttpStatusCode]::OK
-            Body       = $Results
-        })
+    $TenantFilter = $Request.Body.tenantFilter | Select-Object -First 1
+    $ActionType = $Request.Body.Type | Select-Object -First 1
+    $AllowSender = [boolean]$Request.Body.AllowSender
+    $AddAllowEntry = [boolean]$Request.Body.AddAllowEntry
 
+    $Identities = if ($Request.Body.Identity -is [string]) {
+        @($Request.Body.Identity)
+    } else {
+        @($Request.Body.Identity)
+    }
+
+    $ResultsList = [System.Collections.Generic.List[object]]::new()
+
+    foreach ($Id in $Identities) {
+        $Entry = [PSCustomObject]@{
+            Identity         = $Id
+            ReleaseResult    = $null
+            AllowEntryResult = $null
+        }
+
+        try {
+            $ReleaseParams = @{
+                AllowSender  = $AllowSender
+                ReleaseToAll = $true
+                ActionType   = $ActionType
+                Identity     = $Id
+            }
+            New-ExoRequest -tenantid $TenantFilter -cmdlet 'Release-QuarantineMessage' -cmdParams $ReleaseParams
+            $Entry.ReleaseResult = 'Success'
+            Write-LogMessage -headers $Request.Headers -API $APIName -tenant $TenantFilter -message "Successfully processed Quarantine ID $Id" -Sev 'Info'
+        } catch {
+            $Entry.ReleaseResult = "Failed: $($_.Exception.Message)"
+            Write-LogMessage -headers $Request.Headers -API $APIName -tenant $TenantFilter -message "Quarantine release failed for $Id`: $($_.Exception.Message)" -Sev 'Error' -LogData $_
+        }
+
+        if ($AddAllowEntry -and $Entry.ReleaseResult -eq 'Success') {
+            try {
+                $QMsg = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Get-QuarantineMessage' -cmdParams @{ Identity = $Id }
+                $SenderAddr = $QMsg.SenderAddress | Select-Object -First 1
+                if ($SenderAddr) {
+                    New-ExoRequest -tenantid $TenantFilter -cmdlet 'New-TenantAllowBlockListItems' -cmdParams @{
+                        Entries     = @($SenderAddr)
+                        ListType    = 'Sender'
+                        Allow       = $true
+                        RemoveAfter = 45
+                        Notes       = 'Allowed via Email Troubleshooter - Quarantine release'
+                    }
+                    $Entry.AllowEntryResult = 'Success'
+                } else {
+                    $Entry.AllowEntryResult = 'Skipped: sender address not found'
+                }
+            } catch {
+                $Entry.AllowEntryResult = "Failed: $($_.Exception.Message)"
+                Write-LogMessage -headers $Request.Headers -API $APIName -tenant $TenantFilter -message "Allow entry failed for $Id`: $($_.Exception.Message)" -Sev 'Error'
+            }
+        } elseif ($AddAllowEntry) {
+            $Entry.AllowEntryResult = 'Skipped: release failed'
+        }
+
+        $ResultsList.Add($Entry)
+    }
+
+    $SuccessCount = @($ResultsList | Where-Object { $_.ReleaseResult -eq 'Success' }).Count
+    $Body = [pscustomobject]@{
+        Results = if ($ResultsList.Count -eq 1) {
+            if ($ResultsList[0].ReleaseResult -eq 'Success') { "Successfully processed $($Identities[0])" }
+            else { $ResultsList[0].ReleaseResult }
+        } else {
+            "$SuccessCount of $($ResultsList.Count) messages processed successfully"
+        }
+        Details = @($ResultsList)
+    }
+
+    return ([HttpResponseContext]@{
+        StatusCode = [HttpStatusCode]::OK
+        Body       = $Body
+    })
 }
