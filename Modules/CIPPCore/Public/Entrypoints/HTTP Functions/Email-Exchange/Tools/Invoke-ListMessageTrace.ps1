@@ -60,7 +60,12 @@ function Invoke-ListMessageTrace {
                 MessageTraceId   = $Request.Body.ID
                 RecipientAddress = $Request.Body.recipient
             }
-            New-ExoRequest -TenantId $TenantFilter -Cmdlet 'Get-MessageTraceDetailV2' -CmdParams $CmdParams | Select-Object @{ Name = 'Date'; Expression = { $_.Date.ToString('u') } }, Event, Action, Detail
+            $DetailEvents = @(New-ExoRequest -TenantId $TenantFilter -Cmdlet 'Get-MessageTraceDetailV2' -CmdParams $CmdParams | Select-Object @{ Name = 'Date'; Expression = { $_.Date.ToString('u') } }, Event, Action, Detail)
+            $AuthSummary = ConvertTo-AuthenticationSummary -DetailEntries ($DetailEvents | ForEach-Object { $_.Detail } | Where-Object { $_ })
+            [PSCustomObject]@{
+                Events      = $DetailEvents
+                AuthSummary = $AuthSummary
+            }
         } else {
             Write-Information ($SearchParams | ConvertTo-Json)
 
