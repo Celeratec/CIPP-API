@@ -35,6 +35,24 @@ function Invoke-ExecSetSharePointMember {
 
             if ($Request.Body.Add -eq $true) {
                 $Results = Add-CIPPGroupMember -GroupType 'Team' -GroupID $GroupId -Member $UserEmail -TenantFilter $TenantFilter -Headers $Headers
+
+                # Force-add the user to the SharePoint User Information List so they appear
+                # immediately in the site members table. Adding to the M365 Group alone does
+                # not populate this list until the user visits the site or SP syncs.
+                $SiteUrl = $Request.Body.URL
+                if ($SiteUrl) {
+                    try {
+                        $SharePointInfo = Get-SharePointAdminLink -Public $false -tenantFilter $TenantFilter
+                        $SPScope = "$($SharePointInfo.SharePointUrl)/.default"
+                        $SPHeaders = @{ 'Accept' = 'application/json;odata=verbose' }
+                        $SPContentType = 'application/json;odata=verbose'
+                        $LoginName = "i:0#.f|membership|$UserEmail"
+                        $EnsureBody = ConvertTo-Json @{ logonName = $LoginName } -Compress
+                        $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/ensureuser" -Type POST -Body $EnsureBody -ContentType $SPContentType -AddedHeaders $SPHeaders
+                    } catch {
+                        Write-LogMessage -headers $Headers -API 'ExecSetSharePointMember' -tenant $TenantFilter -message "Member added to M365 Group but ensureuser failed: $($_.Exception.Message)" -Sev 'Warning'
+                    }
+                }
             } else {
                 # Use the object ID directly if available, otherwise resolve via Graph
                 if ($UserObjectId) {

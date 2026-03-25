@@ -92,18 +92,27 @@ function Add-CIPPGroupMember {
             }
             $AddResults = New-GraphBulkRequest -tenantid $TenantFilter -Requests @($AddRequests)
             $SuccessfulUsers = [system.collections.generic.list[string]]::new()
+            $FailedUsers = [system.collections.generic.list[string]]::new()
             foreach ($Result in $AddResults) {
                 if ($Result.status -lt 200 -or $Result.status -gt 299) {
                     $FailedUsername = $Users | Where-Object { $_.body.id -eq $Result.id } | Select-Object -ExpandProperty body | Select-Object -ExpandProperty userPrincipalName
+                    $FailedUsers.Add("$($FailedUsername): $($Result.body.error.message)")
                     Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Failed to add member $($FailedUsername): $($Result.body.error.message)" -Sev 'Error'
                 } else {
                     $UserPrincipalName = $Users | Where-Object { $_.body.id -eq $Result.id } | Select-Object -ExpandProperty body | Select-Object -ExpandProperty userPrincipalName
                     $SuccessfulUsers.Add($UserPrincipalName)
                 }
             }
+
+            if ($SuccessfulUsers.Count -eq 0 -and $FailedUsers.Count -gt 0) {
+                throw "Failed to add all members to $($GroupId): $($FailedUsers -join '; ')"
+            }
         }
         $UserList = ($SuccessfulUsers -join ', ')
         $Results = "Successfully added user $UserList to $($GroupId)."
+        if ($FailedUsers.Count -gt 0) {
+            $Results += " Some members failed: $($FailedUsers -join '; ')"
+        }
         Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message $Results -Sev 'Info'
         return $Results
     } catch {
