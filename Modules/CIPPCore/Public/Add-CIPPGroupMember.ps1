@@ -94,13 +94,15 @@ function Add-CIPPGroupMember {
             $SuccessfulUsers = [system.collections.generic.list[string]]::new()
             $FailedUsers = [system.collections.generic.list[string]]::new()
             foreach ($Result in $AddResults) {
-                if ($Result.status -lt 200 -or $Result.status -gt 299) {
-                    $FailedUsername = $Users | Where-Object { $_.body.id -eq $Result.id } | Select-Object -ExpandProperty body | Select-Object -ExpandProperty userPrincipalName
-                    $FailedUsers.Add("$($FailedUsername): $($Result.body.error.message)")
-                    Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Failed to add member $($FailedUsername): $($Result.body.error.message)" -Sev 'Error'
+                $ResultUsername = $Users | Where-Object { $_.body.id -eq $Result.id } | Select-Object -ExpandProperty body | Select-Object -ExpandProperty userPrincipalName
+                if ($Result.status -ge 200 -and $Result.status -le 299) {
+                    $SuccessfulUsers.Add($ResultUsername)
+                } elseif ($Result.body.error.message -match 'already exist') {
+                    $SuccessfulUsers.Add($ResultUsername)
+                    Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Member $ResultUsername is already in $($GroupId)" -Sev 'Info'
                 } else {
-                    $UserPrincipalName = $Users | Where-Object { $_.body.id -eq $Result.id } | Select-Object -ExpandProperty body | Select-Object -ExpandProperty userPrincipalName
-                    $SuccessfulUsers.Add($UserPrincipalName)
+                    $FailedUsers.Add("$($ResultUsername): $($Result.body.error.message)")
+                    Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Failed to add member $($ResultUsername): $($Result.body.error.message)" -Sev 'Error'
                 }
             }
 

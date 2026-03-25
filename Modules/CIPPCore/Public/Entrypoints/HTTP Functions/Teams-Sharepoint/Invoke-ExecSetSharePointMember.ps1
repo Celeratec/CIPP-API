@@ -39,6 +39,8 @@ function Invoke-ExecSetSharePointMember {
                 # Force-add the user to the SharePoint User Information List so they appear
                 # immediately in the site members table. Adding to the M365 Group alone does
                 # not populate this list until the user visits the site or SP syncs.
+                # This also covers the "already a member" case where the user is in the group
+                # but hasn't visited the site yet.
                 $SiteUrl = $Request.Body.URL
                 if ($SiteUrl) {
                     try {
@@ -51,6 +53,7 @@ function Invoke-ExecSetSharePointMember {
                         $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/ensureuser" -Type POST -Body $EnsureBody -ContentType $SPContentType -AddedHeaders $SPHeaders
                     } catch {
                         Write-LogMessage -headers $Headers -API 'ExecSetSharePointMember' -tenant $TenantFilter -message "Member added to M365 Group but ensureuser failed: $($_.Exception.Message)" -Sev 'Warning'
+                        $Results += ' Note: the member may take a few minutes to appear in the site members list.'
                     }
                 }
             } else {
