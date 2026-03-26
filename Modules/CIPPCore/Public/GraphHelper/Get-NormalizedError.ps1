@@ -74,7 +74,7 @@ function Get-NormalizedError {
         '*Providers.Common.V1.CoreException*' { '403 (Access Denied) - We cannot connect to this tenant.' }
         '*Authentication failed. MFA required*' { 'Authentication failed. MFA required' }
         '*Your tenant is not licensed for this feature.*' { 'Required license not available for this tenant' }
-        '*AADSTS65001*' { 'We cannot access this tenant as consent has not been given, please try refreshing the CPV permissions in the application settings menu.' }
+        '*AADSTS65001*' { 'AADSTS65001: Required API consent has not been granted for this tenant. The application is missing delegated permission consent for one or more APIs. Try re-running CPV Refresh for this tenant. If already refreshed, check the CPV results for failures and verify the required API service principals exist in the client tenant.' }
         '*AADSTS700082*' { 'The refresh token has expired (tokens expire after 90 days of inactivity). Run the Setup Wizard to re-authenticate and generate new tokens.' }
         '*Account is not provisioned.*' { 'The account is not provisioned. This user does not have the required Microsoft 365 license to access this service (e.g., Exchange Online, Teams, etc.).' }
         '*AADSTS5000224*' { 'This resource is not available - Has this tenant been deleted?' }
