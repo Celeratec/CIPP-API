@@ -5385,5 +5385,12 @@
     "id": "9dafb9c1-c236-48b1-b142-20dcaab58675",
     "origin": "Delegated (Power Platform API)",
     "value": "AppManagement.ApplicationPackages.Read"
+  },
+  {
+    "description": "Allows the app to access Power Apps Service API on behalf of the signed-in user.",
+    "displayName": "Power Apps Service - User",
+    "id": "0eb56b90-a7b5-43b5-9402-8137a8083e90",
+    "origin": "Delegated (Power Apps Service)",
+    "value": "User"
   }
 ]

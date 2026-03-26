@@ -14,8 +14,9 @@ function Invoke-ListDynamicsEnvironments {
         $APIName = $Request.Params.CIPPEndpoint
         Write-LogMessage -headers $Request.Headers -API $APIName -message 'Accessed this API' -Sev 'Debug'
 
-        # Use the Power Platform BAP API to list environments
-        $Scope = 'https://api.bap.microsoft.com/.default'
+        # Power Platform BAP API requires tokens for the Power Apps Service (475226c6-020e-4fb2-8a90-7a972cbfc1d4)
+        # with audience https://service.powerapps.com/ — NOT https://api.bap.microsoft.com
+        $Scope = 'https://service.powerapps.com//.default'
         $Token = Get-GraphToken -Tenantid $TenantFilter -scope $Scope
 
         $Headers = @{
@@ -61,18 +62,16 @@ function Invoke-ListDynamicsEnvironments {
 
         if ($RawError -like '*AADSTS65001*') {
             $ErrorMessage = @(
-                "Power Platform API consent error for tenant $TenantFilter (AADSTS65001)."
-                'This error occurs when the token for api.bap.microsoft.com cannot be acquired.'
-                'Most common cause: The GDAP relationship does not include the Power Platform Administrator or Dynamics 365 Administrator role.'
-                'Even if CPV shows ''All delegated permissions exist for Power Platform API'', the GDAP relationship must also grant an admin role for Power Platform access.'
+                "Power Apps Service consent error for tenant $TenantFilter (AADSTS65001)."
+                'The delegated permission ''User'' for Power Apps Service (475226c6-020e-4fb2-8a90-7a972cbfc1d4) is required to access the Power Platform admin API.'
                 'Remediation steps:'
-                '1) Verify the GDAP relationship includes Power Platform Administrator or Dynamics 365 Administrator role - this is the most common fix'
-                '2) If GDAP roles are correct, re-run CPV Refresh for this tenant and check for failures related to the Power Platform API service principal'
+                '1) Run CPV Refresh for this tenant - ensure the results show successful consent for ''Power Apps Service'''
+                '2) Verify the GDAP relationship includes Power Platform Administrator or Dynamics 365 Administrator role'
                 '3) Verify the tenant has active Power Platform or Dynamics 365 licenses'
-                '4) If the issue persists, check Azure AD > Enterprise Applications in the client tenant for the CIPP app and confirm the Power Platform API (8578e004-a5c6-46e7-913e-12f58912df43) delegated consent is listed'
+                '4) If the issue persists, check Azure AD > Enterprise Applications in the client tenant for the CIPP app and confirm Power Apps Service delegated consent is listed'
             ) -join ' '
-        } elseif ($RawError -like '*AADSTS*' -or $RawError -like '*Could not get token*') {
-            $ErrorMessage = "Failed to acquire Power Platform token for $TenantFilter. $ErrorMessage. Ensure the GDAP relationship includes the Power Platform Administrator or Dynamics 365 Administrator role."
+        } elseif ($ErrorMessage -like '*AADSTS*' -or $ErrorMessage -like '*Could not get token*') {
+            $ErrorMessage = "Failed to acquire Power Apps Service token for $TenantFilter. $ErrorMessage. Ensure the GDAP relationship includes the Power Platform Administrator or Dynamics 365 Administrator role."
         } elseif ($ErrorMessage -like '*Forbidden*' -or $ErrorMessage -like '*403*' -or $ErrorMessage -like '*Unauthorized*' -or $ErrorMessage -like '*401*') {
             $ErrorMessage = "Access denied to Power Platform Admin API for $TenantFilter. Verify the tenant has Dynamics 365 / Power Platform licenses and that the GDAP relationship includes the required admin roles."
         }
