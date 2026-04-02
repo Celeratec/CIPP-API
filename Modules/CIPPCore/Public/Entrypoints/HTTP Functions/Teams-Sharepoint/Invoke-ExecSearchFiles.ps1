@@ -53,7 +53,7 @@ function Invoke-ExecSearchFiles {
 
         $EffectiveQuery = $SearchQuery
         if ($FilterModifiedBy) {
-            $EffectiveQuery = "$EffectiveQuery Editor:`"$FilterModifiedBy`""
+            $EffectiveQuery = "$EffectiveQuery `"$FilterModifiedBy`""
         }
 
         $FetchSize = $Size
