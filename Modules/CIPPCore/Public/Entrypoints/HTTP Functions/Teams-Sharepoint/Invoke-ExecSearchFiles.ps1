@@ -53,18 +53,22 @@ function Invoke-ExecSearchFiles {
 
         $EffectiveQuery = $SearchQuery
         if ($FilterModifiedBy) {
-            $EffectiveQuery = "$EffectiveQuery author:`"$FilterModifiedBy`""
+            $EffectiveQuery = "$EffectiveQuery Editor:`"$FilterModifiedBy`""
         }
 
         $FetchSize = $Size
-        if ($HasFilters) { $FetchSize = 200 }
+        $EffectiveFrom = $From
+        if ($HasFilters) {
+            $FetchSize = 200
+            $EffectiveFrom = 0
+        }
 
         $SearchRequest = @{
             entityTypes               = @('driveItem')
             query                     = @{
                 queryString = $EffectiveQuery
             }
-            from                      = $From
+            from                      = $EffectiveFrom
             size                      = $FetchSize
             region                    = $Region
             sharePointOneDriveOptions = @{
