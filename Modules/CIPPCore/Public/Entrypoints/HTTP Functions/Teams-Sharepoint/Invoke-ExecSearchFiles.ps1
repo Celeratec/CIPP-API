@@ -24,6 +24,11 @@ function Invoke-ExecSearchFiles {
     if (-not $Size) { $Size = $Request.Query.Size }
     if (-not $Size) { $Size = 25 } else { $Size = [int]$Size }
 
+    $FilterModifiedBy = $Request.Body.FilterModifiedBy
+    $FilterDateFrom = $Request.Body.FilterDateFrom
+    $FilterDateTo = $Request.Body.FilterDateTo
+    $HasFilters = $FilterModifiedBy -or $FilterDateFrom -or $FilterDateTo
+
     if (-not $TenantFilter) {
         return ([HttpResponseContext]@{
             StatusCode = [HttpStatusCode]::BadRequest
@@ -46,13 +51,21 @@ function Invoke-ExecSearchFiles {
         $Region = $RootSite.siteCollection.dataLocationCode
         if (-not $Region) { $Region = 'US' }
 
+        $EffectiveQuery = $SearchQuery
+        if ($FilterModifiedBy) {
+            $EffectiveQuery = "$EffectiveQuery author:`"$FilterModifiedBy`""
+        }
+
+        $FetchSize = $Size
+        if ($HasFilters) { $FetchSize = 200 }
+
         $SearchRequest = @{
             entityTypes               = @('driveItem')
             query                     = @{
-                queryString = $SearchQuery
+                queryString = $EffectiveQuery
             }
             from                      = $From
-            size                      = $Size
+            size                      = $FetchSize
             region                    = $Region
             sharePointOneDriveOptions = @{
                 includeContent = 'privateContent,sharedContent'
@@ -172,12 +185,36 @@ function Invoke-ExecSearchFiles {
             }
         }
 
+        $FilteredHits = $Hits
+        if ($HasFilters -and $Hits.Count -gt 0) {
+            $FilteredHits = @($Hits | Where-Object {
+                $Pass = $true
+                if ($FilterModifiedBy -and $Pass) {
+                    $Pass = $_.lastModifiedBy -and $_.lastModifiedBy -like "*$FilterModifiedBy*"
+                }
+                if ($FilterDateFrom -and $Pass -and $_.lastModified) {
+                    $ItemDate = [datetime]$_.lastModified
+                    $FromDate = [datetime]$FilterDateFrom
+                    $Pass = $ItemDate -ge $FromDate
+                }
+                if ($FilterDateTo -and $Pass -and $_.lastModified) {
+                    $ItemDate = [datetime]$_.lastModified
+                    $ToDate = ([datetime]$FilterDateTo).AddDays(1)
+                    $Pass = $ItemDate -lt $ToDate
+                }
+                $Pass
+            })
+        }
+
         $Body = @{
-            Results              = $Hits
+            Results              = $FilteredHits
             TotalCount           = $TotalCount
             MoreResultsAvailable = $MoreResultsAvailable
             From                 = $From
             Size                 = $Size
+        }
+        if ($HasFilters) {
+            $Body['FilteredCount'] = $FilteredHits.Count
         }
 
         $StatusCode = [HttpStatusCode]::OK
