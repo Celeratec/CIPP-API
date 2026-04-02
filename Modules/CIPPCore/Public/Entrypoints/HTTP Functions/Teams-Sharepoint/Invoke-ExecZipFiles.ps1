@@ -47,6 +47,9 @@ function Invoke-ExecZipFiles {
         })
     }
 
+    $MemStream = $null
+    $ZipArchive = $null
+
     try {
         Add-Type -AssemblyName System.IO.Compression
 
@@ -109,15 +112,14 @@ function Invoke-ExecZipFiles {
         }
 
         $ZipArchive.Dispose()
+        $ZipArchive = $null
 
         if ($FileCount -eq 0) {
-            $MemStream.Dispose()
             $ErrDetail = if ($Errors.Count -gt 0) { " Errors: $($Errors -join '; ')" } else { '' }
             throw "No files could be added to the zip.$ErrDetail"
         }
 
         $ZipBytes = $MemStream.ToArray()
-        $MemStream.Dispose()
 
         $SizeMB = [math]::Round($ZipBytes.Length / 1MB, 1)
         $Summary = "$FileCount file$(if ($FileCount -ne 1) { 's' }) ($SizeMB MB)"
@@ -133,8 +135,10 @@ function Invoke-ExecZipFiles {
                 $DestDrives = New-GraphGetRequest `
                     -uri "https://graph.microsoft.com/v1.0/sites/$DestinationSiteId/drives" `
                     -tenantid $TenantFilter -asApp $true
-                $DestDriveId = ($DestDrives | Where-Object { $_.driveType -eq 'documentLibrary' } | Select-Object -First 1).id
-                if (-not $DestDriveId) { $DestDriveId = $DestDrives[0].id }
+                if ($DestDrives -and $DestDrives.Count -gt 0) {
+                    $DestDriveId = ($DestDrives | Where-Object { $_.driveType -eq 'documentLibrary' } | Select-Object -First 1).id
+                    if (-not $DestDriveId) { $DestDriveId = $DestDrives[0].id }
+                }
             }
 
             if (-not $DestDriveId) {
@@ -196,5 +200,8 @@ function Invoke-ExecZipFiles {
             ContentType = 'application/json'
             Body        = @{ Results = $Message }
         })
+    } finally {
+        if ($ZipArchive) { try { $ZipArchive.Dispose() } catch {} }
+        if ($MemStream) { try { $MemStream.Dispose() } catch {} }
     }
 }
