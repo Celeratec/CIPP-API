@@ -197,7 +197,8 @@ function Invoke-ExecSearchFiles {
     }
 
     return ([HttpResponseContext]@{
-        StatusCode = $StatusCode
-        Body       = $Body
+        StatusCode  = $StatusCode
+        ContentType = 'application/json'
+        Body        = $Body
     })
 }
