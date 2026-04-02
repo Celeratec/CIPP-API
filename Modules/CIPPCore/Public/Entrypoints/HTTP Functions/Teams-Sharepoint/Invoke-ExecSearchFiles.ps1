@@ -44,6 +44,7 @@ function Invoke-ExecSearchFiles {
             -tenantid $TenantFilter `
             -asApp $true
         $Region = $RootSite.siteCollection.dataLocationCode
+        if (-not $Region) { $Region = 'US' }
 
         $SearchRequest = @{
             entityTypes               = @('driveItem')
@@ -52,6 +53,7 @@ function Invoke-ExecSearchFiles {
             }
             from                      = $From
             size                      = $Size
+            region                    = $Region
             sharePointOneDriveOptions = @{
                 includeContent = 'privateContent,sharedContent'
             }
@@ -60,9 +62,6 @@ function Invoke-ExecSearchFiles {
                 'createdBy', 'size', 'parentReference', 'file', 'folder',
                 'id', 'createdDateTime'
             )
-        }
-        if ($Region) {
-            $SearchRequest['region'] = $Region
         }
 
         $SearchBody = @{ requests = @($SearchRequest) } | ConvertTo-Json -Depth 5
@@ -76,16 +75,25 @@ function Invoke-ExecSearchFiles {
                 -AsApp $true `
                 -NoAuthCheck $true
         } catch {
-            if ($_.Exception.Message -match 'region' -or $_.Exception.Message -match 'Region') {
-                $SearchRequest.Remove('region')
-                $SearchBody = @{ requests = @($SearchRequest) } | ConvertTo-Json -Depth 5
-                $SearchResults = New-GraphPostRequest `
-                    -uri 'https://graph.microsoft.com/v1.0/search/query' `
-                    -tenantid $TenantFilter `
-                    -body $SearchBody `
-                    -type POST `
-                    -AsApp $true `
-                    -NoAuthCheck $true
+            $RegionError = $_.Exception.Message
+            if ($RegionError -match '(?i)region') {
+                $FallbackRegion = $null
+                if ($RegionError -match '(?i)valid regions?\s+(?:are|is)\s+(\w+)') {
+                    $FallbackRegion = $Matches[1]
+                }
+                if ($FallbackRegion -and $FallbackRegion -ne $Region) {
+                    $SearchRequest['region'] = $FallbackRegion
+                    $SearchBody = @{ requests = @($SearchRequest) } | ConvertTo-Json -Depth 5
+                    $SearchResults = New-GraphPostRequest `
+                        -uri 'https://graph.microsoft.com/v1.0/search/query' `
+                        -tenantid $TenantFilter `
+                        -body $SearchBody `
+                        -type POST `
+                        -AsApp $true `
+                        -NoAuthCheck $true
+                } else {
+                    throw
+                }
             } else {
                 throw
             }
