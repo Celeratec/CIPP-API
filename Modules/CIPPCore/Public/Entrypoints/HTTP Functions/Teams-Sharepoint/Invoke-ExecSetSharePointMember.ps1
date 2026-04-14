@@ -20,9 +20,11 @@ function Invoke-ExecSetSharePointMember {
         $UserEmail = $Request.Body.user.value ?? $Request.Body.user
         $UserObjectId = $Request.Body.user.addedFields.id ?? $Request.Body.user.id
 
-        if ($Request.Body.SharePointType -eq 'Group') {
-            $RawGroupId = [string]$Request.Body.GroupID
-            if ($RawGroupId -match '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$') {
+        $RawGroupId = [string]$Request.Body.GroupID
+        $IsGuidGroupId = $RawGroupId -match '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$'
+
+        if ($Request.Body.SharePointType -eq 'Group' -or $IsGuidGroupId) {
+            if ($IsGuidGroupId) {
                 $GroupId = $RawGroupId
             } else {
                 $LookupResults = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/groups?`$filter=mail eq '$RawGroupId' or proxyAddresses/any(x:endsWith(x,'$RawGroupId')) or mailNickname eq '$RawGroupId'" -ComplexFilter -tenantid $TenantFilter

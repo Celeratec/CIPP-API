@@ -31,6 +31,10 @@ function Invoke-NinjaOneTenantSync {
         # Check for active instances for this tenant
         $CurrentItem = $CurrentMap | Where-Object { $_.RowKey -eq $MappedTenant.RowKey }
 
+        if (-not $CurrentItem) {
+            throw "No NinjaOne mapping entry found for tenant $($MappedTenant.RowKey). The mapping may have been removed. Re-map this tenant in the NinjaOne extension settings."
+        }
+
         $StartDate = try { Get-Date($CurrentItem.lastStartTime) } catch { $Null }
         $EndDate = try { Get-Date($CurrentItem.lastEndTime) } catch { $Null }
 
@@ -2523,13 +2527,17 @@ function Invoke-NinjaOneTenantSync {
         } else {
             $_.Exception.message
         }
-        Write-Error "Failed NinjaOne Processing for $($Customer.displayName) Linenumber: $($_.InvocationInfo.ScriptLineNumber) Error:  $Message"
-        Write-LogMessage -tenant $Customer.defaultDomainName -API 'NinjaOneSync' -message "Failed NinjaOne Processing for $($Customer.displayName) Linenumber: $($_.InvocationInfo.ScriptLineNumber) Error: $Message" -Sev 'Error'
-        $CurrentItem | Add-Member -NotePropertyName lastEndTime -NotePropertyValue ([string]$((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ'))) -Force
-        $CurrentItem | Add-Member -NotePropertyName lastStatus -NotePropertyValue 'Failed' -Force
-        # Convert to hashtable to strip PSObject wrappers that AzBobbyTables cannot serialize
-        $CleanEntity = $CurrentItem | ConvertTo-Json -Depth 5 -Compress | ConvertFrom-Json -AsHashtable
-        Add-CIPPAzDataTableEntity @MappingTable -Entity $CleanEntity -Force
+        $TenantName = if ($Customer.displayName) { $Customer.displayName } else { $MappedTenant.RowKey }
+        $TenantDomain = if ($Customer.defaultDomainName) { $Customer.defaultDomainName } else { 'None' }
+        Write-Error "Failed NinjaOne Processing for $TenantName Linenumber: $($_.InvocationInfo.ScriptLineNumber) Error:  $Message"
+        Write-LogMessage -tenant $TenantDomain -API 'NinjaOneSync' -message "Failed NinjaOne Processing for $TenantName Linenumber: $($_.InvocationInfo.ScriptLineNumber) Error: $Message" -Sev 'Error'
+        if ($CurrentItem) {
+            $CurrentItem | Add-Member -NotePropertyName lastEndTime -NotePropertyValue ([string]$((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ'))) -Force
+            $CurrentItem | Add-Member -NotePropertyName lastStatus -NotePropertyValue 'Failed' -Force
+            # Convert to hashtable to strip PSObject wrappers that AzBobbyTables cannot serialize
+            $CleanEntity = $CurrentItem | ConvertTo-Json -Depth 5 -Compress | ConvertFrom-Json -AsHashtable
+            Add-CIPPAzDataTableEntity @MappingTable -Entity $CleanEntity -Force
+        }
     }
     return $true
 }

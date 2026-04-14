@@ -48,7 +48,20 @@ function New-CIPPDbRequest {
 
         $Results = Get-CIPPAzDataTableEntity @Table -Filter $Filter
 
-        return ($Results.Data | ConvertFrom-Json -ErrorAction SilentlyContinue)
+        if (-not $Results -or -not $Results.Data) {
+            return $false
+        }
+
+        $ParsedResults = foreach ($Item in $Results) {
+            if ($Item.Data) {
+                try {
+                    $Item.Data | ConvertFrom-Json
+                } catch {
+                    Write-LogMessage -API 'CIPPDbRequest' -tenant $TenantFilter -message "Corrupt cache entry for type '$Type' (RowKey: $($Item.RowKey)): $($_.Exception.Message)" -sev Warn
+                }
+            }
+        }
+        return $ParsedResults
     } catch {
         Write-LogMessage -API 'CIPPDbRequest' -tenant $TenantFilter -message "Failed to query database: $($_.Exception.Message)" -sev Error
         throw
