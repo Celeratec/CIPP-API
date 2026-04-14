@@ -25,7 +25,21 @@ function Set-CIPPMailboxAccess {
     # Process each access user
     foreach ($User in $AccessUser) {
         try {
-            $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Add-MailboxPermission' -cmdParams @{Identity = $userid; user = $User; AutoMapping = $Automap; accessRights = $AccessRights; InheritanceType = 'all' } -Anchor $userid
+            try {
+                $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Add-MailboxPermission' -cmdParams @{Identity = $userid; user = $User; AutoMapping = $Automap; accessRights = $AccessRights; InheritanceType = 'all' } -Anchor $userid
+            } catch {
+                $ExoError = Get-CippException -Exception $_
+                if ($ExoError.NormalizedError -match 'InvalidExternalUserIdException' -and $User -match '@') {
+                    $ResolvedUser = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/users/$User" -tenantid $TenantFilter -NoAuthCheck $true
+                    if ($ResolvedUser.id) {
+                        $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Add-MailboxPermission' -cmdParams @{Identity = $userid; user = $ResolvedUser.id; AutoMapping = $Automap; accessRights = $AccessRights; InheritanceType = 'all' } -Anchor $userid
+                    } else {
+                        throw
+                    }
+                } else {
+                    throw
+                }
+            }
 
             $Message = "Successfully added $($User) to $($userid) Shared Mailbox $($Automap ? 'with' : 'without') AutoMapping, with the following permissions: $AccessRights"
             Write-LogMessage -headers $Headers -API $APIName -message $Message -Sev 'Info' -tenant $TenantFilter

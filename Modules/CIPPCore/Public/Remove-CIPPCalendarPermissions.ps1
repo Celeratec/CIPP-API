@@ -93,13 +93,28 @@ function Remove-CIPPCalendarPermissions {
                         $Folder = if ($CalPermEntry.FolderName) { $CalPermEntry.FolderName } else { 'Calendar' }
                         $CalIdentity = "$($CalPermEntry.CalendarUPN):\$Folder"
 
-                        $RemovalResult = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Remove-MailboxFolderPermission' -cmdParams @{
-                            Identity = $CalIdentity
-                            User     = $UserToMatch
-                        } -UseSystemMailbox $true
+                        try {
+                            $RemovalResult = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Remove-MailboxFolderPermission' -cmdParams @{
+                                Identity = $CalIdentity
+                                User     = $UserToMatch
+                            } -UseSystemMailbox $true
+                        } catch {
+                            $RemoveError = Get-CippException -Exception $_
+                            if ($RemoveError.NormalizedError -match 'InvalidExternalUserIdException' -and $UserToRemove -match '@') {
+                                $ResolvedUser = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/users/$UserToRemove" -tenantid $TenantFilter -NoAuthCheck $true
+                                if ($ResolvedUser.id) {
+                                    $RemovalResult = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Remove-MailboxFolderPermission' -cmdParams @{
+                                        Identity = $CalIdentity
+                                        User     = $ResolvedUser.id
+                                    } -UseSystemMailbox $true
+                                } else {
+                                    throw
+                                }
+                            } else {
+                                throw
+                            }
+                        }
 
-                        # Sync cache regardless of whether permission existed in Exchange
-                        # Cache sync uses flexible matching so it will find and remove the entry
                         Sync-CIPPCalendarPermissionCache -TenantFilter $TenantFilter -MailboxIdentity $CalPermEntry.CalendarUPN -FolderName $Folder -User $UserToMatch -Action 'Remove'
 
                         $SuccessMsg = "Removed $UserToRemove from calendar $CalIdentity"
@@ -135,17 +150,31 @@ function Remove-CIPPCalendarPermissions {
             }
 
             try {
-                $RemovalResult = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Remove-MailboxFolderPermission' -cmdParams @{
-                    Identity = $CalendarIdentity
-                    User     = $UserToRemove
-                } -UseSystemMailbox $true
+                try {
+                    $RemovalResult = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Remove-MailboxFolderPermission' -cmdParams @{
+                        Identity = $CalendarIdentity
+                        User     = $UserToRemove
+                    } -UseSystemMailbox $true
+                } catch {
+                    $RemoveError = Get-CippException -Exception $_
+                    if ($RemoveError.NormalizedError -match 'InvalidExternalUserIdException' -and $UserToRemove -match '@') {
+                        $ResolvedUser = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/users/$UserToRemove" -tenantid $TenantFilter -NoAuthCheck $true
+                        if ($ResolvedUser.id) {
+                            $RemovalResult = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Remove-MailboxFolderPermission' -cmdParams @{
+                                Identity = $CalendarIdentity
+                                User     = $ResolvedUser.id
+                            } -UseSystemMailbox $true
+                        } else {
+                            throw
+                        }
+                    } else {
+                        throw
+                    }
+                }
 
-                # Sync cache - extract mailbox UPN from identity
                 $MailboxUPN = if ($CalendarIdentity -match '^([^:]+):') { $Matches[1] } else { $CalendarIdentity }
                 $Folder = if ($CalendarIdentity -match ':\\(.+)$') { $Matches[1] } else { $FolderName }
 
-                # Sync cache regardless of whether permission existed in Exchange
-                # Cache sync uses flexible matching so it will find and remove the entry
                 Sync-CIPPCalendarPermissionCache -TenantFilter $TenantFilter -MailboxIdentity $MailboxUPN -FolderName $Folder -User $UserToRemove -Action 'Remove'
 
                 $SuccessMsg = "Removed $UserToRemove from calendar $CalendarIdentity"
@@ -153,7 +182,6 @@ function Remove-CIPPCalendarPermissions {
                 return $SuccessMsg
 
             } catch {
-                # Sync cache even on error (permission might not exist)
                 $MailboxUPN = if ($CalendarIdentity -match '^([^:]+):') { $Matches[1] } else { $CalendarIdentity }
                 $Folder = if ($CalendarIdentity -match ':\\(.+)$') { $Matches[1] } else { $FolderName }
 

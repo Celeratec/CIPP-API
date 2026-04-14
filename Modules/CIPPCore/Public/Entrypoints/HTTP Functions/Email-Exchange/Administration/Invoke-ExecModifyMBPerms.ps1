@@ -320,8 +320,33 @@ Function Invoke-ExecModifyMBPerms {
 
                             if ($result.error) {
                                 $ErrorMessage = try { (Get-CippException -Exception $result.error).NormalizedError } catch { $result.error }
-                                $null = $Results.Add("Error processing $($metadata.Permission) for $($metadata.TargetUser) on $($metadata.Mailbox): $ErrorMessage")
-                                Write-LogMessage -headers $Request.Headers -API $APINAME -message "Error for operation $operationGuid`: $ErrorMessage" -Sev 'Error' -tenant $TenantFilter
+
+                                # Retry with Entra object ID if Exchange couldn't resolve the user
+                                $Retried = $false
+                                if ($ErrorMessage -match 'InvalidExternalUserIdException' -and $metadata.TargetUser -match '@') {
+                                    try {
+                                        $ResolvedUser = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/users/$($metadata.TargetUser)" -tenantid $TenantFilter -NoAuthCheck $true
+                                        if ($ResolvedUser.id) {
+                                            $OriginalCmdlet = $CmdletArray | Where-Object { $_.OperationGuid -eq $operationGuid } | Select-Object -First 1
+                                            if ($OriginalCmdlet) {
+                                                $RetryParams = @{} + $OriginalCmdlet.CmdletInput.Parameters
+                                                if ($RetryParams.ContainsKey('user')) { $RetryParams['user'] = $ResolvedUser.id }
+                                                if ($RetryParams.ContainsKey('Trustee')) { $RetryParams['Trustee'] = $ResolvedUser.id }
+                                                $null = New-ExoRequest -Anchor $metadata.Mailbox -tenantid $TenantFilter -cmdlet $OriginalCmdlet.CmdletInput.CmdletName -cmdParams $RetryParams
+                                                $null = $Results.Add($metadata.ExpectedResult)
+                                                Write-LogMessage -headers $Request.Headers -API $APINAME -message "Retry succeeded for $($metadata.TargetUser) using Entra ID $($ResolvedUser.id)" -Sev 'Info' -tenant $TenantFilter
+                                                $Retried = $true
+                                            }
+                                        }
+                                    } catch {
+                                        Write-LogMessage -headers $Request.Headers -API $APINAME -message "Retry also failed for $($metadata.TargetUser): $($_.Exception.Message)" -Sev 'Warn' -tenant $TenantFilter
+                                    }
+                                }
+
+                                if (-not $Retried) {
+                                    $null = $Results.Add("Error processing $($metadata.Permission) for $($metadata.TargetUser) on $($metadata.Mailbox): $ErrorMessage")
+                                    Write-LogMessage -headers $Request.Headers -API $APINAME -message "Error for operation $operationGuid`: $ErrorMessage" -Sev 'Error' -tenant $TenantFilter
+                                }
                             } else {
                                 $null = $Results.Add($metadata.ExpectedResult)
                                 Write-LogMessage -headers $Request.Headers -API $APINAME -message "Success for operation $operationGuid`: $($metadata.ExpectedResult)" -Sev 'Info' -tenant $TenantFilter
@@ -358,7 +383,24 @@ Function Invoke-ExecModifyMBPerms {
                 $CmdletObj = $CmdletArray[$i]
                 $CmdletMetadata = $CmdletMetadataArray[$i]
                 try {
-                    $null = New-ExoRequest -Anchor $CmdletMetadata.Mailbox -tenantid $TenantFilter -cmdlet $CmdletObj.CmdletInput.CmdletName -cmdParams $CmdletObj.CmdletInput.Parameters
+                    try {
+                        $null = New-ExoRequest -Anchor $CmdletMetadata.Mailbox -tenantid $TenantFilter -cmdlet $CmdletObj.CmdletInput.CmdletName -cmdParams $CmdletObj.CmdletInput.Parameters
+                    } catch {
+                        $ExoError = Get-CippException -Exception $_
+                        if ($ExoError.NormalizedError -match 'InvalidExternalUserIdException' -and $CmdletMetadata.TargetUser -match '@') {
+                            $ResolvedUser = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/users/$($CmdletMetadata.TargetUser)" -tenantid $TenantFilter -NoAuthCheck $true
+                            if ($ResolvedUser.id) {
+                                $RetryParams = @{} + $CmdletObj.CmdletInput.Parameters
+                                if ($RetryParams.ContainsKey('user')) { $RetryParams['user'] = $ResolvedUser.id }
+                                if ($RetryParams.ContainsKey('Trustee')) { $RetryParams['Trustee'] = $ResolvedUser.id }
+                                $null = New-ExoRequest -Anchor $CmdletMetadata.Mailbox -tenantid $TenantFilter -cmdlet $CmdletObj.CmdletInput.CmdletName -cmdParams $RetryParams
+                            } else {
+                                throw
+                            }
+                        } else {
+                            throw
+                        }
+                    }
                     $null = $Results.Add($CmdletMetadata.ExpectedResult)
                 }
                 catch {
@@ -372,7 +414,24 @@ Function Invoke-ExecModifyMBPerms {
         $CmdletObj = $CmdletArray[0]
         $CmdletMetadata = $CmdletMetadataArray[0]
         try {
-            $null = New-ExoRequest -Anchor $CmdletMetadata.Mailbox -tenantid $TenantFilter -cmdlet $CmdletObj.CmdletInput.CmdletName -cmdParams $CmdletObj.CmdletInput.Parameters
+            try {
+                $null = New-ExoRequest -Anchor $CmdletMetadata.Mailbox -tenantid $TenantFilter -cmdlet $CmdletObj.CmdletInput.CmdletName -cmdParams $CmdletObj.CmdletInput.Parameters
+            } catch {
+                $ExoError = Get-CippException -Exception $_
+                if ($ExoError.NormalizedError -match 'InvalidExternalUserIdException' -and $CmdletMetadata.TargetUser -match '@') {
+                    $ResolvedUser = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/users/$($CmdletMetadata.TargetUser)" -tenantid $TenantFilter -NoAuthCheck $true
+                    if ($ResolvedUser.id) {
+                        $RetryParams = @{} + $CmdletObj.CmdletInput.Parameters
+                        if ($RetryParams.ContainsKey('user')) { $RetryParams['user'] = $ResolvedUser.id }
+                        if ($RetryParams.ContainsKey('Trustee')) { $RetryParams['Trustee'] = $ResolvedUser.id }
+                        $null = New-ExoRequest -Anchor $CmdletMetadata.Mailbox -tenantid $TenantFilter -cmdlet $CmdletObj.CmdletInput.CmdletName -cmdParams $RetryParams
+                    } else {
+                        throw
+                    }
+                } else {
+                    throw
+                }
+            }
             $null = $Results.Add($CmdletMetadata.ExpectedResult)
             Write-LogMessage -headers $Request.Headers -API $APINAME -message "Executed $($CmdletMetadata.Permission) permission modification" -Sev 'Info' -tenant $TenantFilter
         }

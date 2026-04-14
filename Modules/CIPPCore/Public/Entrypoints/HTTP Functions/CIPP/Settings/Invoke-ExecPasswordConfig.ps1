@@ -42,16 +42,16 @@ function Invoke-ExecPasswordConfig {
                 $resolvedConfig = @{
                     passwordType        = $storedType
                     charCount           = if ($PasswordSettings.charCount -and [int]::TryParse("$($PasswordSettings.charCount)", [ref]$null)) { [int]$PasswordSettings.charCount } else { 14 }
-                    includeUppercase    = if ($null -ne $PasswordSettings.includeUppercase) { [bool]$PasswordSettings.includeUppercase } else { $true }
-                    includeLowercase    = if ($null -ne $PasswordSettings.includeLowercase) { [bool]$PasswordSettings.includeLowercase } else { $true }
-                    includeDigits       = if ($null -ne $PasswordSettings.includeDigits) { [bool]$PasswordSettings.includeDigits } else { $true }
-                    includeSpecialChars = if ($null -ne $PasswordSettings.includeSpecialChars) { [bool]$PasswordSettings.includeSpecialChars } else { $true }
+                    includeUppercase    = if ($null -ne $PasswordSettings.includeUppercase) { "$($PasswordSettings.includeUppercase)" -eq 'true' } else { $true }
+                    includeLowercase    = if ($null -ne $PasswordSettings.includeLowercase) { "$($PasswordSettings.includeLowercase)" -eq 'true' } else { $true }
+                    includeDigits       = if ($null -ne $PasswordSettings.includeDigits) { "$($PasswordSettings.includeDigits)" -eq 'true' } else { $true }
+                    includeSpecialChars = if ($null -ne $PasswordSettings.includeSpecialChars) { "$($PasswordSettings.includeSpecialChars)" -eq 'true' } else { $true }
                     specialCharSet      = if ($PasswordSettings.specialCharSet) { $PasswordSettings.specialCharSet } else { '$%&*#' }
                     wordCount           = if ($PasswordSettings.wordCount -and [int]::TryParse("$($PasswordSettings.wordCount)", [ref]$null)) { [int]$PasswordSettings.wordCount } else { 4 }
                     separator           = if ($null -ne $PasswordSettings.separator) { $PasswordSettings.separator } else { '-' }
-                    capitalizeWords     = if ($null -ne $PasswordSettings.capitalizeWords) { [bool]$PasswordSettings.capitalizeWords } else { $false }
-                    appendNumber        = if ($null -ne $PasswordSettings.appendNumber) { [bool]$PasswordSettings.appendNumber } else { $false }
-                    appendSpecialChar   = if ($null -ne $PasswordSettings.appendSpecialChar) { [bool]$PasswordSettings.appendSpecialChar } else { $false }
+                    capitalizeWords     = if ($null -ne $PasswordSettings.capitalizeWords) { "$($PasswordSettings.capitalizeWords)" -eq 'true' } else { $false }
+                    appendNumber        = if ($null -ne $PasswordSettings.appendNumber) { "$($PasswordSettings.appendNumber)" -eq 'true' } else { $false }
+                    appendSpecialChar   = if ($null -ne $PasswordSettings.appendSpecialChar) { "$($PasswordSettings.appendSpecialChar)" -eq 'true' } else { $false }
                 }
 
                 # Persist migrated config so legacy type is upgraded in storage
@@ -92,13 +92,13 @@ function Invoke-ExecPasswordConfig {
                 throw 'Please select a valid password type (Classic or Passphrase)'
             }
 
-            $includeUppercase = [bool]$Request.Body.includeUppercase
-            $includeLowercase = [bool]$Request.Body.includeLowercase
-            $includeDigits = [bool]$Request.Body.includeDigits
-            $includeSpecialChars = [bool]$Request.Body.includeSpecialChars
-            $capitalizeWords = [bool]$Request.Body.capitalizeWords
-            $appendNumber = [bool]$Request.Body.appendNumber
-            $appendSpecialChar = [bool]$Request.Body.appendSpecialChar
+            $includeUppercase = "$($Request.Body.includeUppercase)" -eq 'true'
+            $includeLowercase = "$($Request.Body.includeLowercase)" -eq 'true'
+            $includeDigits = "$($Request.Body.includeDigits)" -eq 'true'
+            $includeSpecialChars = "$($Request.Body.includeSpecialChars)" -eq 'true'
+            $capitalizeWords = "$($Request.Body.capitalizeWords)" -eq 'true'
+            $appendNumber = "$($Request.Body.appendNumber)" -eq 'true'
+            $appendSpecialChar = "$($Request.Body.appendSpecialChar)" -eq 'true'
 
             # Char count validation (classic only)
             $charCount = 0

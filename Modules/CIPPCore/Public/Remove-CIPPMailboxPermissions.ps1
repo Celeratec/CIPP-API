@@ -73,9 +73,22 @@ function Remove-CIPPMailboxPermissions {
                         }
                     }
                     'SendAS' {
-                        $MailboxPerms = New-ExoRequest -Anchor $userId -tenantid $Tenantfilter -cmdlet 'Remove-RecipientPermission' -cmdParams @{Identity = $userid; Trustee = $AccessUser; accessRights = @('SendAs') }
+                        try {
+                            $MailboxPerms = New-ExoRequest -Anchor $userId -tenantid $Tenantfilter -cmdlet 'Remove-RecipientPermission' -cmdParams @{Identity = $userid; Trustee = $AccessUser; accessRights = @('SendAs') }
+                        } catch {
+                            $ExoError = Get-CippException -Exception $_
+                            if ($ExoError.NormalizedError -match 'InvalidExternalUserIdException' -and $AccessUser -match '@') {
+                                $ResolvedUser = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/users/$AccessUser" -tenantid $TenantFilter -NoAuthCheck $true
+                                if ($ResolvedUser.id) {
+                                    $MailboxPerms = New-ExoRequest -Anchor $userId -tenantid $Tenantfilter -cmdlet 'Remove-RecipientPermission' -cmdParams @{Identity = $userid; Trustee = $ResolvedUser.id; accessRights = @('SendAs') }
+                                } else {
+                                    throw
+                                }
+                            } else {
+                                throw
+                            }
+                        }
 
-                        # Sync cache regardless of whether permission existed
                         Sync-CIPPMailboxPermissionCache -TenantFilter $TenantFilter -MailboxIdentity $userid -User $AccessUser -PermissionType 'SendAs' -Action 'Remove'
 
                         if ($MailboxPerms -notlike "*because the ACE isn't present*") {
@@ -98,9 +111,23 @@ function Remove-CIPPMailboxPermissions {
                             }
                             Anchor    = $userid
                         }
-                        $permissions = New-ExoRequest @ExoRequest
+                        try {
+                            $permissions = New-ExoRequest @ExoRequest
+                        } catch {
+                            $ExoError = Get-CippException -Exception $_
+                            if ($ExoError.NormalizedError -match 'InvalidExternalUserIdException' -and $AccessUser -match '@') {
+                                $ResolvedUser = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/users/$AccessUser" -tenantid $TenantFilter -NoAuthCheck $true
+                                if ($ResolvedUser.id) {
+                                    $ExoRequest.cmdParams.user = $ResolvedUser.id
+                                    $permissions = New-ExoRequest @ExoRequest
+                                } else {
+                                    throw
+                                }
+                            } else {
+                                throw
+                            }
+                        }
 
-                        # Sync cache regardless of whether permission existed
                         Sync-CIPPMailboxPermissionCache -TenantFilter $TenantFilter -MailboxIdentity $userid -User $AccessUser -PermissionType 'FullAccess' -Action 'Remove'
 
                         if ($permissions -notlike "*because the ACE doesn't exist on the object.*") {

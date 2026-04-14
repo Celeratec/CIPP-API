@@ -49,7 +49,21 @@ function Set-CIPPCalendarPermission {
 
         if ($RemoveAccess) {
             if ($PSCmdlet.ShouldProcess("$UserID\$FolderName", "Remove permissions for $LoggingName")) {
-                $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Remove-MailboxFolderPermission' -cmdParams @{Identity = $FolderIdentity; User = $RemoveAccess }
+                try {
+                    $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Remove-MailboxFolderPermission' -cmdParams @{Identity = $FolderIdentity; User = $RemoveAccess }
+                } catch {
+                    $RemoveError = Get-CippException -Exception $_
+                    if ($RemoveError.NormalizedError -match 'InvalidExternalUserIdException' -and $RemoveAccess -match '@') {
+                        $ResolvedUser = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/users/$RemoveAccess" -tenantid $TenantFilter -NoAuthCheck $true
+                        if ($ResolvedUser.id) {
+                            $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Remove-MailboxFolderPermission' -cmdParams @{Identity = $FolderIdentity; User = $ResolvedUser.id }
+                        } else {
+                            throw
+                        }
+                    } else {
+                        throw
+                    }
+                }
                 $Result = "Successfully removed access for $LoggingName from calendar $($CalParam.Identity)"
                 Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message $Result -sev Info
 
@@ -59,9 +73,30 @@ function Set-CIPPCalendarPermission {
         } else {
             if ($PSCmdlet.ShouldProcess("$UserID\$FolderName", "Set permissions for $LoggingName to $Permissions")) {
                 try {
-                    $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Set-MailboxFolderPermission' -cmdParams $CalParam -Anchor $UserID
+                    try {
+                        $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Set-MailboxFolderPermission' -cmdParams $CalParam -Anchor $UserID
+                    } catch {
+                        $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Add-MailboxFolderPermission' -cmdParams $CalParam -Anchor $UserID
+                    }
                 } catch {
-                    $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Add-MailboxFolderPermission' -cmdParams $CalParam -Anchor $UserID
+                    $InnerError = Get-CippException -Exception $_
+                    # Shared mailboxes and some recipient types can't be resolved by email;
+                    # fall back to their Entra object ID which Exchange always accepts.
+                    if ($InnerError.NormalizedError -match 'InvalidExternalUserIdException' -and $UserToGetPermissions -match '@') {
+                        $ResolvedUser = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/users/$UserToGetPermissions" -tenantid $TenantFilter -NoAuthCheck $true
+                        if ($ResolvedUser.id) {
+                            $CalParam.User = $ResolvedUser.id
+                            try {
+                                $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Set-MailboxFolderPermission' -cmdParams $CalParam -Anchor $UserID
+                            } catch {
+                                $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Add-MailboxFolderPermission' -cmdParams $CalParam -Anchor $UserID
+                            }
+                        } else {
+                            throw
+                        }
+                    } else {
+                        throw
+                    }
                 }
                 $Result = "Successfully set permissions on folder $($CalParam.Identity). The user $LoggingName now has $Permissions permissions on this folder."
                 if ($CanViewPrivateItems) {

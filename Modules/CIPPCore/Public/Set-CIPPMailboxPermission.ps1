@@ -128,10 +128,26 @@ function Set-CIPPMailboxPermission {
 
     # Execute mode
     try {
-        $null = New-ExoRequest -Anchor $UserId -tenantid $TenantFilter -cmdlet $CmdletName -cmdParams $CmdletParams
+        try {
+            $null = New-ExoRequest -Anchor $UserId -tenantid $TenantFilter -cmdlet $CmdletName -cmdParams $CmdletParams
+        } catch {
+            $ExoError = Get-CippException -Exception $_
+            if ($ExoError.NormalizedError -match 'InvalidExternalUserIdException' -and $AccessUser -match '@') {
+                $ResolvedUser = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/users/$AccessUser" -tenantid $TenantFilter -NoAuthCheck $true
+                if ($ResolvedUser.id) {
+                    if ($CmdletParams.ContainsKey('user')) { $CmdletParams['user'] = $ResolvedUser.id }
+                    if ($CmdletParams.ContainsKey('Trustee')) { $CmdletParams['Trustee'] = $ResolvedUser.id }
+                    $null = New-ExoRequest -Anchor $UserId -tenantid $TenantFilter -cmdlet $CmdletName -cmdParams $CmdletParams
+                } else {
+                    throw
+                }
+            } else {
+                throw
+            }
+        }
+
         Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message $ExpectedResult -Sev 'Info'
 
-        # Sync cache for permission types that have cache entries
         if ($PermissionLevel -in @('FullAccess', 'SendAs', 'SendOnBehalf')) {
             try {
                 Sync-CIPPMailboxPermissionCache -TenantFilter $TenantFilter -MailboxIdentity $UserId -User $AccessUser -PermissionType $PermissionLevel -Action $Action
