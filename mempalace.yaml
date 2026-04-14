@@ -1,0 +1,85 @@
+wing: cipp_api
+rooms:
+- name: cippqueuetrigger
+  description: Files from CIPPQueueTrigger/
+  keywords:
+  - cippqueuetrigger
+  - cippqueuetrigger
+- name: scripts
+  description: Files from Tools/
+  keywords:
+  - scripts
+  - tools
+- name: execmaintenancescripts
+  description: Files from ExecMaintenanceScripts/
+  keywords:
+  - execmaintenancescripts
+  - execmaintenancescripts
+- name: configuration
+  description: Files from Config/
+  keywords:
+  - configuration
+  - config
+- name: cipphttptrigger
+  description: Files from CIPPHttpTrigger/
+  keywords:
+  - cipphttptrigger
+  - cipphttptrigger
+- name: testing
+  description: Files from Tests/
+  keywords:
+  - testing
+  - tests
+- name: cippactivityfunction
+  description: Files from CIPPActivityFunction/
+  keywords:
+  - cippactivityfunction
+  - cippactivityfunction
+- name: shared
+  description: Files from Shared/
+  keywords:
+  - shared
+  - shared
+- name: documentation
+  description: Files from docs/
+  keywords:
+  - documentation
+  - docs
+- name: cipptimer
+  description: Files from CIPPTimer/
+  keywords:
+  - cipptimer
+  - cipptimer
+- name: addchocoapp
+  description: Files from AddChocoApp/
+  keywords:
+  - addchocoapp
+  - addchocoapp
+- name: cache_samsetup
+  description: Files from Cache_SAMSetup/
+  keywords:
+  - cache_samsetup
+  - cache_samsetup
+- name: cipporchestrator
+  description: Files from CIPPOrchestrator/
+  keywords:
+  - cipporchestrator
+  - cipporchestrator
+- name: modules
+  description: Files from Modules/
+  keywords:
+  - modules
+  - modules
+- name: error_review
+  description: Files from Error Review/
+  keywords:
+  - error_review
+  - error review
+- name: addmspapp
+  description: Files from AddMSPApp/
+  keywords:
+  - addmspapp
+  - addmspapp
+- name: general
+  description: Files that don't fit other rooms
+  keywords: []

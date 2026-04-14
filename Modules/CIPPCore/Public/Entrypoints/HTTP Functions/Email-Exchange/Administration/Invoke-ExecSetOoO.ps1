@@ -75,9 +75,14 @@ function Invoke-ExecSetOoO {
         $Results = Set-CIPPOutOfOffice @SplatParams
         $StatusCode = [HttpStatusCode]::OK
     } catch {
-        $ErrorMessage = Get-CippException -Exception $_
-        $Results = "Could not set Out of Office for user: $($Username). Error: $($ErrorMessage.NormalizedError)"
-        Write-LogMessage -headers $Headers -API $APIName -message $Results -Sev 'Error' -LogData $ErrorMessage
+        $ErrorMsg = $_.Exception.Message
+        if ($ErrorMsg -match 'Could not set OOO') {
+            $Results = $ErrorMsg
+        } else {
+            $ErrorMessage = Get-CippException -Exception $_
+            $Results = "Could not set Out of Office for user: $($Username). Error: $($ErrorMessage.NormalizedError)"
+            Write-LogMessage -headers $Headers -API $APIName -message $Results -Sev 'Error' -LogData $ErrorMessage
+        }
         $StatusCode = [HttpStatusCode]::InternalServerError
     }
 

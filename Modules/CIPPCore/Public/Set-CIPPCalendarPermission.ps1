@@ -80,7 +80,13 @@ function Set-CIPPCalendarPermission {
         $ErrorMessage = Get-CippException -Exception $_
         Write-Warning "Error changing calendar permissions $($_.Exception.Message)"
         Write-Information $_.InvocationInfo.PositionMessage
-        $Result = "Failed to set calendar permissions for $LoggingName on $UserID : $($ErrorMessage.NormalizedError)"
+
+        if ($ErrorMessage.NormalizedError -match 'InvalidExternalUserIdException') {
+            $Result = "Failed to set calendar permissions for $LoggingName on $UserID : The user '$LoggingName' is not a valid Exchange recipient. Ensure they have an Exchange Online mailbox or are a valid mail-enabled object."
+        } else {
+            $Result = "Failed to set calendar permissions for $LoggingName on $UserID : $($ErrorMessage.NormalizedError)"
+        }
+
         Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message $Result -sev Error -LogData $ErrorMessage
         throw $Result
     }

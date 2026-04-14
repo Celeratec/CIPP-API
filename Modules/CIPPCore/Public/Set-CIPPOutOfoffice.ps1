@@ -76,7 +76,13 @@ function Set-CIPPOutOfOffice {
         return $Results
     } catch {
         $ErrorMessage = Get-CippException -Exception $_
-        $Results = "Could not add OOO for $($UserID). Error: $($ErrorMessage.NormalizedError)"
+
+        if ($ErrorMessage.NormalizedError -match 'QuotaExceededException') {
+            $Results = "Could not set OOO for $($UserID). The mailbox has exceeded its storage quota. Free up mailbox space or increase the quota before setting an auto-reply."
+        } else {
+            $Results = "Could not set OOO for $($UserID). Error: $($ErrorMessage.NormalizedError)"
+        }
+
         Write-LogMessage -headers $Headers -API $APIName -message $Results -Sev 'Error' -tenant $TenantFilter -LogData $ErrorMessage
         throw $Results
     }
