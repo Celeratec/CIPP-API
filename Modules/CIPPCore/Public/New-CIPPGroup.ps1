@@ -41,6 +41,23 @@ function New-CIPPGroup {
     )
 
     try {
+        $GroupCacheTable = Get-CIPPTable -tablename 'CacheGroupCreation'
+        $SafeDisplayName = $GroupObject.displayName -replace '[^a-zA-Z0-9-]', '_'
+        $CacheRowKey = '{0}_{1}' -f $TenantFilter, $SafeDisplayName
+        $TenMinutesAgo = (Get-Date).AddMinutes(-10).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+        $CachedGroup = Get-CIPPAzDataTableEntity @GroupCacheTable -Filter "PartitionKey eq 'GroupCreation' and RowKey eq '$CacheRowKey' and Timestamp ge datetime'$TenMinutesAgo'"
+        if ($CachedGroup -and $CachedGroup.GroupId) {
+            Write-LogMessage -API $APIName -tenant $TenantFilter -message "Group '$($GroupObject.displayName)' was recently created (cached id: $($CachedGroup.GroupId)), skipping duplicate creation" -Sev Info
+            return [PSCustomObject]@{
+                Success      = $true
+                Message      = "Group $($GroupObject.displayName) already exists (from cache)"
+                GroupId      = $CachedGroup.GroupId
+                GroupType    = $CachedGroup.GroupType
+                Email        = $CachedGroup.Email
+                AlreadyExist = $true
+            }
+        }
+
         # Extract groupType value - handle both string and object with .value property
         $GroupTypeValue = if ($GroupObject.groupType.value) {
             $GroupObject.groupType.value
@@ -187,6 +204,20 @@ function New-CIPPGroup {
                 GroupType = $NormalizedGroupType
                 Email     = if ($NeedsEmail) { $Email } else { $null }
             }
+            try {
+                $CacheEntity = @{
+                    PartitionKey = 'GroupCreation'
+                    RowKey       = $CacheRowKey
+                    GroupId      = [string]$GraphRequest.id
+                    DisplayName  = [string]$GroupObject.displayName
+                    GroupType    = [string]$NormalizedGroupType
+                    Email        = [string]$(if ($NeedsEmail) { $Email } else { '' })
+                    Tenant       = [string]$TenantFilter
+                }
+                Add-CIPPAzDataTableEntity @GroupCacheTable -Entity $CacheEntity -Force
+            } catch {
+                Write-Warning "Failed to write group creation cache for $($GroupObject.displayName): $($_.Exception.Message)"
+            }
             if ($GroupObject.subscribeMembers) {
                 #Waiting for group to become available in Exo.
                 Start-Sleep -Seconds 10
@@ -265,6 +296,20 @@ function New-CIPPGroup {
                 GroupId   = $GraphRequest.Identity
                 GroupType = $NormalizedGroupType
                 Email     = $Email
+            }
+            try {
+                $CacheEntity = @{
+                    PartitionKey = 'GroupCreation'
+                    RowKey       = $CacheRowKey
+                    GroupId      = [string]$GraphRequest.Identity
+                    DisplayName  = [string]$GroupObject.displayName
+                    GroupType    = [string]$NormalizedGroupType
+                    Email        = [string]$Email
+                    Tenant       = [string]$TenantFilter
+                }
+                Add-CIPPAzDataTableEntity @GroupCacheTable -Entity $CacheEntity -Force
+            } catch {
+                Write-Warning "Failed to write group creation cache for $($GroupObject.displayName): $($_.Exception.Message)"
             }
         }
 

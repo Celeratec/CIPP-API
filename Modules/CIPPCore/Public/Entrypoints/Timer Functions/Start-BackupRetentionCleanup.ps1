@@ -7,7 +7,10 @@ function Start-BackupRetentionCleanup {
     Uses pagination and parallel processing for efficient handling of large datasets.
     #>
     [CmdletBinding(SupportsShouldProcess = $true)]
-    param()
+    param(
+        [Parameter(Mandatory = $false)]
+        [string]$ConnectionString = $env:AzureWebJobsStorage
+    )
 
     # Helper function to delete blobs in parallel with pagination
     function Remove-BackupBlobsInParallel {

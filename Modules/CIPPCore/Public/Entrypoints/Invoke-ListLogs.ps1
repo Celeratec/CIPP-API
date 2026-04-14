@@ -8,6 +8,7 @@ function Invoke-ListLogs {
     [CmdletBinding()]
     param($Request, $TriggerMetadata)
     $Table = Get-CIPPTable
+    $TzId = if ($env:CIPP_TIMEZONE) { $env:CIPP_TIMEZONE } else { 'UTC' }
 
     $TemplatesTable = Get-CIPPTable -tablename 'templates'
     $Templates = Get-CIPPAzDataTableEntity @TemplatesTable
@@ -39,8 +40,7 @@ function Invoke-ListLogs {
                 $TenantList = Get-Tenants -IncludeErrors | Where-Object { $_.customerId -in $AllowedTenants }
             }
 
-            if ($AllowedTenants -contains 'AllTenants' -or ($AllowedTenants -notcontains 'AllTenants' -and ($TenantList.defaultDomainName -contains $Row.Tenant -or $Row.Tenant -eq 'CIPP' -or $TenantList.customerId -contains $Row.TenantId)) ) {
-
+            if ($AllowedTenants -contains 'AllTenants' -or ($AllowedTenants -notcontains 'AllTenants' -and ($TenantList.defaultDomainName -contains $Row.Tenant -or $Row.Tenant -eq 'CIPP' -or $TenantList.customerId -contains $Row.TenantId -or $TenantList.initialDomainName -contains $Row.Tenant)) ) {
                 if ($Row.StandardTemplateId) {
                     $Standard = ($Templates | Where-Object { $_.RowKey -eq $Row.StandardTemplateId }).JSON | ConvertFrom-Json
 
@@ -96,8 +96,8 @@ function Invoke-ListLogs {
             $StandardFilter = $Request.Query.StandardTemplateId
             $ScheduledTaskFilter = $Request.Query.ScheduledTaskId
 
-            $StartDate = $Request.Query.StartDate ?? $Request.Query.DateFilter
-            $EndDate = $Request.Query.EndDate ?? $Request.Query.DateFilter
+            $StartDate = if ($Request.Query.StartDate ?? $Request.Query.DateFilter) { ConvertTo-CIPPODataFilterValue -Value ($Request.Query.StartDate ?? $Request.Query.DateFilter) -Type Date } else { $null }
+            $EndDate = if ($Request.Query.EndDate ?? $Request.Query.DateFilter) { ConvertTo-CIPPODataFilterValue -Value ($Request.Query.EndDate ?? $Request.Query.DateFilter) -Type Date } else { $null }
 
             if ($StartDate -and $EndDate) {
                 # Collect logs for date range
@@ -105,11 +105,11 @@ function Invoke-ListLogs {
             } elseif ($StartDate) {
                 $Filter = "PartitionKey eq '{0}'" -f $StartDate
             } else {
-                $Filter = "PartitionKey eq '{0}'" -f (Get-Date -UFormat '%Y%m%d')
+                $Filter = "PartitionKey eq '{0}'" -f [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::UtcNow, $TzId).ToString('yyyyMMdd')
             }
         } else {
             $LogLevel = 'Info', 'Warn', 'Warning', 'Error', 'Critical', 'Alert'
-            $PartitionKey = Get-Date -UFormat '%Y%m%d'
+            $PartitionKey = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::UtcNow, $TzId).ToString('yyyyMMdd')
             $username = '*'
             $TenantFilter = $null
             $Filter = "PartitionKey eq '{0}'" -f $PartitionKey

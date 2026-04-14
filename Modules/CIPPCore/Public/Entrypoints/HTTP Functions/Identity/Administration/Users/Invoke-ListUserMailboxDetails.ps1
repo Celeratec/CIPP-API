@@ -294,6 +294,7 @@ function Invoke-ListUserMailboxDetails {
             DeliverToMailboxAndForward,
             HiddenFromAddressListsEnabled,
             ExternalDirectoryObjectId,
+            IsDirSynced,
             MessageCopyForSendOnBehalfEnabled,
             MessageCopyForSentAsEnabled,
             LitigationHoldEnabled,
