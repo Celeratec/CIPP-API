@@ -86,6 +86,9 @@ function Invoke-ExecSharePointInviteGuest {
             # site's Members permission group via SharePoint REST API.
             $SiteUrl = $Request.Body.URL
             if ($SiteUrl -and $GuestUPN) {
+                # Brief delay: the guest was just created, give Azure AD time to propagate
+                Start-Sleep -Seconds 5
+
                 try {
                     $SharePointInfo = Get-SharePointAdminLink -Public $false -tenantFilter $TenantFilter
                     $SPScope = "$($SharePointInfo.SharePointUrl)/.default"
@@ -106,18 +109,48 @@ function Invoke-ExecSharePointInviteGuest {
                     $ResultMessages.Add("Added guest as a member of the SharePoint site.")
                 } catch {
                     $SiteError = Get-CippException -Exception $_
-                    $ErrorMsg = [string]$SiteError.NormalizedError + [string]$SiteError.Message
-                    if ($ErrorMsg -match 'ID3035' -or $ErrorMsg -match 'is malformed' -or $ErrorMsg -match 'Could not get token') {
-                        $ResultMessages.Add("Guest invited to tenant, but could not add to site members: Failed to obtain a SharePoint token. Try running a CPV Refresh for this tenant. Error: $($SiteError.NormalizedError)")
-                    } elseif ($ErrorMsg -match 'Unsupported app only token') {
-                        $ResultMessages.Add("Guest invited to tenant, but could not add to site members: SharePoint rejected the app-only token. This is an internal error -- please report it.")
-                    } elseif ($ErrorMsg -match 'unauthorized' -or $ErrorMsg -match 'Access denied' -or $ErrorMsg -match '403') {
-                        $ResultMessages.Add("Guest invited to tenant, but could not add to site members: SharePoint denied access. This may be a site-level permission issue. Try running a CPV Refresh for this tenant. Error: $($SiteError.NormalizedError)")
-                    } else {
-                        $ResultMessages.Add("Guest invited to tenant, but could not add to site members: $($SiteError.NormalizedError)")
+                    $SiteErrorMsg = [string]$SiteError.NormalizedError + [string]$SiteError.Message
+                    Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "SharePoint REST failed for non-group site, attempting Graph API fallback: $($SiteError.NormalizedError)" -Sev 'Info' -LogData $SiteError
+
+                    # Graph API fallback: resolve the site via Graph and grant document
+                    # library access using app-only permissions (Sites.FullControl.All).
+                    # This bypasses the delegated-token issue that caused the REST failure.
+                    $GraphFallbackSuccess = $false
+                    try {
+                        $SiteUri = [System.Uri]$SiteUrl
+                        $GraphSiteIdentifier = "$($SiteUri.Host):$($SiteUri.AbsolutePath.TrimEnd('/'))"
+                        $GraphSite = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/sites/$GraphSiteIdentifier" -tenantid $TenantFilter -AsApp $true
+
+                        if ($GraphSite.id) {
+                            $ShareBody = ConvertTo-Json @{
+                                requireSignIn  = $true
+                                sendInvitation = $false
+                                roles          = @('write')
+                                recipients     = @(@{ email = $Request.Body.mail })
+                            } -Compress
+                            $null = New-GraphPostRequest -uri "https://graph.microsoft.com/v1.0/sites/$($GraphSite.id)/drive/root/invite" -tenantid $TenantFilter -type POST -body $ShareBody -AsApp $true
+                            $GraphFallbackSuccess = $true
+                            $ResultMessages.Add("Could not add guest to the site members group directly (SharePoint REST denied access), but successfully granted document library access via Graph API.")
+                            Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Graph API fallback succeeded for non-group site guest invite" -Sev 'Info'
+                        }
+                    } catch {
+                        $GraphError = Get-CippException -Exception $_
+                        Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Graph API fallback also failed: $($GraphError.NormalizedError)" -Sev 'Warning' -LogData $GraphError
                     }
-                    Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Failed to add guest to non-group site members: $($SiteError.NormalizedError)" -Sev 'Warning' -LogData $SiteError
-                    $NonGroupSiteWarning = $true
+
+                    if (-not $GraphFallbackSuccess) {
+                        if ($SiteErrorMsg -match 'ID3035' -or $SiteErrorMsg -match 'is malformed' -or $SiteErrorMsg -match 'Could not get token') {
+                            $ResultMessages.Add("Guest invited to tenant, but could not add to site members: Failed to obtain a SharePoint token. Try running a CPV Refresh for this tenant. Error: $($SiteError.NormalizedError)")
+                        } elseif ($SiteErrorMsg -match 'Unsupported app only token') {
+                            $ResultMessages.Add("Guest invited to tenant, but could not add to site members: SharePoint rejected the app-only token. This is an internal error -- please report it.")
+                        } elseif ($SiteErrorMsg -match 'unauthorized' -or $SiteErrorMsg -match 'Access denied' -or $SiteErrorMsg -match '403') {
+                            $ResultMessages.Add("Guest invited to tenant, but could not add to site members: SharePoint denied access. This may be a site-level permission issue. Try running a CPV Refresh for this tenant. Error: $($SiteError.NormalizedError)")
+                        } else {
+                            $ResultMessages.Add("Guest invited to tenant, but could not add to site members: $($SiteError.NormalizedError)")
+                        }
+                        Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Failed to add guest to non-group site members: $($SiteError.NormalizedError)" -Sev 'Warning' -LogData $SiteError
+                        $NonGroupSiteWarning = $true
+                    }
                 }
             } else {
                 $ResultMessages.Add("Guest invited to tenant. Site URL or guest identity not available for automatic site membership.")
