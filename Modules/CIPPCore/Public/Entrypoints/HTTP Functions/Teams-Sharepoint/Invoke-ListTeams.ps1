@@ -51,6 +51,39 @@ Function Invoke-ListTeams {
             }
         }
     }
+    if ($request.query.type -eq 'SharedChannels') {
+        $AllTeams = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/groups?`$filter=resourceProvisioningOptions/Any(x:x eq 'Team')&`$select=id,displayName" -tenantid $TenantFilter
+        $TeamNameLookup = @{}
+        foreach ($t in $AllTeams) { $TeamNameLookup[$t.id] = $t.displayName }
+
+        $ChannelBatchRequests = $AllTeams | ForEach-Object {
+            @{
+                id     = $_.id
+                method = 'GET'
+                url    = "/teams/$($_.id)/channels?`$filter=membershipType eq 'shared'&`$select=id,displayName,description,membershipType"
+            }
+        }
+
+        $ChannelResults = if ($ChannelBatchRequests.Count -gt 0) {
+            New-GraphBulkRequest -Requests $ChannelBatchRequests -tenantid $TenantFilter -asapp $true
+        } else { @() }
+
+        $GraphRequest = @()
+        foreach ($result in $ChannelResults) {
+            if ($result.body -and $result.body.value) {
+                foreach ($ch in $result.body.value) {
+                    $GraphRequest += [PSCustomObject]@{
+                        id          = $ch.id
+                        teamId      = $result.id
+                        teamName    = $TeamNameLookup[$result.id]
+                        displayName = $ch.displayName
+                        description = $ch.description
+                    }
+                }
+            }
+        }
+    }
+
     $TeamID = $request.query.ID
     Write-Host $TeamID
     if ($request.query.type -eq 'Team') {
