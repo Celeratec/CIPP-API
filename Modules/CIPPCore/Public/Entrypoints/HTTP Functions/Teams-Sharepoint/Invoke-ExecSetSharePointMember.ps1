@@ -23,7 +23,7 @@ function Invoke-ExecSetSharePointMember {
         $RawGroupId = [string]$Request.Body.GroupID
         $IsGuidGroupId = $RawGroupId -match '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$'
 
-        if ($Request.Body.SharePointType -eq 'Group' -or $IsGuidGroupId) {
+        if ($Request.Body.SharePointType -like 'Group*' -or $IsGuidGroupId) {
             if ($IsGuidGroupId) {
                 $GroupId = $RawGroupId
             } else {
