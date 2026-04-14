@@ -229,6 +229,111 @@ function Invoke-ListCrossTenantHealth {
             }
         }
 
+        # Check 12: Teams guest access
+        try {
+            $TeamsConfig = New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Get-CsTeamsClientConfiguration' -CmdParams @{Identity = 'Global' }
+            if ($TeamsConfig.AllowGuestUser -eq $false) {
+                $Findings.Add([PSCustomObject]@{
+                    Category       = 'Teams Guest Access'
+                    Area           = 'Guest Settings'
+                    Severity       = 'Warning'
+                    Finding        = 'Guest access is disabled for Microsoft Teams. External guests cannot be added to any teams.'
+                    Recommendation = 'Enable guest access in Teams Settings if external collaboration via Teams is needed.'
+                    RelatedLink    = '/teams-share/teams/teams-settings'
+                    RelatedPage    = 'Teams Settings'
+                })
+            }
+        } catch {
+            Write-LogMessage -API $APIName -tenant $TenantFilter -message "Could not check Teams guest access (non-critical): $($_.Exception.Message)" -Sev 'Debug'
+        }
+
+        # Check 13: Email OTP authentication for guests
+        try {
+            $EmailOTPPolicy = New-GraphGetRequest -uri 'https://graph.microsoft.com/v1.0/policies/authenticationMethodsPolicy/authenticationMethodConfigurations/email' -tenantid $TenantFilter -AsApp $true
+            if ($EmailOTPPolicy.state -ne 'enabled') {
+                $Findings.Add([PSCustomObject]@{
+                    Category       = 'External Collaboration'
+                    Area           = 'Email OTP'
+                    Severity       = 'Warning'
+                    Finding        = 'Email One-Time Passcode authentication is not enabled. Guests with personal email addresses (Gmail, Yahoo, etc.) may not be able to sign in.'
+                    Recommendation = 'Enable Email OTP in Authentication Methods to allow guests with personal email addresses to authenticate. Without this, personal email guests have no way to sign in.'
+                    RelatedLink    = '/tenant/administration/cross-tenant-access/external-collaboration'
+                    RelatedPage    = 'External Collaboration'
+                })
+            }
+        } catch {
+            Write-LogMessage -API $APIName -tenant $TenantFilter -message "Could not check Email OTP policy (non-critical): $($_.Exception.Message)" -Sev 'Debug'
+        }
+
+        # Check 14: SharePoint sharing vs Entra guest invite mismatch
+        if ($SPOSettings -and $AuthPolicy) {
+            $EntraAllowsGuests = $AuthPolicy.allowInvitesFrom -ne 'none'
+            $SPOAllowsExternal = $SPOSettings.sharingCapability -ne 'disabled'
+
+            if ($EntraAllowsGuests -and -not $SPOAllowsExternal) {
+                $Findings.Add([PSCustomObject]@{
+                    Category       = 'Configuration Mismatch'
+                    Area           = 'Entra vs SharePoint'
+                    Severity       = 'Warning'
+                    Finding        = 'Entra allows guest invitations but SharePoint external sharing is disabled. Guests can be invited to the tenant but cannot access any SharePoint content.'
+                    Recommendation = 'Either enable SharePoint external sharing or disable guest invitations in Entra if SharePoint access is not needed.'
+                    RelatedLink    = '/teams-share/sharepoint/sharing-settings'
+                    RelatedPage    = 'SharePoint Sharing Settings'
+                })
+            } elseif (-not $EntraAllowsGuests -and $SPOAllowsExternal) {
+                $Findings.Add([PSCustomObject]@{
+                    Category       = 'Configuration Mismatch'
+                    Area           = 'Entra vs SharePoint'
+                    Severity       = 'Info'
+                    Finding        = 'SharePoint external sharing is enabled but Entra guest invitations are disabled. Only existing guests or anonymous sharing links will work.'
+                    Recommendation = 'Enable guest invitations in Entra if new external users need to be invited, or use anonymous sharing links.'
+                    RelatedLink    = '/tenant/administration/cross-tenant-access/external-collaboration'
+                    RelatedPage    = 'External Collaboration'
+                })
+            }
+        }
+
+        # Check 15: Entra vs SharePoint domain list mismatch
+        if ($SPOSettings) {
+            try {
+                $B2BPolicyForCompare = New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/legacy/policies' -tenantid $TenantFilter -AsApp $true
+                $B2BMgmtForCompare = $B2BPolicyForCompare | Where-Object { $_.type -eq 6 }
+                if ($B2BMgmtForCompare) {
+                    $B2BDefCompare = ($B2BMgmtForCompare.definition | ConvertFrom-Json).B2BManagementPolicy
+                    $EntraDomainPolicy = $B2BDefCompare.InvitationsAllowedAndBlockedDomainsPolicy
+                    $EntraAllowed = @($EntraDomainPolicy.AllowedDomains | Where-Object { $_ })
+                    $SPOMode = $SPOSettings.sharingDomainRestrictionMode
+                    $SPOAllowed = @($SPOSettings.sharingAllowedDomainList | Where-Object { $_ })
+
+                    if ($EntraAllowed.Count -gt 0 -and $SPOMode -eq 'allowList' -and $SPOAllowed.Count -gt 0) {
+                        $EntraOnly = @($EntraAllowed | Where-Object { $_ -notin $SPOAllowed })
+                        $SPOOnly = @($SPOAllowed | Where-Object { $_ -notin $EntraAllowed })
+
+                        if ($EntraOnly.Count -gt 0 -or $SPOOnly.Count -gt 0) {
+                            $DetailParts = [System.Collections.Generic.List[string]]::new()
+                            if ($EntraOnly.Count -gt 0) {
+                                $DetailParts.Add("Domains in Entra but NOT SharePoint: $($EntraOnly -join ', ')")
+                            }
+                            if ($SPOOnly.Count -gt 0) {
+                                $DetailParts.Add("Domains in SharePoint but NOT Entra: $($SPOOnly -join ', ')")
+                            }
+                            $Findings.Add([PSCustomObject]@{
+                                Category       = 'Configuration Mismatch'
+                                Area           = 'Domain Allow-Lists'
+                                Severity       = 'Warning'
+                                Finding        = "Entra and SharePoint have different domain allow-lists. $($DetailParts -join ' | ')"
+                                Recommendation = 'Synchronize the domain allow-lists between Entra External Collaboration and SharePoint Sharing Settings to avoid confusing access failures. A domain must be allowed in BOTH lists for guest invitations and SharePoint access to work.'
+                                RelatedLink    = '/teams-share/sharepoint/sharing-settings'
+                                RelatedPage    = 'SharePoint Sharing Settings'
+                            })
+                        }
+                    }
+                }
+            } catch {
+                Write-LogMessage -API $APIName -tenant $TenantFilter -message "Could not compare domain lists (non-critical): $($_.Exception.Message)" -Sev 'Debug'
+            }
+        }
+
         # Calculate overall health score
         $CriticalCount = ($Findings | Where-Object { $_.Severity -eq 'Critical' }).Count
         $WarningCount = ($Findings | Where-Object { $_.Severity -eq 'Warning' }).Count
