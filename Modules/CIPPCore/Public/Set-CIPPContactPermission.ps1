@@ -54,6 +54,10 @@ function Set-CIPPContactPermission {
                     try {
                         $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Set-MailboxFolderPermission' -cmdParams $ContactParam -Anchor $UserID
                     } catch {
+                        $SetError = Get-CippException -Exception $_
+                        if ($SetError.NormalizedError -match 'InvalidExternalUserIdException') {
+                            throw
+                        }
                         $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Add-MailboxFolderPermission' -cmdParams $ContactParam -Anchor $UserID
                     }
                 } catch {

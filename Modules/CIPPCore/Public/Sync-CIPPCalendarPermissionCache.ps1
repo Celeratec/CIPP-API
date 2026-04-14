@@ -145,8 +145,8 @@ function Sync-CIPPCalendarPermissionCache {
 
                     $PermData = $CachedPerm.Data | ConvertFrom-Json
 
-                    # Match on Identity (flexible) and User
-                    if ($PossibleCalendarIdentities -contains $PermData.Identity -and $PermData.User -eq $User) {
+                    # Match on Identity (flexible) and User (check both raw and display-name-resolved forms)
+                    if ($PossibleCalendarIdentities -contains $PermData.Identity -and ($PermData.User -eq $User -or $PermData.User -eq $UserToCache)) {
 
                         # Extract ItemId from RowKey (format: "Type-ItemId")
                         Write-Information "Removing calendar permission cache entry: $User on $CalendarIdentity (matched via $($PermData.Identity))" -InformationAction Continue

@@ -76,12 +76,14 @@ function Set-CIPPCalendarPermission {
                     try {
                         $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Set-MailboxFolderPermission' -cmdParams $CalParam -Anchor $UserID
                     } catch {
+                        $SetError = Get-CippException -Exception $_
+                        if ($SetError.NormalizedError -match 'InvalidExternalUserIdException') {
+                            throw
+                        }
                         $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Add-MailboxFolderPermission' -cmdParams $CalParam -Anchor $UserID
                     }
                 } catch {
                     $InnerError = Get-CippException -Exception $_
-                    # Shared mailboxes and some recipient types can't be resolved by email;
-                    # fall back to their Entra object ID which Exchange always accepts.
                     if ($InnerError.NormalizedError -match 'InvalidExternalUserIdException' -and $UserToGetPermissions -match '@') {
                         $ResolvedUser = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/users/$UserToGetPermissions" -tenantid $TenantFilter -NoAuthCheck $true
                         if ($ResolvedUser.id) {
