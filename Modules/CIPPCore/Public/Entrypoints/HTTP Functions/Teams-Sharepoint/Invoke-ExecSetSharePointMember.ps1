@@ -84,20 +84,52 @@ function Invoke-ExecSetSharePointMember {
             $SPContentType = 'application/json;odata=verbose'
 
             if ($Request.Body.Add -eq $true) {
-                # Build the claims login name from the UPN
                 $LoginName = "i:0#.f|membership|$UserEmail"
+                $RestSuccess = $false
 
-                # Ensure the user exists in the site
-                # Note: SharePoint REST _api/web endpoints do not support app-only tokens,
-                # so we use delegated auth (SAM refresh token) instead of -AsApp $true.
-                $EnsureBody = ConvertTo-Json @{ logonName = $LoginName } -Compress
-                $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/ensureuser" -Type POST -Body $EnsureBody -ContentType $SPContentType -AddedHeaders $SPHeaders
+                try {
+                    $EnsureBody = ConvertTo-Json @{ logonName = $LoginName } -Compress
+                    $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/ensureuser" -Type POST -Body $EnsureBody -ContentType $SPContentType -AddedHeaders $SPHeaders
 
-                # Add to the site's default Members permission group
-                $AddBody = ConvertTo-Json @{ LoginName = $LoginName } -Compress
-                $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/associatedmembergroup/users" -Type POST -Body $AddBody -ContentType $SPContentType -AddedHeaders $SPHeaders
+                    $AddBody = ConvertTo-Json @{ LoginName = $LoginName } -Compress
+                    $null = New-GraphPostRequest -scope $SPScope -tenantid $TenantFilter -Uri "$SiteUrl/_api/web/associatedmembergroup/users" -Type POST -Body $AddBody -ContentType $SPContentType -AddedHeaders $SPHeaders
 
-                $Results = "Successfully added $UserEmail as a member of the SharePoint site."
+                    $RestSuccess = $true
+                    $Results = "Successfully added $UserEmail as a member of the SharePoint site."
+                } catch {
+                    $RestError = $_
+                    Write-LogMessage -headers $Headers -API 'ExecSetSharePointMember' -tenant $TenantFilter -message "SharePoint REST failed for non-group site, attempting Graph API fallback: $($RestError.Exception.Message)" -Sev 'Info'
+                }
+
+                if (-not $RestSuccess) {
+                    $GraphFallbackSuccess = $false
+                    try {
+                        $SiteUri = [System.Uri]$SiteUrl
+                        $GraphSiteIdentifier = "$($SiteUri.Host):$($SiteUri.AbsolutePath.TrimEnd('/'))"
+                        $GraphSite = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/sites/$GraphSiteIdentifier" -tenantid $TenantFilter -AsApp $true
+
+                        if ($GraphSite.id) {
+                            $ShareBody = ConvertTo-Json @{
+                                requireSignIn  = $true
+                                sendInvitation = $false
+                                roles          = @('write')
+                                recipients     = @(@{ email = $UserEmail })
+                            } -Compress
+                            $null = New-GraphPostRequest -uri "https://graph.microsoft.com/v1.0/sites/$($GraphSite.id)/drive/root/invite" -tenantid $TenantFilter -type POST -body $ShareBody -AsApp $true
+                            $GraphFallbackSuccess = $true
+                            $Results = "The site members group could not be modified directly, but $UserEmail was successfully granted document library write access via Graph API."
+                            Write-LogMessage -headers $Headers -API 'ExecSetSharePointMember' -tenant $TenantFilter -message "Graph API fallback succeeded for non-group site member add" -Sev 'Info'
+                        } else {
+                            throw 'Could not resolve SharePoint site via Graph API.'
+                        }
+                    } catch {
+                        Write-LogMessage -headers $Headers -API 'ExecSetSharePointMember' -tenant $TenantFilter -message "Graph API fallback also failed: $($_.Exception.Message)" -Sev 'Warning'
+                    }
+
+                    if (-not $GraphFallbackSuccess) {
+                        throw $RestError.Exception
+                    }
+                }
             } else {
                 # Remove: resolve user via ensureuser to get their SP ID, then remove from members group
                 # Use the login name from the table row if available, otherwise construct from email
