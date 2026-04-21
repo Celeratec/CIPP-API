@@ -11,8 +11,10 @@ function Invoke-ExecQuarantineManagement {
     $APIName = $Request.Params.CIPPEndpoint
     $TenantFilter = $Request.Body.tenantFilter | Select-Object -First 1
     $ActionType = $Request.Body.Type | Select-Object -First 1
-    $AllowSender = [boolean]$Request.Body.AllowSender
-    $AddAllowEntry = [boolean]$Request.Body.AddAllowEntry
+    # Both AllowSender and AddAllowEntry are routed through the Tenant Allow/Block List
+    # because Release-QuarantineMessage -AllowSender chains to Get-HostedContentFilterPolicy
+    # on Microsoft's backend, which intermittently fails with a CommandNotFoundException.
+    $AllowEntry = [boolean]$Request.Body.AllowSender -or [boolean]$Request.Body.AddAllowEntry
 
     $Identities = if ($Request.Body.Identity -is [string]) {
         @($Request.Body.Identity)
@@ -31,7 +33,6 @@ function Invoke-ExecQuarantineManagement {
 
         try {
             $ReleaseParams = @{
-                AllowSender  = $AllowSender
                 ReleaseToAll = $true
                 ActionType   = $ActionType
                 Identity     = $Id
@@ -44,7 +45,7 @@ function Invoke-ExecQuarantineManagement {
             Write-LogMessage -headers $Request.Headers -API $APIName -tenant $TenantFilter -message "Quarantine release failed for $Id`: $($_.Exception.Message)" -Sev 'Error' -LogData $_
         }
 
-        if ($AddAllowEntry -and $Entry.ReleaseResult -eq 'Success') {
+        if ($AllowEntry -and $Entry.ReleaseResult -eq 'Success') {
             try {
                 $QMsg = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Get-QuarantineMessage' -cmdParams @{ Identity = $Id }
                 $SenderAddr = $QMsg.SenderAddress | Select-Object -First 1
@@ -64,7 +65,7 @@ function Invoke-ExecQuarantineManagement {
                 $Entry.AllowEntryResult = "Failed: $($_.Exception.Message)"
                 Write-LogMessage -headers $Request.Headers -API $APIName -tenant $TenantFilter -message "Allow entry failed for $Id`: $($_.Exception.Message)" -Sev 'Error'
             }
-        } elseif ($AddAllowEntry) {
+        } elseif ($AllowEntry) {
             $Entry.AllowEntryResult = 'Skipped: release failed'
         }
 
