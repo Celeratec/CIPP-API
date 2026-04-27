@@ -21,7 +21,7 @@ Function Invoke-ExecConvertMailbox {
         $Results = Set-CIPPMailboxType -UserID $UserID -TenantFilter $TenantFilter -APIName $APIName -Headers $Headers -MailboxType $MailboxType
         $StatusCode = [HttpStatusCode]::OK
     } catch {
-        $Results = $_.Exception.Message
+        $Results = "Failed to convert mailbox: $((Get-CippException -Exception $_).NormalizedError)"
         $StatusCode = [HttpStatusCode]::InternalServerError
     }
     return ([HttpResponseContext]@{

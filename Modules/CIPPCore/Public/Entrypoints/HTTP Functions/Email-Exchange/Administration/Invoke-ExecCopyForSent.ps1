@@ -30,7 +30,7 @@ function Invoke-ExecCopyForSent {
         $Result = Set-CIPPMessageCopy @params
         $StatusCode = [HttpStatusCode]::OK
     } catch {
-        $Result = "$($_.Exception.Message)"
+        $Result = "Failed to update Copy For Sent setting: $((Get-CippException -Exception $_).NormalizedError)"
         $StatusCode = [HttpStatusCode]::InternalServerError
     }
 

@@ -23,7 +23,7 @@ Function Invoke-ExecRemoveMailboxRule {
         $Results = Remove-CIPPMailboxRule -username $Username -TenantFilter $TenantFilter -APIName $APIName -Headers $Headers -RuleId $RuleId -RuleName $RuleName
         $StatusCode = [HttpStatusCode]::OK
     } catch {
-        $Results = $_.Exception.Message
+        $Results = "Failed to remove mailbox rule: $((Get-CippException -Exception $_).NormalizedError)"
         $StatusCode = [HttpStatusCode]::InternalServerError
     }
 

@@ -96,7 +96,7 @@ function Invoke-PatchUser {
 
     } catch {
         $HttpResponse.StatusCode = [HttpStatusCode]::InternalServerError
-        $HttpResponse.Body = @{'Results' = @("Failed to patch user(s). Error: $($_.Exception.Message)") }
+        $HttpResponse.Body = @{'Results' = @("Failed to patch user(s): $((Get-CippException -Exception $_).NormalizedError)") }
     }
 
     return $HttpResponse

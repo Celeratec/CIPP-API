@@ -69,7 +69,7 @@ function Invoke-EditGroup {
                     $Results.Add($securityStatusText)
                 }
             } catch {
-                $Results.Add("Error - Failed to edit group properties: $($_.Exception.Message)")
+                $Results.Add("Failed to edit group properties: $((Get-CippException -Exception $_).NormalizedError)")
                 Write-LogMessage -headers $Headers -API $APIName -tenant $UserObj.tenantFilter -message "Failed to patch group: $($_.Exception.Message)" -Sev 'Error'
             }
         }

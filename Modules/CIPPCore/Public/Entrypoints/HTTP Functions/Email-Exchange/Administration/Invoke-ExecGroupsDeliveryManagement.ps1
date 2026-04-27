@@ -22,7 +22,7 @@ Function Invoke-ExecGroupsDeliveryManagement {
         $Result = Set-CIPPGroupAuthentication -ID $ID -GroupType $GroupType -OnlyAllowInternal $OnlyAllowInternal -tenantFilter $TenantFilter -APIName $APIName -Headers $Headers
         $StatusCode = [HttpStatusCode]::OK
     } catch {
-        $Result = "$($_.Exception.Message)"
+        $Result = "Failed to update group delivery management: $((Get-CippException -Exception $_).NormalizedError)"
         $StatusCode = [HttpStatusCode]::InternalServerError
     }
     return ([HttpResponseContext]@{

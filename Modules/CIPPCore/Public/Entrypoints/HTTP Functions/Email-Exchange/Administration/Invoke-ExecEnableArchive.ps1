@@ -22,7 +22,7 @@ Function Invoke-ExecEnableArchive {
         if ($ResultsArch -like 'Failed to set archive*') { throw $ResultsArch }
         $StatusCode = [HttpStatusCode]::OK
     } catch {
-        $ResultsArch = $_.Exception.Message
+        $ResultsArch = "Failed to enable archive: $((Get-CippException -Exception $_).NormalizedError)"
         $StatusCode = [HttpStatusCode]::InternalServerError
     }
     $Results = [pscustomobject]@{'Results' = "$ResultsArch" }

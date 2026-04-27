@@ -22,7 +22,7 @@ Function Invoke-ExecGroupsHideFromGAL {
         $Result = Set-CIPPGroupGAL -Id $GroupID -TenantFilter $TenantFilter -GroupType $GroupType -HiddenString $HideFromGAL -APIName $APIName -Headers $Headers
         $StatusCode = [HttpStatusCode]::OK
     } catch {
-        $Result = "$($_.Exception.Message)"
+        $Result = "Failed to update group GAL visibility: $((Get-CippException -Exception $_).NormalizedError)"
         $StatusCode = [HttpStatusCode]::InternalServerError
     }
     return ([HttpResponseContext]@{

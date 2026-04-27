@@ -60,14 +60,15 @@ Function Invoke-ExecSetCASMailbox {
             $Message
         } catch {
             $ProtocolNames = $ProtocolList -join ', '
-            $ErrorMessage = "Failed to set $ProtocolNames for $Username. Error: $($_.Exception.Message)"
-            Write-LogMessage -headers $Request.Headers -API $APINAME -message $ErrorMessage -Sev 'Error' -tenant $TenantFilter
+            $NormalizedError = (Get-CippException -Exception $_).NormalizedError
+            $ErrorMessage = "Failed to update $ProtocolNames for $Username`: $NormalizedError"
+            Write-LogMessage -headers $Request.Headers -API $APINAME -message "Failed to set $ProtocolNames for $Username`: $($_.Exception.Message)" -Sev 'Error' -tenant $TenantFilter
             throw $ErrorMessage
         }
 
         $Body = [pscustomobject]@{ 'Results' = @($Results) }
     } catch {
-        $Body = [pscustomobject]@{ 'Results' = @("Error: $($_.Exception.Message)") }
+        $Body = [pscustomobject]@{ 'Results' = @("$((Get-CippException -Exception $_).NormalizedError)") }
     }
 
     return ([HttpResponseContext]@{

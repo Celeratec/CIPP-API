@@ -75,7 +75,7 @@ function Invoke-ListMessageTrace {
         }
     } catch {
         Write-LogMessage -headers $Request.Headers -API $APINAME -tenant $($tenantfilter) -message "Failed executing messagetrace. Error: $($_.Exception.Message)" -Sev 'Error'
-        $trace = @{Status = "Failed to retrieve message trace $($_.Exception.Message)" }
+        $trace = @{Status = "Failed to retrieve message trace: $((Get-CippException -Exception $_).NormalizedError)" }
     }
 
     return ([HttpResponseContext]@{

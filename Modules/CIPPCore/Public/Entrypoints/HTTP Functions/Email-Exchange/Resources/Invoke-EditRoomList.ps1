@@ -41,7 +41,7 @@ Function Invoke-EditRoomList {
                 $Results.Add("Successfully updated room list properties for $($RoomListObj.displayName)")
                 Write-LogMessage -headers $Headers -API $APIName -tenant $TenantId -message "Updated room list properties for $($RoomListObj.displayName)" -Sev 'Info'
             } catch {
-                $Results.Add("Failed to update room list properties: $($_.Exception.Message)")
+                $Results.Add("Failed to update room list properties: $((Get-CippException -Exception $_).NormalizedError)")
                 Write-LogMessage -headers $Headers -API $APIName -tenant $TenantId -message "Failed to update room list properties: $($_.Exception.Message)" -Sev 'Error'
             }
         }
@@ -61,7 +61,7 @@ Function Invoke-EditRoomList {
                     $Results.Add("Successfully added room $MemberEmail to room list")
                     Write-LogMessage -headers $Headers -API $APIName -tenant $TenantId -message "Added room $MemberEmail to room list $GroupId" -Sev 'Info'
                 } catch {
-                    $Results.Add("Failed to add room $MemberEmail : $($_.Exception.Message)")
+                    $Results.Add("Failed to add room $MemberEmail`: $((Get-CippException -Exception $_).NormalizedError)")
                     Write-LogMessage -headers $Headers -API $APIName -tenant $TenantId -message "Failed to add room $MemberEmail : $($_.Exception.Message)" -Sev 'Error'
                 }
             }
@@ -82,7 +82,7 @@ Function Invoke-EditRoomList {
                     $Results.Add("Successfully removed room $MemberEmail from room list")
                     Write-LogMessage -headers $Headers -API $APIName -tenant $TenantId -message "Removed room $MemberEmail from room list $GroupId" -Sev 'Info'
                 } catch {
-                    $Results.Add("Failed to remove room $MemberEmail from room list: $($_.Exception.Message)")
+                    $Results.Add("Failed to remove room $MemberEmail from room list: $((Get-CippException -Exception $_).NormalizedError)")
                     Write-LogMessage -headers $Headers -API $APIName -tenant $TenantId -message "Failed to remove room $MemberEmail from room list: $($_.Exception.Message)" -Sev 'Error'
                 }
             }
@@ -134,7 +134,7 @@ Function Invoke-EditRoomList {
                 $null = New-ExoRequest -tenantid $TenantId -cmdlet 'Set-DistributionGroup' -cmdParams $SetOwnersParams -useSystemMailbox $true
                 Write-LogMessage -headers $Headers -API $APIName -tenant $TenantId -message "Updated owners for room list $GroupId" -Sev 'Info'
             } catch {
-                $Results.Add("Failed to update room list owners: $($_.Exception.Message)")
+                $Results.Add("Failed to update room list owners: $((Get-CippException -Exception $_).NormalizedError)")
                 Write-LogMessage -headers $Headers -API $APIName -tenant $TenantId -message "Failed to update room list owners: $($_.Exception.Message)" -Sev 'Error'
             }
         }
@@ -157,13 +157,13 @@ Function Invoke-EditRoomList {
 
                 Write-LogMessage -headers $Headers -API $APIName -tenant $TenantId -message "Updated external email settings for room list $GroupId" -Sev 'Info'
             } catch {
-                $Results.Add("Failed to update external email settings: $($_.Exception.Message)")
+                $Results.Add("Failed to update external email settings: $((Get-CippException -Exception $_).NormalizedError)")
                 Write-LogMessage -headers $Headers -API $APIName -tenant $TenantId -message "Failed to update external email settings: $($_.Exception.Message)" -Sev 'Error'
             }
         }
 
     } catch {
-        $Results.Add("An error occurred while editing the room list: $($_.Exception.Message)")
+        $Results.Add("An error occurred while editing the room list: $((Get-CippException -Exception $_).NormalizedError)")
         Write-LogMessage -headers $Headers -API $APIName -tenant $TenantId -message "Failed to edit room list: $($_.Exception.Message)" -Sev 'Error'
     }
 

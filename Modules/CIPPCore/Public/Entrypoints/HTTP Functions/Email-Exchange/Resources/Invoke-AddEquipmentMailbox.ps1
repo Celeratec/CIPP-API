@@ -35,8 +35,8 @@ Function Invoke-AddEquipmentMailbox {
             $null = Set-CIPPSignInState -userid $AddEquipmentRequest.ExternalDirectoryObjectId -TenantFilter $Tenant -APIName $APINAME -Headers $Headers -AccountEnabled $false
             $Results.Add("Successfully blocked sign-in for Equipment mailbox $($MailboxObject.userPrincipalName)")
         } catch {
-            $ErrorMessage = $_.Exception.Message
-            $Results.Add("Failed to block sign-in for Equipment mailbox: $($MailboxObject.userPrincipalName). Error: $ErrorMessage")
+            $ErrorMessage = (Get-CippException -Exception $_).NormalizedError
+            $Results.Add("Failed to block sign-in for equipment mailbox $($MailboxObject.userPrincipalName): $ErrorMessage")
         }
         Write-LogMessage -headers $Headers -API $APIName -tenant $Tenant -message "Created equipment mailbox $($MailboxObject.displayName)" -Sev 'Info'
         $StatusCode = [HttpStatusCode]::OK

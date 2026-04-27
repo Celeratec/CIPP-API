@@ -30,8 +30,8 @@ function Invoke-ExecEditMailboxPermissions {
             # Sync cache
             Sync-CIPPMailboxPermissionCache -TenantFilter $TenantFilter -MailboxIdentity $username -User $RemoveUser -PermissionType 'FullAccess' -Action 'Remove'
         } catch {
-            Write-LogMessage -headers $Request.Headers -API $APINAME-message "Could not remove mailbox permissions for $($removeuser) on $($username)" -Sev 'Error' -tenant $TenantFilter
-            $results.add("Could not remove $($removeuser) shared mailbox permissions for $($username). Error: $($_.Exception.Message)")
+            Write-LogMessage -headers $Request.Headers -API $APINAME-message "Could not remove mailbox permissions for $($removeuser) on $($username): $($_.Exception.Message)" -Sev 'Error' -tenant $TenantFilter
+            $results.add("Could not remove $($removeuser) shared mailbox permissions for $($username): $((Get-CippException -Exception $_).NormalizedError)")
         }
     }
     $AddFullAccess = ($Request.body.AddFullAccess).value
@@ -46,8 +46,8 @@ function Invoke-ExecEditMailboxPermissions {
             Sync-CIPPMailboxPermissionCache -TenantFilter $TenantFilter -MailboxIdentity $username -User $UserAutomap -PermissionType 'FullAccess' -Action 'Add'
 
         } catch {
-            Write-LogMessage -headers $Request.Headers -API $APINAME-message "Could not add mailbox permissions for $($UserAutomap) on $($username)" -Sev 'Error' -tenant $TenantFilter
-            $results.add( "Could not add $($UserAutomap) shared mailbox permissions for $($username). Error: $($_.Exception.Message)")
+            Write-LogMessage -headers $Request.Headers -API $APINAME-message "Could not add mailbox permissions for $($UserAutomap) on $($username): $($_.Exception.Message)" -Sev 'Error' -tenant $TenantFilter
+            $results.add( "Could not add $($UserAutomap) shared mailbox permissions for $($username): $((Get-CippException -Exception $_).NormalizedError)")
         }
     }
     $AddFullAccessNoAutoMap = ($Request.body.AddFullAccessNoAutoMap).value
@@ -61,8 +61,8 @@ function Invoke-ExecEditMailboxPermissions {
             # Sync cache
             Sync-CIPPMailboxPermissionCache -TenantFilter $TenantFilter -MailboxIdentity $username -User $UserNoAutomap -PermissionType 'FullAccess' -Action 'Add'
         } catch {
-            Write-LogMessage -headers $Request.Headers -API $APINAME-message "Could not add mailbox permissions for $($UserNoAutomap) on $($username)" -Sev 'Error' -tenant $TenantFilter
-            $results.add("Could not add $($UserNoAutomap) shared mailbox permissions for $($username). Error: $($_.Exception.Message)")
+            Write-LogMessage -headers $Request.Headers -API $APINAME-message "Could not add mailbox permissions for $($UserNoAutomap) on $($username): $($_.Exception.Message)" -Sev 'Error' -tenant $TenantFilter
+            $results.add("Could not add $($UserNoAutomap) shared mailbox permissions for $($username): $((Get-CippException -Exception $_).NormalizedError)")
         }
     }
 
@@ -77,8 +77,8 @@ function Invoke-ExecEditMailboxPermissions {
             # Sync cache
             Sync-CIPPMailboxPermissionCache -TenantFilter $TenantFilter -MailboxIdentity $username -User $UserSendAs -PermissionType 'SendAs' -Action 'Add'
         } catch {
-            Write-LogMessage -headers $Request.Headers -API $APINAME-message "Could not add mailbox permissions for $($UserSendAs) on $($username)" -Sev 'Error' -tenant $TenantFilter
-            $results.add("Could not add $($UserSendAs) send-as permissions for $($username). Error: $($_.Exception.Message)")
+            Write-LogMessage -headers $Request.Headers -API $APINAME-message "Could not add mailbox permissions for $($UserSendAs) on $($username): $($_.Exception.Message)" -Sev 'Error' -tenant $TenantFilter
+            $results.add("Could not add $($UserSendAs) send-as permissions for $($username): $((Get-CippException -Exception $_).NormalizedError)")
         }
     }
 
@@ -93,8 +93,8 @@ function Invoke-ExecEditMailboxPermissions {
             # Sync cache
             Sync-CIPPMailboxPermissionCache -TenantFilter $TenantFilter -MailboxIdentity $username -User $UserSendAs -PermissionType 'SendAs' -Action 'Remove'
         } catch {
-            Write-LogMessage -headers $Request.Headers -API $APINAME-message "Could not remove mailbox permissions for $($UserSendAs) on $($username)" -Sev 'Error' -tenant $TenantFilter
-            $results.add("Could not remove $($UserSendAs) send-as permissions for $($username). Error: $($_.Exception.Message)")
+            Write-LogMessage -headers $Request.Headers -API $APINAME-message "Could not remove mailbox permissions for $($UserSendAs) on $($username): $($_.Exception.Message)" -Sev 'Error' -tenant $TenantFilter
+            $results.add("Could not remove $($UserSendAs) send-as permissions for $($username): $((Get-CippException -Exception $_).NormalizedError)")
         }
     }
 
@@ -106,8 +106,8 @@ function Invoke-ExecEditMailboxPermissions {
             $results.add( "Granted $UserSendOnBehalf access to $($username) with Send On Behalf Permissions")
             Write-LogMessage -headers $Request.Headers -API $APINAME-message "Granted $UserSendOnBehalf access to $($username) with Send On Behalf Permissions" -Sev 'Info' -tenant $TenantFilter
         } catch {
-            Write-LogMessage -headers $Request.Headers -API $APINAME-message "Could not add send on behalf permissions for $($UserSendOnBehalf) on $($username)" -Sev 'Error' -tenant $TenantFilter
-            $results.add("Could not add $($UserSendOnBehalf) send on behalf permissions for $($username). Error: $($_.Exception.Message)")
+            Write-LogMessage -headers $Request.Headers -API $APINAME-message "Could not add send on behalf permissions for $($UserSendOnBehalf) on $($username): $($_.Exception.Message)" -Sev 'Error' -tenant $TenantFilter
+            $results.add("Could not add $($UserSendOnBehalf) send on behalf permissions for $($username): $((Get-CippException -Exception $_).NormalizedError)")
         }
     }
 
@@ -119,8 +119,8 @@ function Invoke-ExecEditMailboxPermissions {
             $results.add( "Removed $UserSendOnBehalf from $($username) Send on Behalf Permissions")
             Write-LogMessage -headers $Request.Headers -API $APINAME-message "Removed $UserSendOnBehalf from $($username) Send on Behalf Permissions" -Sev 'Info' -tenant $TenantFilter
         } catch {
-            Write-LogMessage -headers $Request.Headers -API $APINAME-message "Could not Remove send on behalf permissions for $($UserSendOnBehalf) on $($username)" -Sev 'Error' -tenant $TenantFilter
-            $results.add("Could not remove $($UserSendOnBehalf) send on behalf permissions for $($username). Error: $($_.Exception.Message)")
+            Write-LogMessage -headers $Request.Headers -API $APINAME-message "Could not Remove send on behalf permissions for $($UserSendOnBehalf) on $($username): $($_.Exception.Message)" -Sev 'Error' -tenant $TenantFilter
+            $results.add("Could not remove $($UserSendOnBehalf) send on behalf permissions for $($username): $((Get-CippException -Exception $_).NormalizedError)")
         }
     }
 

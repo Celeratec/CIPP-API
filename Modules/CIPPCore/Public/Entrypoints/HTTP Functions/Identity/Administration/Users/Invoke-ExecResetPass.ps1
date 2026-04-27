@@ -36,7 +36,7 @@ Function Invoke-ExecResetPass {
         $Result = Set-CIPPResetPassword @ResetParams
         $StatusCode = [HttpStatusCode]::OK
     } catch {
-        $Result = $_.Exception.Message
+        $Result = "Failed to reset password: $((Get-CippException -Exception $_).NormalizedError)"
         $StatusCode = [HttpStatusCode]::InternalServerError
     }
 

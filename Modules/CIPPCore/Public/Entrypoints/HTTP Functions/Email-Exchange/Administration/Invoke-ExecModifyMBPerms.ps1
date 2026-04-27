@@ -404,7 +404,7 @@ Function Invoke-ExecModifyMBPerms {
                     $null = $Results.Add($CmdletMetadata.ExpectedResult)
                 }
                 catch {
-                    $null = $Results.Add("Error processing $($CmdletMetadata.Permission) for $($CmdletMetadata.TargetUser) on $($CmdletMetadata.Mailbox): $($_.Exception.Message)")
+                    $null = $Results.Add("Error processing $($CmdletMetadata.Permission) for $($CmdletMetadata.TargetUser) on $($CmdletMetadata.Mailbox): $((Get-CippException -Exception $_).NormalizedError)")
                 }
             }
         }
@@ -437,7 +437,7 @@ Function Invoke-ExecModifyMBPerms {
         }
         catch {
             Write-LogMessage -headers $Request.Headers -API $APINAME -message "Permission modification failed: $($_.Exception.Message)" -Sev 'Error' -tenant $TenantFilter
-            $null = $Results.Add("Error processing $($CmdletMetadata.Permission) for $($CmdletMetadata.TargetUser) on $($CmdletMetadata.Mailbox): $($_.Exception.Message)")
+            $null = $Results.Add("Error processing $($CmdletMetadata.Permission) for $($CmdletMetadata.TargetUser) on $($CmdletMetadata.Mailbox): $((Get-CippException -Exception $_).NormalizedError)")
         }
     }
 

@@ -31,7 +31,7 @@ function Invoke-SetAuthMethod {
         $Result = Set-CIPPAuthenticationPolicy @Params
         $StatusCode = [HttpStatusCode]::OK
     } catch {
-        $Result = $_.Exception.Message
+        $Result = "Failed to update authentication method: $((Get-CippException -Exception $_).NormalizedError)"
         $StatusCode = [HttpStatusCode]::InternalServerError
     }
 

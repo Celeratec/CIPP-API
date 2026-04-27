@@ -27,7 +27,7 @@ function Invoke-ExecEditCalendarPermissions {
         }
         $StatusCode = [HttpStatusCode]::OK
     } catch {
-        $Result = $_.Exception.Message
+        $Result = "Failed to update calendar permissions: $((Get-CippException -Exception $_).NormalizedError)"
         $StatusCode = [HttpStatusCode]::Forbidden
         Write-Warning "Error in ExecEditCalendarPermissions: $($_.Exception.Message)"
         Write-Information $_.InvocationInfo.PositionMessage

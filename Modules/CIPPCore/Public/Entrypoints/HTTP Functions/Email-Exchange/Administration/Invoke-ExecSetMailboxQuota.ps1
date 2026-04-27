@@ -30,13 +30,13 @@ Function Invoke-ExecSetMailboxQuota {
                 Write-LogMessage -headers $Request.Headers -API $APINAME -message "Changed IssueWarningQuota for $username - $($message)" -Sev 'Info' -tenant $TenantFilter
             }
         } catch {
-            Write-LogMessage -headers $Request.Headers -API $APINAME -message "Could not adjust mailbox quota for $($username)" -Sev 'Error' -tenant $TenantFilter
-            "Could not adjust mailbox quota for $($username). Error: $($_.Exception.Message)"
+            Write-LogMessage -headers $Request.Headers -API $APINAME -message "Could not adjust mailbox quota for $($username): $($_.Exception.Message)" -Sev 'Error' -tenant $TenantFilter
+            "Could not adjust mailbox quota for $($username): $((Get-CippException -Exception $_).NormalizedError)"
         }
 
         $body = [pscustomobject]@{'Results' = @($results) }
     } catch {
-        $body = [pscustomobject]@{'Results' = @("Could not adjust mailbox quota: $($_.Exception.message)") }
+        $body = [pscustomobject]@{'Results' = @("Could not adjust mailbox quota: $((Get-CippException -Exception $_).NormalizedError)") }
     }
 
     return ([HttpResponseContext]@{

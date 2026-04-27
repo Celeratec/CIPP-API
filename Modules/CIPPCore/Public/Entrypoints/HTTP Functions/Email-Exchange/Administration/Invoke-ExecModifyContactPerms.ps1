@@ -98,7 +98,7 @@ function Invoke-ExecModifyContactPerms {
                 $Results.Add($Result)
             } catch {
                 $HasErrors = $true
-                $Results.Add("$($_.Exception.Message)")
+                $Results.Add("$((Get-CippException -Exception $_).NormalizedError)")
             }
         }
     }

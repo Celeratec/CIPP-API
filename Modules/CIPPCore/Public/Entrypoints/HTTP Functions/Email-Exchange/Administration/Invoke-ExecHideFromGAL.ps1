@@ -24,7 +24,7 @@ Function Invoke-ExecHideFromGAL {
         $StatusCode = [HttpStatusCode]::OK
 
     } catch {
-        $Result = $_.Exception.Message
+        $Result = (Get-CippException -Exception $_).NormalizedError
         $StatusCode = [HttpStatusCode]::Forbidden
     }
     return ([HttpResponseContext]@{

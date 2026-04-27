@@ -14,7 +14,7 @@ Function Invoke-ExecMailboxMobileDevices {
         $MobileResults = Set-CIPPMobileDevice -UserId $request.query.Userid -Guid $request.query.guid -DeviceId $request.query.deviceid -Quarantine $request.query.Quarantine -tenantFilter $request.query.tenantfilter -APIName $APINAME -Delete $Request.query.Delete -Headers $Request.Headers
         $Results = [pscustomobject]@{'Results' = $MobileResults }
     } catch {
-        $Results = [pscustomobject]@{'Results' = "Failed  $($request.query.Userid): $($_.Exception.Message)" }
+        $Results = [pscustomobject]@{'Results' = "Failed to update mobile device for $($request.query.Userid): $((Get-CippException -Exception $_).NormalizedError)" }
     }
 
     return ([HttpResponseContext]@{

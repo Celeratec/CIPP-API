@@ -73,8 +73,8 @@ function Invoke-ExecEmailTroubleshoot {
                 @{ Name = 'Received'; Expression = { $_.Received.ToString('u') } }, FromIP, ToIP)
         Write-LogMessage -headers $Request.Headers -API $APIName -tenant $TenantFilter -message 'Executed message trace via troubleshooter' -Sev 'Info'
     } catch {
-        $TraceError = "Message trace failed: $($_.Exception.Message)"
-        Write-LogMessage -headers $Request.Headers -API $APIName -tenant $TenantFilter -message $TraceError -Sev 'Error'
+        $TraceError = "Message trace failed: $((Get-CippException -Exception $_).NormalizedError)"
+        Write-LogMessage -headers $Request.Headers -API $APIName -tenant $TenantFilter -message "Message trace failed: $($_.Exception.Message)" -Sev 'Error'
     }
 
     $QuarantineParams = @{ 'PageSize' = 1000 }
@@ -113,8 +113,8 @@ function Invoke-ExecEmailTroubleshoot {
             $QuarantineResults = $QuarantineResults | Where-Object { $_.Subject -like "*$($Request.Body.subject)*" }
         }
     } catch {
-        $QuarantineError = "Quarantine search failed: $($_.Exception.Message)"
-        Write-LogMessage -headers $Request.Headers -API $APIName -tenant $TenantFilter -message $QuarantineError -Sev 'Error'
+        $QuarantineError = "Quarantine search failed: $((Get-CippException -Exception $_).NormalizedError)"
+        Write-LogMessage -headers $Request.Headers -API $APIName -tenant $TenantFilter -message "Quarantine search failed: $($_.Exception.Message)" -Sev 'Error'
     }
 
     $Body = @{

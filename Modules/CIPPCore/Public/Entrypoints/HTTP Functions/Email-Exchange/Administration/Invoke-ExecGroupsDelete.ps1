@@ -22,7 +22,7 @@ Function Invoke-ExecGroupsDelete {
         $Result = Remove-CIPPGroup -ID $ID -GroupType $GroupType -TenantFilter $TenantFilter -DisplayName $DisplayName -APIName $APIName -Headers $Headers
         $StatusCode = [HttpStatusCode]::OK
     } catch {
-        $Result = "$($_.Exception.Message)"
+        $Result = "Failed to delete group: $((Get-CippException -Exception $_).NormalizedError)"
         $StatusCode = [HttpStatusCode]::InternalServerError
     }
     return ([HttpResponseContext]@{

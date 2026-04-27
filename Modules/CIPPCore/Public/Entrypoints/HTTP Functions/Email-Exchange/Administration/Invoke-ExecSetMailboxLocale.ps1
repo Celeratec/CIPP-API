@@ -21,7 +21,7 @@ Function Invoke-ExecSetMailboxLocale {
         $Result = Set-CippMailboxLocale -username $User -locale $Locale -tenantFilter $Tenant -APIName $APIName -Headers $Headers
         $StatusCode = [HttpStatusCode]::OK
     } catch {
-        $Result = "$($_.Exception.Message)"
+        $Result = "Failed to set mailbox locale: $((Get-CippException -Exception $_).NormalizedError)"
         $StatusCode = [HttpStatusCode]::InternalServerError
     }
 

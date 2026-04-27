@@ -19,7 +19,7 @@ function Invoke-ExecEnableAutoExpandingArchive {
         $Result = Set-CIPPMailboxArchive -TenantFilter $TenantFilter -UserID $ID -Username $Username -Headers $Headers -AutoExpandingArchive
         $StatusCode = [HttpStatusCode]::OK
     } catch {
-        $Result = $_.Exception.Message
+        $Result = "Failed to enable auto-expanding archive: $((Get-CippException -Exception $_).NormalizedError)"
         $StatusCode = [HttpStatusCode]::InternalServerError
     }
 

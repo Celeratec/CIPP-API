@@ -34,7 +34,7 @@ Function Invoke-ExecSetMailboxEmailSize {
         $Result = Set-CippMaxEmailSize @Params
         $StatusCode = [HttpStatusCode]::OK
     } catch {
-        $Result = "$($_.Exception.Message)"
+        $Result = "Failed to update mailbox email size limits: $((Get-CippException -Exception $_).NormalizedError)"
         $StatusCode = [HttpStatusCode]::InternalServerError
     }
 
