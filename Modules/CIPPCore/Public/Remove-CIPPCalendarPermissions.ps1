@@ -129,7 +129,7 @@ function Remove-CIPPCalendarPermissions {
                         }
 
                         $ErrorMsg = "Failed to remove $UserToRemove from calendar $($CalPermEntry.CalendarUPN): $($_.Exception.Message)"
-                        Write-LogMessage -headers $Headers -API $APIName -message $ErrorMsg -sev 'Warn' -tenant $TenantFilter
+                        Write-LogMessage -headers $Headers -API $APIName -message $ErrorMsg -sev 'Warning' -tenant $TenantFilter
                         $Results.Add($ErrorMsg)
                     }
                 }
