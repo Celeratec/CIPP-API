@@ -1,5 +1,8 @@
 Write-Information '#### CIPP-API Start ####'
 
+# Set root path for Config file access throughout the application
+$env:CIPPRootPath = $PSScriptRoot
+
 $Timings = @{}
 $TotalStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
