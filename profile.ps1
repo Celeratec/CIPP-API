@@ -72,7 +72,7 @@ if ($hasAppInsights) {
 # Import modules
 $SwModules = [System.Diagnostics.Stopwatch]::StartNew()
 $ModulesPath = Join-Path $PSScriptRoot 'Modules'
-$Modules = @('CIPPCore', 'CippExtensions', 'AzBobbyTables')
+$Modules = @('CIPPCore', 'CippExtensions', 'AzBobbyTables', 'CIPPHTTP')
 foreach ($Module in $Modules) {
     $SwModule = [System.Diagnostics.Stopwatch]::StartNew()
     try {

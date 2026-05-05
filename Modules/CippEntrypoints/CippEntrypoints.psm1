@@ -86,6 +86,7 @@ function Receive-CippHttpTrigger {
                     Import-Module CippExtensions -Force -ErrorAction SilentlyContinue
                     Import-Module DNSHealth -Force -ErrorAction SilentlyContinue
                     Import-Module AzBobbyTables -Force -ErrorAction SilentlyContinue
+                    Import-Module CIPPHTTP -Force -ErrorAction SilentlyContinue
 
                     # Create individual request object for each batch item
                     $IndividualRequest = @{
