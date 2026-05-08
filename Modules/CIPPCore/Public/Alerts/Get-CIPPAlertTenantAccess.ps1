@@ -53,7 +53,7 @@ function Get-CIPPAlertTenantAccess {
 
             foreach ($RoleId in $ExpectedRoles) {
                 $GraphRole = $GDAPRolesGraph.body.value | Where-Object -Property roleDefinitionId -EQ $RoleId.Id
-                $Role = $GraphRole.principal | Where-Object -Property organizationId -EQ $env:TenantID
+                $Role = $GraphRole.principal | Where-Object -Property organizationId -EQ $TenantId
                 if (-not $Role -and $RoleId.Optional -ne $true) {
                     $MissingRoles.Add($RoleId.Name)
                 }

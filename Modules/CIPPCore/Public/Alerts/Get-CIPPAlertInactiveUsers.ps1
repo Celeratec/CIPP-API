@@ -59,6 +59,7 @@ function Get-CIPPAlertInactiveUsers {
                 if (-not $IncludeNeverSignedIn -and -not $lastSignIn) { continue }
                 # Only process inactive users
                 if ($isInactive) {
+                    $daysSinceSignIn = $null
                     if (-not $lastSignIn) {
                         $Message = 'User {0} has never signed in.' -f $user.UserPrincipalName
                     } else {
@@ -70,7 +71,7 @@ function Get-CIPPAlertInactiveUsers {
                         UserPrincipalName   = $user.UserPrincipalName
                         Id                  = $user.id
                         lastSignIn          = $lastSignIn
-                        DaysSinceLastSignIn = if ($daysSinceSignIn) { $daysSinceSignIn } else { 'N/A' }
+                        DaysSinceLastSignIn = if ($null -ne $daysSinceSignIn) { $daysSinceSignIn } else { 'N/A' }
                         Message             = $Message
                         Tenant              = $TenantFilter
                     }
