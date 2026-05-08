@@ -15,7 +15,7 @@ function Get-CIPPAlertLicensedUsersWithRoles {
     $LicensedUsers = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/users?`$top=999&`$select=userPrincipalName,assignedLicenses,displayName" -tenantid $TenantFilter | Where-Object { $_.assignedLicenses -and $_.assignedLicenses.Count -gt 0 }
     if (-not $LicensedUsers -or $LicensedUsers.Count -eq 0) {
         Write-Information "No licensed users found for tenant $TenantFilter"
-        return $true
+        return
     }
     # Get all directory roles with their members
     $DirectoryRoles = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/directoryRoles?`$expand=members" -tenantid $TenantFilter

@@ -21,8 +21,6 @@ function Get-CippAlertSecureScore {
                     CurrentScore   = $SecureScore.currentScore
                     MaxSecureScore = $SecureScore.maxScore
                 }
-            } else {
-                $SecureScoreResult = @()
             }
         } elseif ($InputValue.ThresholdType.value -eq "percent") {
             $PercentageScore = [math]::Round((($SecureScore.currentScore / $SecureScore.maxScore) * 100),2)
@@ -35,11 +33,9 @@ function Get-CippAlertSecureScore {
                     CurrentScorePercentage   = [math]::Round($PercentageScore,2)
                     ScoreThresholdPercentage = $InputValue.InputValue
                 }
-            } else {
-                $SecureScoreResult = @()
             }
         }
-        if ($SecureScoreResult) {
+        if ($SecureScoreResult -and @($SecureScoreResult).Count -gt 0) {
             Write-AlertTrace -cmdletName $MyInvocation.MyCommand -tenantFilter $TenantFilter -data $SecureScoreResult -PartitionKey SecureScore
         }
     } catch {

@@ -40,6 +40,7 @@ function Get-CIPPAlertTenantAccess {
         # Test Graph API connectivity and GDAP role assignments
         $GraphStatus = $false
         $GraphMessage = ''
+        $MissingRoles = [System.Collections.Generic.List[string]]::new()
         try {
             $BulkRequests = $ExpectedRoles | ForEach-Object {
                 @{
@@ -49,7 +50,6 @@ function Get-CIPPAlertTenantAccess {
                 }
             }
             $GDAPRolesGraph = New-GraphBulkRequest -tenantid $TenantId -Requests $BulkRequests
-            $MissingRoles = [System.Collections.Generic.List[string]]::new()
 
             foreach ($RoleId in $ExpectedRoles) {
                 $GraphRole = $GDAPRolesGraph.body.value | Where-Object -Property roleDefinitionId -EQ $RoleId.Id
