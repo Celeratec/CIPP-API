@@ -148,7 +148,7 @@ function Invoke-AddUserBulk {
                                     ImapEnabled  = $false
                                     PopEnabled   = $false
                                 }
-                                ScheduledTime = (Get-Date).AddMinutes(5).ToUniversalTime()
+                                ScheduledTime = [int64](((Get-Date).AddMinutes(5).ToUniversalTime()) - (Get-Date '1/1/1970')).TotalSeconds
                                 PostExecution = @{
                                     Webhook = $false
                                     Email   = $false
