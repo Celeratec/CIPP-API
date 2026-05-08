@@ -30,7 +30,7 @@ function Get-CIPPAlertNewRiskyUsers {
             RowKey       = [string]$TenantFilter
             delta        = "$NewDeltatoSave"
         }
-        Add-CIPPAzDataTableEntity @DeltaTable -Entity $DeltaEntity -Force
+        Add-CIPPAzDataTableEntity @Deltatable -Entity $DeltaEntity -Force
 
         if ($RiskyUsersDelta) {
             $AlertData = $NewDelta | Where-Object { $_.userPrincipalName -notin $RiskyUsersDelta.userPrincipalName } | ForEach-Object {

@@ -47,7 +47,7 @@ function Get-CIPPAlertMFAAdmins {
             if ($Users -or $UnenforcedAdmins) {
                 $Schema = Get-CIPPSchemaExtensions | Where-Object { $_.id -match '_cippUser' } | Select-Object -First 1
                 $JITAdmins = New-GraphGETRequest -uri "https://graph.microsoft.com/beta/users?`$select=id,$($Schema.id)&`$filter=$($Schema.id)/jitAdminEnabled eq true" -tenantid $TenantFilter -ComplexFilter
-                $JITAdminIds = $JITAdmins.id
+                $JITAdminIds = if ($JITAdmins) { @($JITAdmins.id) } else { @() }
                 $Users = $Users | Where-Object { $_.ID -notin $JITAdminIds }
                 $UnenforcedAdmins = $UnenforcedAdmins | Where-Object { $_.ID -notin $JITAdminIds }
             }

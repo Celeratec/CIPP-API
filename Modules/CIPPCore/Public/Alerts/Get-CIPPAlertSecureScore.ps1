@@ -12,6 +12,10 @@ function Get-CippAlertSecureScore {
         $TenantFilter
     )
     try {
+        if (-not $InputValue -or -not $InputValue.ThresholdType -or -not $InputValue.InputValue) {
+            Write-LogMessage -API 'Alerts' -tenant $TenantFilter -message "Secure Score alert skipped for $($TenantFilter): No threshold configuration provided" -sev Info
+            return
+        }
         $SecureScore = New-GraphGetRequest -uri 'https://graph.microsoft.com/v1.0/security/secureScores?$top=1' -tenantid $TenantFilter -noPagination $true
         if ($InputValue.ThresholdType.value -eq "absolute") {
             if ($SecureScore.currentScore -lt $InputValue.InputValue) {

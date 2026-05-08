@@ -26,7 +26,7 @@ function Get-CIPPAlertNewRole {
             RowKey       = [string]$TenantFilter
             delta        = "$NewDeltatoSave"
         }
-        Add-CIPPAzDataTableEntity @DeltaTable -Entity $DeltaEntity -Force
+        Add-CIPPAzDataTableEntity @Deltatable -Entity $DeltaEntity -Force
 
         if ($AdminDelta) {
             $AlertData = foreach ($Group in $NewDelta) {

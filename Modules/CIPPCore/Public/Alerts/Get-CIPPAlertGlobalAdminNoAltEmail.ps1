@@ -13,7 +13,7 @@ function Get-CIPPAlertGlobalAdminNoAltEmail {
     try {
         # Get all Global Admin accounts using the role template ID
         $globalAdmins = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/directoryRoles/roleTemplateId=62e90394-69f5-4237-9190-012177145e10/members?`$select=id,displayName,userPrincipalName,otherMails" -tenantid $($TenantFilter) -AsApp $true | Where-Object {
-            $_.userDisplayName -ne 'On-Premises Directory Synchronization Service Account' -and $_.'@odata.type' -eq '#microsoft.graph.user'
+            $_.displayName -ne 'On-Premises Directory Synchronization Service Account' -and $_.'@odata.type' -eq '#microsoft.graph.user'
         }
 
         # Filter for Global Admins without alternate email addresses
