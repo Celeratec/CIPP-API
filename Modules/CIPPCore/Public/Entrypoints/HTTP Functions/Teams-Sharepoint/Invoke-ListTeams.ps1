@@ -1,0 +1,174 @@
+Function Invoke-ListTeams {
+    <#
+    .FUNCTIONALITY
+        Entrypoint
+    .ROLE
+        Teams.Group.Read
+    #>
+    [CmdletBinding()]
+    param($Request, $TriggerMetadata)
+    # Interact with query parameters or the body of the request.
+    $TenantFilter = $Request.Query.TenantFilter
+    if ($request.query.type -eq 'List') {
+        $Groups = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/groups?`$filter=resourceProvisioningOptions/Any(x:x eq 'Team')&`$select=id,displayName,description,visibility,mailNickname" -tenantid $TenantFilter | Sort-Object -Property displayName
+
+        # Fetch isArchived, memberCount, and channelCount via batch requests for richer list data
+        try {
+            $TeamBatchRequests = $Groups | ForEach-Object {
+                @{
+                    id     = $_.id
+                    method = 'GET'
+                    url    = "/teams/$($_.id)?`$select=isArchived"
+                }
+            }
+
+            $TeamDetails = if ($TeamBatchRequests.Count -gt 0) {
+                New-GraphBulkRequest -Requests $TeamBatchRequests -tenantid $TenantFilter -asapp $true
+            } else { @() }
+
+            # Build a lookup for team details
+            $TeamLookup = @{}
+            foreach ($result in $TeamDetails) {
+                if ($result.body -and $result.id) {
+                    $TeamLookup[$result.id] = $result.body
+                }
+            }
+        } catch {
+            Write-Host "Warning: Could not fetch team details batch: $_"
+            $TeamLookup = @{}
+        }
+
+        # Merge group data with team details
+        $GraphRequest = $Groups | ForEach-Object {
+            $details = $TeamLookup[$_.id]
+            [PSCustomObject]@{
+                id           = $_.id
+                displayName  = $_.displayName
+                description  = $_.description
+                visibility   = $_.visibility
+                mailNickname = $_.mailNickname
+                isArchived   = if ($null -ne $details.isArchived) { $details.isArchived } else { $false }
+            }
+        }
+    }
+    if ($request.query.type -eq 'SharedChannels') {
+        $AllTeams = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/groups?`$filter=resourceProvisioningOptions/Any(x:x eq 'Team')&`$select=id,displayName" -tenantid $TenantFilter
+        $TeamNameLookup = @{}
+        foreach ($t in $AllTeams) { $TeamNameLookup[$t.id] = $t.displayName }
+
+        $ChannelBatchRequests = $AllTeams | ForEach-Object {
+            @{
+                id     = $_.id
+                method = 'GET'
+                url    = "/teams/$($_.id)/channels?`$filter=membershipType eq 'shared'&`$select=id,displayName,description,membershipType"
+            }
+        }
+
+        $ChannelResults = if ($ChannelBatchRequests.Count -gt 0) {
+            New-GraphBulkRequest -Requests $ChannelBatchRequests -tenantid $TenantFilter -asapp $true
+        } else { @() }
+
+        $GraphRequest = @()
+        foreach ($result in $ChannelResults) {
+            if ($result.body -and $result.body.value) {
+                foreach ($ch in $result.body.value) {
+                    $GraphRequest += [PSCustomObject]@{
+                        id          = $ch.id
+                        teamId      = $result.id
+                        teamName    = $TeamNameLookup[$result.id]
+                        displayName = $ch.displayName
+                        description = $ch.description
+                    }
+                }
+            }
+        }
+    }
+
+    $TeamID = $request.query.ID
+    Write-Host $TeamID
+    if ($request.query.type -eq 'Team') {
+        $Team = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/teams/$($TeamID)" -tenantid $TenantFilter -asapp $true
+        $Channels = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/teams/$($TeamID)/Channels" -tenantid $TenantFilter -asapp $true
+        $UserList = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/teams/$($TeamID)/Members" -tenantid $TenantFilter -asapp $true
+        $AppsList = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/teams/$($TeamID)/installedApps?`$expand=teamsAppDefinition" -tenantid $TenantFilter -asapp $true
+
+        # Fetch the SharePoint site details from the associated group
+        $SharePointUrl = $null
+        $SharePointSiteId = $null
+        $SharePointName = $null
+        $SharePointCreated = $null
+        try {
+            $GroupSites = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/groups/$($TeamID)/sites/root?`$select=webUrl,name,sharepointIds,createdDateTime" -tenantid $TenantFilter -asapp $true
+            if ($GroupSites.webUrl) {
+                $SharePointUrl = $GroupSites.webUrl
+            }
+            if ($GroupSites.sharepointIds.siteId) {
+                $SharePointSiteId = $GroupSites.sharepointIds.siteId
+            }
+            if ($GroupSites.name) {
+                $SharePointName = $GroupSites.name
+            }
+            if ($GroupSites.createdDateTime) {
+                $SharePointCreated = $GroupSites.createdDateTime
+            }
+        } catch {
+            Write-Host "Warning: Could not fetch SharePoint site URL for team $TeamID`: $_"
+        }
+
+        # Batch-fetch filesFolder for each channel to get per-channel siteId/driveId
+        try {
+            $ChannelFilesBatch = $Channels | ForEach-Object {
+                @{
+                    id     = $_.id
+                    method = 'GET'
+                    url    = "/teams/$($TeamID)/channels/$($_.id)/filesFolder?`$select=id,name,webUrl,parentReference"
+                }
+            }
+            $ChannelFilesResults = if ($ChannelFilesBatch.Count -gt 0) {
+                New-GraphBulkRequest -Requests $ChannelFilesBatch -tenantid $TenantFilter -asapp $true
+            } else { @() }
+
+            $ChannelFilesLookup = @{}
+            foreach ($result in $ChannelFilesResults) {
+                if ($result.body -and $result.id -and -not $result.body.error) {
+                    $ChannelFilesLookup[$result.id] = @{
+                        siteId  = $result.body.parentReference.siteId
+                        driveId = $result.body.parentReference.driveId
+                        webUrl  = $result.body.webUrl
+                    }
+                }
+            }
+
+            $Channels = $Channels | ForEach-Object {
+                $filesInfo = $ChannelFilesLookup[$_.id]
+                $_ | Add-Member -NotePropertyName 'filesSiteId' -NotePropertyValue ($filesInfo.siteId) -Force -PassThru |
+                     Add-Member -NotePropertyName 'filesDriveId' -NotePropertyValue ($filesInfo.driveId) -Force -PassThru |
+                     Add-Member -NotePropertyName 'filesWebUrl' -NotePropertyValue ($filesInfo.webUrl) -Force -PassThru
+            }
+        } catch {
+            Write-Host "Warning: Could not fetch channel filesFolder batch for team $TeamID`: $_"
+        }
+
+        $Owners = $UserList | Where-Object -Property Roles -EQ 'Owner'
+        $Members = $UserList | Where-Object -Property email -NotIn $owners.email
+        $GraphRequest = [PSCustomObject]@{
+            Name               = $team.DisplayName
+            TeamInfo           = @($team)
+            ChannelInfo        = @($channels)
+            Members            = @($Members)
+            Owners             = @($owners)
+            InstalledApps      = @($AppsList)
+            SharePointUrl      = $SharePointUrl
+            SharePointSiteId   = $SharePointSiteId
+            SharePointName     = $SharePointName
+            SharePointCreated  = $SharePointCreated
+        }
+    }
+
+
+    return ([HttpResponseContext]@{
+            StatusCode = [HttpStatusCode]::OK
+            Body       = @($GraphRequest)
+        })
+
+}

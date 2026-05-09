@@ -18,12 +18,17 @@ function Get-CIPPAlertInactiveGuestUsers {
             $inactiveDays = 90
             $excludeDisabled = $false
 
-            $excludeDisabled = [bool]$InputValue.ExcludeDisabled
-            if ($null -ne $InputValue.DaysSinceLastLogin -and $InputValue.DaysSinceLastLogin -ne '') {
-                $parsedDays = 0
-                if ([int]::TryParse($InputValue.DaysSinceLastLogin.ToString(), [ref]$parsedDays) -and $parsedDays -gt 0) {
-                    $inactiveDays = $parsedDays
+            if ($InputValue -is [hashtable] -or $InputValue -is [pscustomobject]) {
+                $excludeDisabled = [bool]$InputValue.ExcludeDisabled
+                if ($null -ne $InputValue.DaysSinceLastLogin -and $InputValue.DaysSinceLastLogin -ne '') {
+                    $parsedDays = 0
+                    if ([int]::TryParse($InputValue.DaysSinceLastLogin.ToString(), [ref]$parsedDays) -and $parsedDays -gt 0) {
+                        $inactiveDays = $parsedDays
+                    }
                 }
+            } elseif ($InputValue -eq $true) {
+                # Backwards compatibility: legacy single-input boolean means exclude disabled users
+                $excludeDisabled = $true
             }
 
 
