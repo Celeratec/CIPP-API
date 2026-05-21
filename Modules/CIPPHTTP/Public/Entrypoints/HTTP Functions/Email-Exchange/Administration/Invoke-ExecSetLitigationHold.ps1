@@ -47,7 +47,7 @@ function Invoke-ExecSetLitigationHold {
         $ErrorMessage = Get-CippException -Exception $_
         $Results = "Litigation hold update failed for $UserPrincipalName. Error: $($ErrorMessage.NormalizedError)"
         if ($ErrorMessage.NormalizedError -match "license doesn't permit|does not permit|LitigationHoldEnabled") {
-            $Results += ' Eligible licenses include Microsoft 365 E3 or E5, Office 365 E3 or E5, Exchange Online Plan 2, and Exchange Online Plan 1 with the Exchange Online Archiving add-on. Microsoft 365 Business Premium alone does not qualify unless Plan 2 or Archiving is also assigned.'
+            $Results += ' Eligible licenses include Microsoft 365 Business Premium, Microsoft 365 E3 or E5, Office 365 E3 or E5, Exchange Online Plan 2, and Exchange Online Plan 1 with the Exchange Online Archiving add-on.'
         }
         Write-LogMessage -API $APIName -tenant $TenantFilter -message $Results -sev Error -LogData $ErrorMessage
         $StatusCode = [HttpStatusCode]::InternalServerError
