@@ -10,7 +10,7 @@
   "functionTimeout": "00:10:00",
   "extensions": {
     "http": {
-      "maxConcurrentRequests": 10
+      "maxConcurrentRequests": 25
     },
     "durableTask": {
       "maxConcurrentActivityFunctions": 10,
