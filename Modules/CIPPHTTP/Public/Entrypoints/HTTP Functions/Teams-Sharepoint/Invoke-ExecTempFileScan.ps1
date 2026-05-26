@@ -15,6 +15,15 @@ function Invoke-ExecTempFileScan {
     $SiteId = $Request.Body.siteId
     $UserId = $Request.Body.userId
     $Filters = $Request.Body.filters
+    if (-not $Filters) {
+        $Filters = [PSCustomObject]@{
+            officeTemp     = $true
+            tempFiles      = $true
+            zeroByteFiles  = $true
+            systemJunk     = $true
+            backupFiles    = $false
+        }
+    }
 
     if (-not $TenantFilter) {
         return ([HttpResponseContext]@{
@@ -68,7 +77,7 @@ function Invoke-ExecTempFileScan {
                 @(@{ DriveId = $DriveInfo.id; SiteName = "OneDrive - $($UserInfo.displayName)"; SiteUrl = $DriveInfo.webUrl })
             }
             'allSites' {
-                $Sites = New-GraphGetRequest -uri 'https://graph.microsoft.com/v1.0/sites/getAllSites?$top=999' -tenantid $TenantFilter -AsApp $true
+                $Sites = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/sites/getAllSites?`$filter=isPersonalSite eq false&`$select=id,displayName,name,webUrl&`$top=999" -tenantid $TenantFilter -AsApp $true
                 $Sites | ForEach-Object {
                     try {
                         $DriveInfo = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/sites/$($_.id)/drive" -tenantid $TenantFilter -AsApp $true -NoAuthCheck $true

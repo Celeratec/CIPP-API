@@ -33,6 +33,16 @@ function Get-TempFilesRecursive {
         return @()
     }
 
+    if (-not $Filters) {
+        $Filters = [PSCustomObject]@{
+            officeTemp     = $true
+            tempFiles      = $true
+            zeroByteFiles  = $true
+            systemJunk     = $true
+            backupFiles    = $false
+        }
+    }
+
     $HasFilters = $Filters.officeTemp -or $Filters.tempFiles -or $Filters.zeroByteFiles -or $Filters.systemJunk -or $Filters.backupFiles
     if (-not $HasFilters) {
         return @()
