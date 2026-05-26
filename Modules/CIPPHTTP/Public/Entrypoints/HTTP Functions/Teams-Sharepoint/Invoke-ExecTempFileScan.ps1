@@ -17,11 +17,11 @@ function Invoke-ExecTempFileScan {
     $Filters = $Request.Body.filters
     if (-not $Filters) {
         $Filters = [PSCustomObject]@{
-            officeTemp     = $true
-            tempFiles      = $true
-            zeroByteFiles  = $true
-            systemJunk     = $true
-            backupFiles    = $false
+            officeTemp    = $true
+            tempFiles     = $true
+            zeroByteFiles = $true
+            systemJunk    = $true
+            backupFiles   = $false
         }
     }
 
@@ -61,66 +61,49 @@ function Invoke-ExecTempFileScan {
     }
 
     try {
-        $Results = [System.Collections.Generic.List[object]]::new()
+        $ScopeLabel = switch ($Scope) {
+            'site' { 'Single Site' }
+            'user' { 'OneDrive User' }
+            'allSites' { 'All SharePoint Sites' }
+            'allOneDrives' { 'All OneDrives' }
+        }
+        $QueueReference = "TempFileScan-$TenantFilter-$Scope-$SiteId-$UserId"
+        $Queue = New-CippQueueEntry -Name "Temp File Scan - $ScopeLabel" -Link '/teams-share/sharepoint/temp-file-cleanup' -Reference $QueueReference -TotalTasks 1
 
-        $DrivesToScan = switch ($Scope) {
-            'site' {
-                $SiteInfo = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/sites/$SiteId" -tenantid $TenantFilter -AsApp $true
-                $DriveInfo = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/sites/$SiteId/drive" -tenantid $TenantFilter -AsApp $true
-                $SiteName = $SiteInfo.displayName ?? $SiteInfo.name
-                @(@{ DriveId = $DriveInfo.id; SiteName = $SiteName; SiteUrl = $SiteInfo.webUrl })
-            }
-            'user' {
-                $EncodedUserId = if ($UserId -match '@') { $UserId -replace '#', '%23' } else { $UserId }
-                $DriveInfo = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users/$EncodedUserId/drive" -tenantid $TenantFilter -AsApp $true
-                $UserInfo = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users/$EncodedUserId" -tenantid $TenantFilter -AsApp $true
-                @(@{ DriveId = $DriveInfo.id; SiteName = "OneDrive - $($UserInfo.displayName)"; SiteUrl = $DriveInfo.webUrl })
-            }
-            'allSites' {
-                $Sites = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/sites/getAllSites?`$filter=isPersonalSite eq false&`$select=id,displayName,name,webUrl&`$top=999" -tenantid $TenantFilter -AsApp $true
-                $Sites | ForEach-Object {
-                    try {
-                        $DriveInfo = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/sites/$($_.id)/drive" -tenantid $TenantFilter -AsApp $true -NoAuthCheck $true
-                        $SiteName = $_.displayName ?? $_.name
-                        @{ DriveId = $DriveInfo.id; SiteName = $SiteName; SiteUrl = $_.webUrl }
-                    } catch { $null }
-                } | Where-Object { $_ }
-            }
-            'allOneDrives' {
-                $Users = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users?`$filter=assignedLicenses/`$count ne 0&`$count=true" -tenantid $TenantFilter -AsApp $true -ComplexFilter
-                $Users | ForEach-Object {
-                    try {
-                        $Drive = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/users/$($_.id)/drive" -tenantid $TenantFilter -AsApp $true -NoAuthCheck $true
-                        @{ DriveId = $Drive.id; SiteName = "OneDrive - $($_.displayName)"; SiteUrl = $Drive.webUrl }
-                    } catch { $null }
-                } | Where-Object { $_ }
-            }
+        $FilterParams = @{
+            officeTemp    = [bool]$Filters.officeTemp
+            tempFiles     = [bool]$Filters.tempFiles
+            zeroByteFiles = [bool]$Filters.zeroByteFiles
+            systemJunk    = [bool]$Filters.systemJunk
+            backupFiles   = [bool]$Filters.backupFiles
         }
 
-        foreach ($Drive in $DrivesToScan) {
-            $DriveFiles = Get-TempFilesRecursive -TenantFilter $TenantFilter -DriveId $Drive.DriveId -Filters $Filters
-            $DriveFiles | ForEach-Object {
-                $_.SiteName = $Drive.SiteName
-                $_.SiteUrl = $Drive.SiteUrl
-            }
-            if ($DriveFiles) {
-                $Results.AddRange([object[]]@($DriveFiles))
-            }
+        $Queued = Add-CippQueueMessage -Cmdlet 'Start-TempFileScan' -Parameters @{
+            QueueId      = $Queue.RowKey
+            TenantFilter = $TenantFilter
+            Scope        = $Scope
+            SiteId         = $SiteId
+            UserId         = $UserId
+            Filters        = $FilterParams
         }
 
-        $TotalSize = ($Results | Where-Object { $_.size }) | Measure-Object -Property size -Sum | Select-Object -ExpandProperty Sum
-        $Body = @{
-            Results    = @($Results)
-            TotalCount = $Results.Count
-            TotalSize  = $TotalSize ?? 0
+        if (-not $Queued) {
+            throw 'Failed to queue temp file scan'
         }
+
+        Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Queued temp file scan (scope=$Scope, queueId=$($Queue.RowKey))" -Sev Info
+
         $StatusCode = [HttpStatusCode]::OK
-
+        $Body = @{
+            Queued       = $true
+            QueueId      = $Queue.RowKey
+            QueueMessage = 'Scan queued. Results will be available when the job completes.'
+        }
     } catch {
         $ErrorMessage = Get-CippException -Exception $_
-        Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Temp file scan failed: $($ErrorMessage.NormalizedError)" -Sev Error -LogData $ErrorMessage
+        Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Temp file scan queue failed: $($ErrorMessage.NormalizedError)" -Sev Error -LogData $ErrorMessage
         $StatusCode = [HttpStatusCode]::InternalServerError
-        $Body = @{ Results = "Failed to scan for temp files: $($ErrorMessage.NormalizedError)" }
+        $Body = @{ Results = "Failed to start temp file scan: $($ErrorMessage.NormalizedError)" }
     }
 
     return ([HttpResponseContext]@{
