@@ -15,6 +15,14 @@ function Invoke-ExecQuarantineManagement {
     # because Release-QuarantineMessage -AllowSender chains to Get-HostedContentFilterPolicy
     # on Microsoft's backend, which intermittently fails with a CommandNotFoundException.
     $AllowEntry = [boolean]$Request.Body.AllowSender -or [boolean]$Request.Body.AddAllowEntry
+    $RecipientAddresses = @($Request.Body.RecipientAddress | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $UserRecipients = @(
+        $RecipientAddresses |
+            ForEach-Object { $_ -split '[,;]' } |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Select-Object -Unique
+    )
 
     $Identities = if ($Request.Body.Identity -is [string]) {
         @($Request.Body.Identity)
@@ -105,6 +113,9 @@ function Invoke-ExecQuarantineManagement {
                 ReleaseToAll = $true
                 ActionType   = $ActionType
                 Identity     = $ResolvedId
+            }
+            if ($ActionType -eq 'Deny' -and $UserRecipients.Count -gt 0) {
+                $ReleaseParams['User'] = $UserRecipients
             }
             New-ExoRequest -tenantid $TenantFilter -cmdlet 'Release-QuarantineMessage' -cmdParams $ReleaseParams
             $Entry.ReleaseResult = 'Success'
