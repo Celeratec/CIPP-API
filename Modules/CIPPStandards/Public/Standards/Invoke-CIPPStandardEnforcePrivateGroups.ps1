@@ -8,12 +8,12 @@ function Invoke-CIPPStandardEnforcePrivateGroups {
         (Label) Enforce Private M365 Groups
     .DESCRIPTION
         (Helptext) Sets all public Microsoft 365 groups to private automatically. Groups can be excluded by display name keyword.
-        (DocsDescription) Ensures only organisation-managed or approved public groups exist by automatically switching public Microsoft 365 (Unified) groups to private visibility. Groups whose display name matches any of the configured exclusion keywords are left unchanged. This aligns with CIS M365 6.0.1 benchmark control 1.2.1.
+        (DocsDescription) Ensures only organisation-managed or approved public groups exist by automatically switching public Microsoft 365 (Unified) groups to private visibility. Groups whose display name matches any of the configured exclusion keywords are left unchanged. This aligns with CIS M365 7.0.0 benchmark control 1.2.1.
     .NOTES
         CAT
             Entra (AAD) Standards
         TAG
-            "CIS M365 6.0.1 (1.2.1)"
+            "CIS M365 7.0.0 (1.2.1)"
         EXECUTIVETEXT
             Enforces private visibility on all Microsoft 365 groups to prevent unauthorised external access to group resources such as Teams, SharePoint sites, and Planner boards. Approved public groups can be excluded by name, ensuring governance while retaining flexibility for intentionally public collaboration spaces.
         ADDEDCOMPONENT

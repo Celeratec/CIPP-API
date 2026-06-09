@@ -13,7 +13,7 @@ function Invoke-CIPPStandardCollaborationDomainRestriction {
         CAT
             Entra (AAD) Standards
         TAG
-            "CIS M365 6.0.1 (5.1.6.1)"
+            "CIS M365 7.0.0 (5.1.6.1)"
         EXECUTIVETEXT
             Restricts external collaboration invitations to approved domains only, preventing users from sharing data with unapproved external organizations. This reduces the risk of data exfiltration and ensures that collaboration occurs only with trusted business partners.
         ADDEDCOMPONENT

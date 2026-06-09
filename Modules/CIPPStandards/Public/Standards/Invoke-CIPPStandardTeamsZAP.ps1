@@ -8,12 +8,12 @@ function Invoke-CIPPStandardTeamsZAP {
         (Label) Ensure Zero-hour auto purge for Microsoft Teams is on
     .DESCRIPTION
         (Helptext) Ensures Zero-hour auto purge (ZAP) is enabled for Microsoft Teams, automatically removing malicious messages after delivery.
-        (DocsDescription) Zero-hour auto purge (ZAP) for Microsoft Teams retroactively detects and neutralises malicious messages that have already been delivered in Teams chats. Enabling ZAP ensures that phishing, malware, and high confidence phishing messages are automatically purged even after initial delivery, aligning with CIS M365 6.0.1 benchmark control 2.4.4.
+        (DocsDescription) Zero-hour auto purge (ZAP) for Microsoft Teams retroactively detects and neutralises malicious messages that have already been delivered in Teams chats. Enabling ZAP ensures that phishing, malware, and high confidence phishing messages are automatically purged even after initial delivery, aligning with CIS M365 7.0.0 benchmark control 2.4.4.
     .NOTES
         CAT
             Defender Standards
         TAG
-            "CIS M365 6.0.1 (2.4.4)"
+            "CIS M365 7.0.0 (2.4.4)"
         EXECUTIVETEXT
             Enables Zero-hour auto purge for Microsoft Teams to automatically detect and remove malicious messages after delivery. This provides an additional layer of protection against phishing and malware that may bypass initial scanning, ensuring threats are neutralised even after they reach users.
         ADDEDCOMPONENT

@@ -13,7 +13,7 @@ function Invoke-CIPPStandardEmptyFilterIPAllowList {
         CAT
             Defender Standards
         TAG
-            "CIS M365 6.0.1 (2.1.12)"
+            "CIS M365 7.0.0 (2.1.12)"
         EXECUTIVETEXT
             Ensures the Exchange Online connection filter IP allow list is empty, preventing any IP addresses from bypassing spam filtering, spoofing checks, and sender authentication. Keeping this list empty ensures all inbound email undergoes full security scanning, reducing the risk of phishing and malware delivery through trusted-but-compromised sources.
         ADDEDCOMPONENT
