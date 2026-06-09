@@ -18,22 +18,22 @@ function Invoke-GetCippAlerts {
     $Version = Assert-CippVersion -CIPPVersion $CIPPVersion
     if ($Version.OutOfDateCIPP) {
         $Alerts.Add(@{
-                title = 'CIPP Frontend Out of Date'
-                Alert = 'Your CIPP Frontend is out of date. Please update to the latest version. Find more on the following '
-                link  = 'https://docs.cipp.app/setup/self-hosting-guide/updating'
+                title = 'Manage365 Frontend Behind Upstream'
+                Alert = "Manage365 frontend reports v$($Version.LocalCIPPVersion) but upstream CIPP is v$($Version.RemoteCIPPVersion). After absorbing upstream changes, bump public/version.json and redeploy the Static Web App. See the README Upstream Integration section."
+                link  = 'https://github.com/Celeratec/CIPP#upstream-integration'
                 type  = 'warning'
             })
-        Write-LogMessage -message 'Your CIPP Frontend is out of date. Please update to the latest version' -API 'Updates' -tenant 'All Tenants' -sev Alert
+        Write-LogMessage -message "Manage365 frontend v$($Version.LocalCIPPVersion) is behind upstream CIPP v$($Version.RemoteCIPPVersion)" -API 'Updates' -tenant 'All Tenants' -sev Alert
 
     }
     if ($Version.OutOfDateCIPPAPI) {
         $Alerts.Add(@{
-                title = 'CIPP API Out of Date'
-                Alert = 'Your CIPP API is out of date. Please update to the latest version. Find more on the following'
-                link  = 'https://docs.cipp.app/setup/self-hosting-guide/updating'
+                title = 'Manage365 API Behind Upstream'
+                Alert = "Manage365 API reports v$($Version.LocalCIPPAPIVersion) but upstream CIPP-API is v$($Version.RemoteCIPPAPIVersion). After absorbing upstream changes, bump version_latest.txt and redeploy all Function App slots."
+                link  = 'https://github.com/Celeratec/CIPP#upstream-integration'
                 type  = 'warning'
             })
-        Write-LogMessage -message 'Your CIPP API is out of date. Please update to the latest version' -API 'Updates' -tenant 'All Tenants' -sev Alert
+        Write-LogMessage -message "Manage365 API v$($Version.LocalCIPPAPIVersion) is behind upstream CIPP-API v$($Version.RemoteCIPPAPIVersion)" -API 'Updates' -tenant 'All Tenants' -sev Alert
     }
 
     if ($env:ApplicationID -eq 'LongApplicationID' -or $null -eq $env:ApplicationID) {
