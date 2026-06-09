@@ -32,7 +32,7 @@ function Invoke-CIPPStandardCustomBannedPasswordList {
 
     param($Tenant, $Settings)
 
-    $TestResult = Test-CIPPStandardLicense -StandardName 'CustomBannedPasswordList' -TenantFilter $Tenant -RequiredCapabilities @('AAD_PREMIUM', 'AAD_PREMIUM_P2')
+    $TestResult = Test-CIPPStandardLicense -StandardName 'CustomBannedPasswordList' -TenantFilter $Tenant -Preset Entra
 
     if ($TestResult -eq $false) {
         return $true
