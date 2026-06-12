@@ -53,7 +53,7 @@ function New-GraphGetRequest {
         }
 
         if (!$headers['User-Agent']) {
-            $headers['User-Agent'] = "CIPP/$($global:CippVersion ?? '1.0')"
+            $headers['User-Agent'] = Get-CippUserAgent
         }
 
 
