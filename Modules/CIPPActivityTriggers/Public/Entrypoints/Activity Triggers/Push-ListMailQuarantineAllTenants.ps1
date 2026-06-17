@@ -11,8 +11,23 @@
     Write-Host "PowerShell queue trigger function processed work item: $($Tenant.defaultDomainName)"
 
     try {
-        $quarantineMessages = New-ExoRequest -tenantid $domainName -cmdlet 'Get-QuarantineMessage' -cmdParams @{ 'PageSize' = 1000 } | Select-Object -ExcludeProperty *data.type*
-        foreach ($message in $quarantineMessages) {
+        $Query = Build-CIPPQuarantineQueryParams -QueryInput @{
+            days     = 30
+            pageSize = 1000
+        } -ApplyDefaultDateRange
+
+        $AllMessages = [System.Collections.Generic.List[object]]::new()
+        $Page = 1
+        $MaxPages = 5
+        do {
+            $Query.CmdParams.Page = $Page
+            $quarantineMessages = @(Invoke-CippQuarantineExoRequest -TenantId $domainName -Cmdlet 'Get-QuarantineMessage' -CmdParams $Query.CmdParams |
+                Select-Object -ExcludeProperty *data.type*)
+            if ($quarantineMessages) { $AllMessages.AddRange($quarantineMessages) }
+            $Page++
+        } while ($quarantineMessages.Count -eq $Query.CmdParams.PageSize -and $Page -le $MaxPages)
+
+        foreach ($message in $AllMessages) {
             $messageData = @{
                 QuarantineMessage = [string]($message | ConvertTo-Json -Depth 10 -Compress)
                 RowKey            = [string](New-Guid).Guid

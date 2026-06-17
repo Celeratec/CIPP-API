@@ -77,41 +77,31 @@ function Invoke-ExecEmailTroubleshoot {
         Write-LogMessage -headers $Request.Headers -API $APIName -tenant $TenantFilter -message "Message trace failed: $($_.Exception.Message)" -Sev 'Error'
     }
 
-    $QuarantineParams = @{ 'PageSize' = 1000 }
-    if ($SenderApi) { $QuarantineParams['SenderAddress'] = @($SenderApi) }
-    if ($Request.Body.days) {
-        $QuarantineParams['StartReceivedDate'] = (Get-Date).AddDays(-[int]$Request.Body.days).ToUniversalTime()
-        $QuarantineParams['EndReceivedDate'] = (Get-Date).ToUniversalTime()
-    } elseif ($Request.Body.startDate) {
-        if ($Request.Body.startDate -match '^\d+$') {
-            $QuarantineParams['StartReceivedDate'] = [DateTimeOffset]::FromUnixTimeSeconds([int64]$Request.Body.startDate).UtcDateTime
-        } else {
-            $QuarantineParams['StartReceivedDate'] = [DateTime]::Parse($Request.Body.startDate).ToUniversalTime()
-        }
-        if ($Request.Body.endDate) {
-            if ($Request.Body.endDate -match '^\d+$') {
-                $QuarantineParams['EndReceivedDate'] = [DateTimeOffset]::FromUnixTimeSeconds([int64]$Request.Body.endDate).UtcDateTime
-            } else {
-                $QuarantineParams['EndReceivedDate'] = [DateTime]::Parse($Request.Body.endDate).ToUniversalTime()
-            }
-        } else {
-            $QuarantineParams['EndReceivedDate'] = (Get-Date).ToUniversalTime()
-        }
-    }
-    if ($Request.Body.quarantineType) {
-        $QuarantineParams['QuarantineTypes'] = $Request.Body.quarantineType
+    $QuarantineInput = @{
+        days            = $Request.Body.days
+        startDate       = $Request.Body.startDate
+        endDate         = $Request.Body.endDate
+        sender          = $Request.Body.sender
+        recipient       = $Request.Body.recipient
+        messageId       = $Request.Body.messageId
+        subject         = $Request.Body.subject
+        subjectExact    = $Request.Body.subjectExact
+        quarantineType  = $Request.Body.quarantineType
+        releaseStatus   = $Request.Body.releaseStatus
+        policyTypes     = $Request.Body.policyTypes
+        policyName      = $Request.Body.policyName
+        senderDomain    = $Request.Body.senderDomain
+        recipientDomain = $Request.Body.recipientDomain
+        pageSize        = 1000
     }
 
     try {
-        $QuarantineResults = @(New-ExoRequest -tenantid $TenantFilter -cmdlet 'Get-QuarantineMessage' -cmdParams $QuarantineParams |
+        $ApplyDefaultDate = -not $Request.Body.messageId
+        $Query = Build-CIPPQuarantineQueryParams -QueryInput $QuarantineInput -ApplyDefaultDateRange:$ApplyDefaultDate
+        $RawResults = @(Invoke-CippQuarantineExoRequest -TenantId $TenantFilter -Cmdlet 'Get-QuarantineMessage' -CmdParams $Query.CmdParams |
             Select-Object -ExcludeProperty *data.type*)
-
-        if ($RecipientValue) {
-            $QuarantineResults = $QuarantineResults | Where-Object { $_.RecipientAddress -like "*$RecipientValue*" }
-        }
-        if ($Request.Body.subject) {
-            $QuarantineResults = $QuarantineResults | Where-Object { $_.Subject -like "*$($Request.Body.subject)*" }
-        }
+        $Filtered = Apply-CippQuarantinePostFilters -Messages $RawResults -PostFilters $Query.PostFilters
+        $QuarantineResults = @($Filtered | ConvertTo-CippQuarantineDisplayObject)
     } catch {
         $QuarantineError = "Quarantine search failed: $((Get-CippException -Exception $_).NormalizedError)"
         Write-LogMessage -headers $Request.Headers -API $APIName -tenant $TenantFilter -message "Quarantine search failed: $($_.Exception.Message)" -Sev 'Error'

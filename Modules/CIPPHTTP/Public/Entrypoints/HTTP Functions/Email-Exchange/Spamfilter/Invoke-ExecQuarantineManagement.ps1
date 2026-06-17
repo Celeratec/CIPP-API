@@ -15,6 +15,13 @@ function Invoke-ExecQuarantineManagement {
     # because Release-QuarantineMessage -AllowSender chains to Get-HostedContentFilterPolicy
     # on Microsoft's backend, which intermittently fails with a CommandNotFoundException.
     $AllowEntry = [boolean]$Request.Body.AllowSender -or [boolean]$Request.Body.AddAllowEntry
+    $AllowDomain = [boolean]$Request.Body.AllowDomain
+    $BlockDomain = [boolean]$Request.Body.BlockDomain
+    $ReportFalsePositive = [boolean]$Request.Body.ReportFalsePositive
+    $ReleaseToUsers = @(
+        ConvertTo-CippQuarantineStringArray $Request.Body.releaseToUsers |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
     $RecipientAddresses = @($Request.Body.RecipientAddress | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
     $UserRecipients = @(
         $RecipientAddresses |
@@ -68,6 +75,38 @@ function Invoke-ExecQuarantineManagement {
         }
     }
 
+    function Get-QuarantineActionResultMessage {
+        param(
+            $Entry,
+            [string]$ActionType
+        )
+
+        $AllowBlockOnly = $ActionType -in @('AllowDomain', 'BlockDomain', 'AllowSenderOnly', 'BlockSenderOnly')
+        if ($AllowBlockOnly) {
+            if ($Entry.AllowEntryResult -eq 'Success') {
+                return switch ($ActionType) {
+                    'AllowDomain' { 'Sender domain added to the tenant allow list.' }
+                    'BlockDomain' { 'Sender domain added to the tenant block list.' }
+                    'AllowSenderOnly' { 'Sender added to the tenant allow list.' }
+                    'BlockSenderOnly' { 'Sender added to the tenant block list.' }
+                    default { 'Allow/block entry updated successfully.' }
+                }
+            }
+            if (-not [string]::IsNullOrWhiteSpace($Entry.AllowEntryResult)) {
+                return $Entry.AllowEntryResult
+            }
+            if (-not [string]::IsNullOrWhiteSpace($Entry.ReleaseResult)) {
+                return $Entry.ReleaseResult
+            }
+            return 'No result was returned for the allow/block action.'
+        }
+
+        if ($Entry.ReleaseResult -eq 'Success') {
+            return 'Success'
+        }
+        return $Entry.ReleaseResult
+    }
+
     foreach ($Id in $Identities) {
         $Entry = [PSCustomObject]@{
             Identity         = $Id
@@ -75,10 +114,81 @@ function Invoke-ExecQuarantineManagement {
             AllowEntryResult = $null
         }
 
+        $InternetMessageIdPattern = '^(?:ID=)?<.+>$'
+
         $ActionVerb = switch -Wildcard ($ActionType) {
             'Release' { 'release' }
             'Deny'    { 'deny' }
+            'Delete'  { 'delete' }
             default   { 'process' }
+        }
+
+        if ($ActionType -eq 'Delete') {
+            try {
+                Invoke-CippQuarantineExoRequest -TenantId $TenantFilter -Cmdlet 'Delete-QuarantineMessage' -CmdParams @{ Identity = $Id }
+                $Entry.ReleaseResult = 'Success'
+                Write-LogMessage -headers $Request.Headers -API $APIName -tenant $TenantFilter -message "Successfully deleted Quarantine ID $Id" -Sev 'Info'
+            } catch {
+                $Entry.ReleaseResult = Format-QuarantineError -Message $_.Exception.Message -Action 'delete' -IdentityValue $Id
+                Write-LogMessage -headers $Request.Headers -API $APIName -tenant $TenantFilter -message "Quarantine delete failed for $Id`: $($_.Exception.Message)" -Sev 'Error' -LogData $_
+            }
+            $ResultsList.Add($Entry)
+            continue
+        }
+
+        if ($ActionType -in @('AllowDomain', 'BlockDomain', 'AllowSenderOnly', 'BlockSenderOnly')) {
+            try {
+                $LookupId = $Id
+                if ($Id -match $InternetMessageIdPattern) {
+                    $LookupMessageId = $Id -replace '^ID=', ''
+                    $QuarantineLookup = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Get-QuarantineMessage' -cmdParams @{ MessageId = $LookupMessageId }
+                    $ResolvedQuarantine = @($QuarantineLookup) | Where-Object { $_.Identity } | Sort-Object -Property ReceivedTime -Descending | Select-Object -First 1
+                    if ($ResolvedQuarantine) { $LookupId = $ResolvedQuarantine.Identity }
+                }
+                $QMsg = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Get-QuarantineMessage' -cmdParams @{ Identity = $LookupId }
+                $SenderAddr = $QMsg.SenderAddress | Select-Object -First 1
+                if (-not $SenderAddr) {
+                    $Entry.AllowEntryResult = 'Sender address was not available for this quarantine entry.'
+                } elseif ($ActionType -in @('AllowDomain', 'BlockDomain')) {
+                    $DomainEntry = ($SenderAddr -split '@')[-1]
+                    $DomainParams = @{
+                        Entries  = @($DomainEntry)
+                        ListType = 'Sender'
+                        Notes    = if ($ActionType -eq 'AllowDomain') { 'Allowed domain via Quarantine Management' } else { 'Blocked domain via Quarantine Management' }
+                    }
+                    if ($ActionType -eq 'AllowDomain') {
+                        $DomainParams.Allow = $true
+                        $DomainParams.RemoveAfter = 45
+                    } else {
+                        $DomainParams.Block = $true
+                        $DomainParams.NoExpiration = $true
+                    }
+                    New-ExoRequest -tenantid $TenantFilter -cmdlet 'New-TenantAllowBlockListItems' -cmdParams $DomainParams
+                    $Entry.AllowEntryResult = 'Success'
+                    $Entry.ReleaseResult = 'Success'
+                } else {
+                    $ListParams = @{
+                        Entries  = @($SenderAddr)
+                        ListType = 'Sender'
+                        Notes    = if ($ActionType -eq 'AllowSenderOnly') { 'Allowed sender via Quarantine Management' } else { 'Blocked sender via Quarantine Management' }
+                    }
+                    if ($ActionType -eq 'AllowSenderOnly') {
+                        $ListParams.Allow = $true
+                        $ListParams.RemoveAfter = 45
+                    } else {
+                        $ListParams.Block = $true
+                        $ListParams.NoExpiration = $true
+                    }
+                    New-ExoRequest -tenantid $TenantFilter -cmdlet 'New-TenantAllowBlockListItems' -cmdParams $ListParams
+                    $Entry.AllowEntryResult = 'Success'
+                    $Entry.ReleaseResult = 'Success'
+                }
+            } catch {
+                $Entry.AllowEntryResult = "Failed: $(($_.Exception.Message -replace '^\|[^|]+\|', '').Trim())"
+                $Entry.ReleaseResult = $Entry.AllowEntryResult
+            }
+            $ResultsList.Add($Entry)
+            continue
         }
 
         # Release-QuarantineMessage requires the quarantine Identity (GUID-style),
@@ -86,7 +196,6 @@ function Invoke-ExecQuarantineManagement {
         # message trace) pass an InternetMessageId, resolve it to the quarantine
         # Identity via Get-QuarantineMessage first.
         $ResolvedId = $Id
-        $InternetMessageIdPattern = '^(?:ID=)?<.+>$'
         if ($Id -match $InternetMessageIdPattern) {
             $LookupMessageId = $Id -replace '^ID=', ''
             try {
@@ -110,14 +219,21 @@ function Invoke-ExecQuarantineManagement {
 
         try {
             $ReleaseParams = @{
-                ReleaseToAll = $true
-                ActionType   = $ActionType
-                Identity     = $ResolvedId
+                ActionType = $ActionType
+                Identity   = $ResolvedId
+            }
+            if ($ReleaseToUsers.Count -gt 0 -and $ActionType -eq 'Release') {
+                $ReleaseParams['User'] = $ReleaseToUsers
+            } else {
+                $ReleaseParams['ReleaseToAll'] = $true
             }
             if ($ActionType -eq 'Deny' -and $UserRecipients.Count -gt 0) {
                 $ReleaseParams['User'] = $UserRecipients
             }
-            New-ExoRequest -tenantid $TenantFilter -cmdlet 'Release-QuarantineMessage' -cmdParams $ReleaseParams
+            if ($ReportFalsePositive -and $ActionType -eq 'Release') {
+                $ReleaseParams['ReportFalsePositive'] = $true
+            }
+            Invoke-CippQuarantineExoRequest -TenantId $TenantFilter -Cmdlet 'Release-QuarantineMessage' -CmdParams $ReleaseParams
             $Entry.ReleaseResult = 'Success'
             Write-LogMessage -headers $Request.Headers -API $APIName -tenant $TenantFilter -message "Successfully processed Quarantine ID $ResolvedId" -Sev 'Info'
         } catch {
@@ -125,45 +241,78 @@ function Invoke-ExecQuarantineManagement {
             Write-LogMessage -headers $Request.Headers -API $APIName -tenant $TenantFilter -message "Quarantine $ActionVerb failed for $ResolvedId`: $($_.Exception.Message)" -Sev 'Error' -LogData $_
         }
 
-        if ($AllowEntry -and $Entry.ReleaseResult -eq 'Success') {
+        if (($AllowEntry -or $AllowDomain -or $BlockDomain) -and $Entry.ReleaseResult -eq 'Success') {
             try {
                 $QMsg = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Get-QuarantineMessage' -cmdParams @{ Identity = $ResolvedId }
                 $SenderAddr = $QMsg.SenderAddress | Select-Object -First 1
                 if ($SenderAddr) {
-                    New-ExoRequest -tenantid $TenantFilter -cmdlet 'New-TenantAllowBlockListItems' -cmdParams @{
-                        Entries     = @($SenderAddr)
-                        ListType    = 'Sender'
-                        Allow       = $true
-                        RemoveAfter = 45
-                        Notes       = 'Allowed via Email Troubleshooter - Quarantine release'
+                    if ($AllowDomain -or $BlockDomain) {
+                        $DomainEntry = ($SenderAddr -split '@')[-1]
+                        if ($DomainEntry) {
+                            $DomainParams = @{
+                                Entries  = @($DomainEntry)
+                                ListType = 'Sender'
+                                Notes    = if ($AllowDomain) { 'Allowed domain via Quarantine Management' } else { 'Blocked domain via Quarantine Management' }
+                            }
+                            if ($AllowDomain) {
+                                $DomainParams.Allow = $true
+                                $DomainParams.RemoveAfter = 45
+                            } else {
+                                $DomainParams.Block = $true
+                                $DomainParams.NoExpiration = $true
+                            }
+                            New-ExoRequest -tenantid $TenantFilter -cmdlet 'New-TenantAllowBlockListItems' -cmdParams $DomainParams
+                            $Entry.AllowEntryResult = 'Success'
+                        } else {
+                            $Entry.AllowEntryResult = 'Processed, but could not determine sender domain for allow/block entry.'
+                        }
+                    } elseif ($AllowEntry) {
+                        New-ExoRequest -tenantid $TenantFilter -cmdlet 'New-TenantAllowBlockListItems' -cmdParams @{
+                            Entries     = @($SenderAddr)
+                            ListType    = 'Sender'
+                            Allow       = $true
+                            RemoveAfter = 45
+                            Notes       = 'Allowed via Quarantine Management'
+                        }
+                        $Entry.AllowEntryResult = 'Success'
                     }
-                    $Entry.AllowEntryResult = 'Success'
                 } else {
-                    $Entry.AllowEntryResult = 'Released, but the sender address was not available, so no allow entry was added.'
+                    $Entry.AllowEntryResult = 'Processed, but the sender address was not available, so no allow/block entry was added.'
                 }
             } catch {
-                $Entry.AllowEntryResult = "Released, but could not add the sender to the Tenant Allow/Block List: $(($_.Exception.Message -replace '^\|[^|]+\|', '').Trim())"
-                Write-LogMessage -headers $Request.Headers -API $APIName -tenant $TenantFilter -message "Allow entry failed for $ResolvedId`: $($_.Exception.Message)" -Sev 'Error'
+                $Entry.AllowEntryResult = "Processed, but could not update the Tenant Allow/Block List: $(($_.Exception.Message -replace '^\|[^|]+\|', '').Trim())"
+                Write-LogMessage -headers $Request.Headers -API $APIName -tenant $TenantFilter -message "Allow/block entry failed for $ResolvedId`: $($_.Exception.Message)" -Sev 'Error'
             }
-        } elseif ($AllowEntry) {
+        } elseif ($AllowEntry -or $AllowDomain -or $BlockDomain) {
             $Entry.AllowEntryResult = 'Skipped - the message was not released, so the sender was not added to the allow list.'
         }
 
         $ResultsList.Add($Entry)
     }
 
-    $SuccessCount = @($ResultsList | Where-Object { $_.ReleaseResult -eq 'Success' }).Count
+    $AllowBlockOnlyActions = @('AllowDomain', 'BlockDomain', 'AllowSenderOnly', 'BlockSenderOnly')
+    $SuccessCount = @($ResultsList | Where-Object {
+            ($_.ReleaseResult -eq 'Success') -or (
+                $ActionType -in $AllowBlockOnlyActions -and $_.AllowEntryResult -eq 'Success'
+            )
+        }).Count
     $FailureCount = $ResultsList.Count - $SuccessCount
     $PastTense = switch -Wildcard ($ActionType) {
         'Release' { 'released' }
         'Deny'    { 'denied' }
+        'Delete'  { 'deleted' }
+        'AllowDomain' { 'allowed at domain level' }
+        'BlockDomain' { 'blocked at domain level' }
+        'AllowSenderOnly' { 'allowed at sender level' }
+        'BlockSenderOnly' { 'blocked at sender level' }
         default   { 'processed' }
     }
 
     $Body = [pscustomobject]@{
         Results = if ($ResultsList.Count -eq 1) {
-            if ($ResultsList[0].ReleaseResult -eq 'Success') { "Message $PastTense successfully." }
-            else { $ResultsList[0].ReleaseResult }
+            $SingleResult = Get-QuarantineActionResultMessage -Entry $ResultsList[0] -ActionType $ActionType
+            if ($SingleResult -eq 'Success') { "Message $PastTense successfully." }
+            else { $SingleResult }
         } elseif ($FailureCount -eq 0) {
             "All $($ResultsList.Count) messages $PastTense successfully."
         } elseif ($SuccessCount -eq 0) {
