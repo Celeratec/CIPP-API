@@ -8,10 +8,10 @@ Backup tag: `backup/pre-upstream-sync-cipp-api-20260617`
 
 | Status | Count |
 |--------|-------|
-| Applied cleanly | 10 |
+| Applied cleanly | 11 |
 | Applied with adaptation | 1 |
 | Skipped | 0 |
-| Deferred | 6 |
+| Deferred | 8 |
 | Already implemented | 2 |
 
 ## Commit Log
@@ -37,6 +37,9 @@ Backup tag: `backup/pre-upstream-sync-cipp-api-20260617`
 | `ddc264a771b27807a35d12fd3645d4693b4a21f8` | — | Deferred | **Conflict** in `Invoke-CippTestGenericTest002.ps1` — fork diverged from upstream generic test logic | `Invoke-CippTestGenericTest002.ps1` | Not run | Cherry-pick aborted. Candidate #2 from proposed list. |
 | `64836c02a801a3718c2bd2e598bcf206c973541d` | — | Deferred | **Conflict** in `Test-CIPPRerun.ps1` — fork has divergent rerun/scheduled-task logic (likely from v10.5.2 intake) | `Test-CIPPRerun.ps1` | Not run | Cherry-pick aborted. Pair with `2ab0e0e2` for adapted review. |
 | `cbcc61b5afd8c7ea9bb9bef1da7878465afc5610` | — | Already implemented | ORCA103 test fix already present from v10.5.2 intake (`2699da195 Fixes ORCA103`) | `Invoke-CippTestORCA103.ps1` | Not run | Cherry-pick produced empty patch; skipped. |
+| `503eac5bdb6322f1e42b8e90cc48ab9f3b4c4c5b` | — | Deferred | **Conflict** in `Set-CIPPDBCacheSettings.ps1` — fork cache/settings structure diverged; CIS test file merged cleanly but commit aborted | `Set-CIPPDBCacheSettings.ps1`, `Invoke-CippTestCIS_1_3_4.ps1` | Not run | Adds dedicated `AppsAndServices` cache type + Graph fetch. Needs adapted partial apply or fork cache review. |
+| `961462f346d5b8fe357dc322e550dee95a644232` | — | Deferred | **Conflict** in 4/5 CIS/ZTNA test files — fork already has divergent role-assignment test logic | `Invoke-CippTestCIS_1_1_1.ps1` … `Invoke-CippTestZTNA21782.ps1` | Not run | Uses `Get-CippDbRole` (exists in fork). Conflicts suggest v10.5.2 or prior fork changes overlap — adapted review needed. |
+| `fd6e30f62fb209f2b706b359bd1b91f5ef368081` | `610cb089b` | Applied cleanly | Narrow standards bugfix — read/write `azureADRegistration.allowedToRegister` instead of `azureADJoin.allowedToJoin`; skip remediate when `isAdminConfigurable` is false | `Invoke-CIPPStandardintuneRestrictUserDeviceRegistration.ps1` | Batch regression: 47/47 passed | Device registration standard only. Log message wording updated. Validate intuneRestrictUserDeviceRegistration deploy in test tenant. |
 
 ## Proposed Next 10 Low-Risk Candidates
 
@@ -56,7 +59,8 @@ Backup tag: `backup/pre-upstream-sync-cipp-api-20260617`
 ## Next Steps
 
 1. Leave `ee0b8229` / `fdf313e5` deferred until explicit `CippReportingDB` cleanup review.
-2. Review `Test-CIPPRerun.ps1` fork vs upstream for adapted apply of `64836c02` + `2ab0e0e2`.
-3. Review `Invoke-CippTestGenericTest002.ps1` conflict for adapted apply of `ddc264a7`.
-4. Verify ORCA test commits (`0640f07c`, etc.) against v10.5.2 intake before cherry-picking.
-5. CIPP frontend batch remains deferred.
+2. Adapted review: `503eac5b` (AppsAndServices cache + CIS 1.3.4 test) and `961462f3` (role assignment test assertions).
+3. Review `Test-CIPPRerun.ps1` fork vs upstream for `64836c02` + `2ab0e0e2`.
+4. Review `Invoke-CippTestGenericTest002.ps1` for `ddc264a7`.
+5. Test `intuneRestrictUserDeviceRegistration` standard after `fd6e30f6` apply.
+6. CIPP frontend batch remains deferred.
