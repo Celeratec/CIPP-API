@@ -8,11 +8,11 @@ Backup tag: `backup/pre-upstream-sync-cipp-api-20260617`
 
 | Status | Count |
 |--------|-------|
-| Applied cleanly | 3 |
+| Applied cleanly | 6 |
 | Applied with adaptation | 1 |
 | Skipped | 0 |
-| Deferred | 2 |
-| Already implemented | 0 |
+| Deferred | 3 |
+| Already implemented | 1 |
 
 ## Commit Log
 
@@ -24,10 +24,15 @@ Backup tag: `backup/pre-upstream-sync-cipp-api-20260617`
 | `ee0b82294a849bf992ec3ff7ce09b517f4e17fba` | — | Deferred | **Conflict:** upstream modifies `CippReportingDB` cleanup rule (`AddHours(-30)` → `AddDays(-30)`); that table cleanup block does not exist in the Manage365 fork | `Start-TableCleanup.ps1` | Not run | Cherry-pick aborted. Fork uses `AuditLogSearches` at `-12 hours` instead; no `CippReportingDB` entry. |
 | `fdf313e5cfb08b2da7bba256201daf2de9ba15ff` | — | Deferred | **Conflict:** same file/block — removes `PartitionKey eq 'Search'` filter on `CippReportingDB` cleanup; block absent in fork | `Start-TableCleanup.ps1` | Not run | Cherry-pick aborted. Depends on `ee0b8229` context or manual addition of `CippReportingDB` cleanup rule. |
 | `5ccf15a9197c67cb8fdde40606dd7b26a476ae1a` | `5d08be470412057bc8cba5fee192e374eacbe8fb` | Applied cleanly | Intune policy definition fallback when bulk Graph returns non-200; no protected-area overlap | `Invoke-ListIntunePolicy.ps1` | Pester: 47/47 passed (Levenshtein + `Tests/Tools` regression) | Adds template-based fallback for missing `settingDefinitions` on configuration policies. No Intune-specific Pester suite. |
+| `9ba48711c614be8e2452ffff2e539b5b1a11b534` | `a091f6f42` | Applied cleanly | Fixes Intune compliance check-in default (130→120) to match max validator | `Config/standards.json`, `Invoke-CIPPStandardIntuneComplianceSettings.ps1` | Batch regression: 47/47 passed | Default was invalid (130 > max 120). Standards config change only. |
+| `897dfaa4f07443e0f05f8f2aefa5b0a92fc91a9c` | `69e5f37d9` | Applied cleanly | Standards bugfix #5997 — verify spam filter rule is Enabled; re-enable if Disabled | `Invoke-CIPPStandardSpamFilterPolicy.ps1` | Batch regression: 47/47 passed | Uses `New-ExoRequest` in standards deploy path (not quarantine/message trace HTTP endpoints). |
+| `23c8994da9a523a6fbce594181f0c74e5fb1a69e` | `d1a696258` | Applied cleanly | Typo fix #5990 — Edge toolbar unpinned state `hidden` → `default_hidden` | `Invoke-CIPPStandardDeployCheckChromeExtension.ps1` | Batch regression: 47/47 passed | Single-line standards constant fix. |
+| `4214bc7de39c563d0979b2717239e9acda4752e7` | — | Already implemented | Merge commit (#2054) whose substantive change is upstream `5ccf15a9`, already applied as `5d08be470` | `Invoke-ListIntunePolicy.ps1` (same 34-line fix) | Not run | Did not cherry-pick merge commit. Superseded by prior batch 2 apply of `5ccf15a9`. |
+| `57b7de1f31bcffa3ebc3ba1f05d5d47fa1b6bffe` | — | Deferred | **Conflict:** upstream rename `usedInTemplates` → `usage` sits inside larger usage-tracking block absent/diverged in fork | `Invoke-ListIntuneTemplates.ps1` | Not run | Cherry-pick aborted. Fork file structure differs from upstream; simple rename cannot apply in isolation without reviewing full template usage feature. |
 
 ## Next Steps
 
-1. Decide whether to add `CippReportingDB` cleanup rule to `Start-TableCleanup.ps1` (with Manage365-appropriate retention) and then apply `ee0b8229` + `fdf313e5` with adaptation, or skip both permanently.
-2. Continue with other isolated bugfixes from `FIRST_PASS_REPORT_20260617.md` (e.g. `9ba48711`, `4214bc7d`, `897dfaa4`, `23c8994d`).
-3. Keep deferring quarantine, auth, tenant, standards, and dependency commits until explicit review.
+1. Leave `ee0b8229` / `fdf313e5` deferred until explicit `CippReportingDB` cleanup review.
+2. For `57b7de1f`: compare full `Invoke-ListIntuneTemplates.ps1` upstream vs fork; apply adapted rename only if frontend expects `usage` property.
+3. Continue with other isolated bugfixes (e.g. `ecbc9a50`, `5ccf15a9`-adjacent OData fixes in other endpoints if any, `78193020`, `785e71c5`).
 4. CIPP frontend batch remains deferred.
