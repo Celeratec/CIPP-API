@@ -4,7 +4,7 @@ Generated: 2026-06-17
 Branch: `manage365/upstream-sync-cipp-api-20260617`  
 Backup tag: `backup/pre-upstream-sync-cipp-api-20260617`
 
-Branch tip (after Batch 8): pending commit
+Branch tip (after Batch 8): `5aba18061`
 
 ## Summary
 
