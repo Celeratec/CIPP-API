@@ -1,7 +1,7 @@
 # CIPP-API Upstream Sync Checkpoint
 
 Generated: 2026-06-17  
-Status: **Paused at validation gate — Batch 8 blocked**
+Status: **Validation complete — Batch 8 eligible, not started. Backend intake paused for CIPP frontend review.**
 
 ---
 
@@ -10,7 +10,7 @@ Status: **Paused at validation gate — Batch 8 blocked**
 | Field | Value |
 |-------|-------|
 | **Sync branch** | `manage365/upstream-sync-cipp-api-20260617` |
-| **Branch tip** | `eee27ab30` — `docs: add batch 7 validation checklist for CIPP-API` |
+| **Branch tip** | `a166b2035` — `docs: add CIPP-API upstream sync checkpoint` (validation docs updated in follow-up commit) |
 | **Production base (`master`)** | `de78a343e` — `refactor: enhance quarantine message retrieval and filtering` |
 | **Backup tag (pre-sync)** | `backup/pre-upstream-sync-cipp-api-20260617` |
 | **Upstream remote** | `KelvinTegelaar/CIPP-API` (`upstream/master`) |
@@ -96,7 +96,7 @@ Regression baseline throughout: **Pester 47/47** (`Tests/Private/Get-CIPPLevensh
 | `fdf313e5` | CippReportingDB remove partition filter | Skip cherry-pick; unfiltered 30-day delete unsafe verbatim | Product decision |
 | `57b7de1f` | Intune template `usedInTemplates` → `usage` | Skip; usage feature + UI absent | Product decision |
 | `785e71c5` | Autopilot user-select / os-default | Needs product decision | Behavior change risk |
-| `961462f3` (remainder) | Role assignment tests | Partial apply done; **4 files remain** | Batch 8 gate (CIS_1_1_1 validation) |
+| `961462f3` (remainder) | Role assignment tests | Partial apply done; **4 files remain** | **Batch 8 eligible** — CIS_1_1_1 validated 2026-06-17 |
 
 **Count:** 5 upstream commit records deferred (including partial `961462f3`).
 
@@ -120,26 +120,26 @@ Checklist: `BATCH7_VALIDATION_CIPP_API_20260617.md`
 
 | Section | Item | Status |
 |---------|------|--------|
-| **A** | CIS_1_1_1 role assignment behavior | **Pending** — live tenant validation required |
-| **B** | `intuneRestrictUserDeviceRegistration` (`610cb089b`) | **Pending** — live tenant validation required |
-| **C** | Pester regression | **Passed 47/47** (last run 2026-06-17 on tip `eee27ab30`) |
+| **A** | CIS_1_1_1 role assignment behavior | **Completed** — Approved for Batch 8 (2026-06-17) |
+| **B** | `intuneRestrictUserDeviceRegistration` (`610cb089b`) | **Completed** — Approved (2026-06-17) |
+| **C** | Pester regression | **Passed 47/47** (2026-06-17) |
 
-**Gate:** Batch 8 and production merge both depend on completing live validation.
+**Gate:** Batch 8 is **eligible for approval** but **not started**. Backend intake paused for CIPP frontend upstream review. See `BATCH7_VALIDATION_CIPP_API_20260617.md` for sign-off details.
 
 ---
 
 ## Batch 8 Gate (Explicit)
 
-**Do not adapt** the following until CIS_1_1_1 is live-tenant validated and approved (or explicitly waived):
+CIS_1_1_1 live validation **approved** (Section A, 2026-06-17). Batch 8 **may proceed** when backend intake resumes:
 
 - `Invoke-CippTestCIS_1_1_2.ps1`
 - `Invoke-CippTestCIS_1_1_3.ps1`
 - `Invoke-CippTestCIS_1_1_4.ps1`
 - `Invoke-CippTestZTNA21782.ps1`
 
-Upstream source: remainder of `961462f3`. Apply **one file at a time** after Section A sign-off.
+Upstream source: remainder of `961462f3`. Apply **one file at a time**.
 
-**No new cherry-picks** should be applied while at this checkpoint.
+**Current status:** **Not started** — paused for CIPP frontend upstream review per operator direction.
 
 ---
 
@@ -147,14 +147,14 @@ Upstream source: remainder of `961462f3`. Apply **one file at a time** after Sec
 
 | Criterion | Status |
 |-----------|--------|
-| Automated regression (Section C) | ✅ Passed |
-| CIS_1_1_1 live validation (Section A) | ❌ Pending |
-| Device registration standard validation (Section B) | ❌ Pending |
-| Batch 8 role tests | ❌ Blocked |
+| Automated regression (Section C) | ✅ Passed 47/47 |
+| CIS_1_1_1 live validation (Section A) | ✅ Completed — Approved for Batch 8 |
+| Device registration standard validation (Section B) | ✅ Completed — Approved |
+| Batch 8 role tests | ⏸ Eligible, not started |
 | Product decisions (cleanup, Autopilot, template usage) | ❌ Open |
-| CIPP frontend upstream sync | ❌ Not started (separate branch/workstream) |
+| CIPP frontend upstream sync | 🔄 In progress (review phase) |
 
-**Verdict:** **Not ready to merge to production** until Sections A and B are complete and documented.
+**Verdict:** **Not ready to merge to production** until CIPP frontend sync plan progresses and product decisions resolved. Backend validation gate for Batch 8 is **cleared**.
 
 ---
 
@@ -183,13 +183,10 @@ Custom fork areas were not overwritten during batches 1–7:
 
 ## Recommended Next Action
 
-1. **Deploy** `manage365/upstream-sync-cipp-api-20260617` to a **non-production** Function App.
-2. **Run** `BATCH7_VALIDATION_CIPP_API_20260617.md`:
-   - Section A: CIS_1_1_1 against tenant(s) with permanent and PIM privileged roles
-   - Section B: `intuneRestrictUserDeviceRegistration` on Intune vs configurable tenants
-   - Section C: Reconfirm Pester 47/47 post-deploy if desired
-3. **Record** validation results and sign off Section A before any Batch 8 work.
-4. **Do not merge to `master`** until Section B complete for production readiness.
+1. **CIPP frontend:** Begin cautious upstream intake review on `manage365/upstream-sync-cipp-20260617` (see frontend inventory).
+2. **CIPP-API Batch 8:** Resume only after frontend review checkpoint — adapt remaining `961462f3` files one at a time.
+3. **Product decisions:** Resolve CippReportingDB TTL, Autopilot language, Intune template usage before related cherry-picks.
+4. **Production merge:** After frontend sync + open product decisions; backend Sections A/B validation complete.
 
 ---
 
@@ -198,3 +195,4 @@ Custom fork areas were not overwritten during batches 1–7:
 | Date | Event |
 |------|-------|
 | 2026-06-17 | Batches 1–7 complete; deferred review and validation checklist committed; sync paused at validation gate |
+| 2026-06-17 | Sections A and B live validation completed; Batch 8 eligible; backend intake paused for frontend review |

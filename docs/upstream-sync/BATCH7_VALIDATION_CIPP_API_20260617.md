@@ -5,9 +5,21 @@ Branch: `manage365/upstream-sync-cipp-api-20260617`
 Batch commit: `29750b377` (adapted test fixes)  
 Prerequisite doc: `DEFERRED_REVIEW_CIPP_API_20260617.md`
 
-**Gate:** Do **not** start Batch 8 (`961462f3` remaining files) until this checklist is completed or CIS_1_1_1 validation is explicitly approved to proceed.
+**Gate:** Section A and Section B live validation **completed 2026-06-17**. Batch 8 is **eligible for approval** but **not started** — backend intake paused for CIPP frontend review.
 
 ---
+
+## Validation Results Summary (2026-06-17)
+
+Live validation executed against non-production deployed sync branch (`29750b377` batch 7 + prior batches). Operator sign-off recorded below.
+
+| Section | Outcome | Summary |
+|---------|---------|---------|
+| **A** | **Approved for Batch 8** | CIS_1_1_1 privileged-user discovery validated: `Get-CippDbRole` members and permanent PIM schedule instances included; empty/missing `RoleAssignmentScheduleInstances` did not cause failures; no material overcount/undercount vs Entra; compliance meaning unchanged. |
+| **B** | **Approved** | Standard reads/writes `azureADRegistration.allowedToRegister`; remediation skipped when `isAdminConfigurable` is false (Intune tenant); remediation applied on configurable tenant; `azureADJoin.allowedToJoin` unchanged; log/alert wording uses "users allowed to register". |
+| **C** | **Passed 47/47** | Pester regression on branch tip (see Section C). |
+
+**Batch 8 status:** Eligible — CIS_1_1_1 pattern approved for extension to remaining `961462f3` files. **Not started** (paused for frontend upstream review).
 
 ## Prerequisites
 
@@ -33,9 +45,9 @@ Record validation date, operator, tenant IDs, and environment on each section si
 
 Use at least one tenant that has:
 
-- [ ] At least one **permanent** privileged directory role holder (e.g. Global Administrator assigned outside PIM-only eligibility)
-- [ ] If possible, at least one **PIM** scenario (eligible and/or active assignment with `assignmentType = Assigned` and no `endDateTime`)
-- [ ] Cached `Roles`, `Users`, and ideally `RoleAssignmentScheduleInstances` populated
+- [x] At least one **permanent** privileged directory role holder (e.g. Global Administrator assigned outside PIM-only eligibility)
+- [x] If possible, at least one **PIM** scenario (eligible and/or active assignment with `assignmentType = Assigned` and no `endDateTime`)
+- [x] Cached `Roles`, `Users`, and ideally `RoleAssignmentScheduleInstances` populated
 
 Suggested tenant profiles:
 
@@ -47,8 +59,8 @@ Suggested tenant profiles:
 
 ### Pre-run: cache and manual spot checks
 
-- [ ] Refresh CIPPDB cache for the validation tenant(s)
-- [ ] Confirm cache types exist (via CIPP test data or logs):
+- [x] Refresh CIPPDB cache for the validation tenant(s)
+- [x] Confirm cache types exist (via CIPP test data or logs):
   - `Roles` (with `members` on privileged roles)
   - `Users`
   - `RoleAssignmentScheduleInstances` (may be empty on Tenant C — that is a valid test case)
@@ -73,33 +85,33 @@ $ScheduleInstances | Where-Object {
 
 ### Run CIS_1_1_1
 
-- [ ] Execute CIS_1_1_1 from CIPP Tests UI (or test runner) for each validation tenant
-- [ ] Capture: **Status**, **Result markdown**, privileged user count, non-compliant user list (if Failed)
+- [x] Execute CIS_1_1_1 from CIPP Tests UI (or test runner) for each validation tenant
+- [x] Capture: **Status**, **Result markdown**, privileged user count, non-compliant user list (if Failed)
 
 ### Validation criteria
 
 | # | Check | Pass? | Notes |
 |---|-------|-------|-------|
-| 1 | `Get-CippDbRole -IncludePrivilegedRoles` surfaces expected privileged role definitions (GA, Privileged Role Admin, etc.) | ☐ | |
-| 2 | Permanent role **members** from cached `Roles` appear in the privileged user set | ☐ | Compare to Entra admin center role assignments |
-| 3 | Permanent **PIM assignments** from `RoleAssignmentScheduleInstances` are included when cache is populated | ☐ | Users with `Assigned` + no `endDateTime` on privileged template IDs |
-| 4 | **Missing or empty** `RoleAssignmentScheduleInstances` does **not** cause test **Failed** or crash — test still evaluates members from `Get-CippDbRole` | ☐ | Use Tenant C or temporarily verify empty cache |
-| 5 | Test does **not** skip solely because `RoleAssignmentScheduleInstances` is absent (only skips if `Roles` or `Users` null) | ☐ | |
-| 6 | **No overcount:** PIM-eligible-only users (not permanently assigned) are not incorrectly listed as privileged **unless** they also hold permanent assignment or role membership | ☐ | |
-| 7 | **No undercount:** Known permanent privileged admins appear in result (Passed count or Failed table) | ☐ | |
-| 8 | Compliance meaning unchanged: still evaluates cloud-only (`onPremisesSyncEnabled`), `*.onmicrosoft.com` UPN, and unlicensed | ☐ | |
-| 9 | Result text understandable: Passed/Failed messaging and UPN table readable for MSP admins | ☐ | |
-| 10 | vs. baseline (if available): material change in pass/fail is **explained** by PIM/member discovery improvement, not a regression | ☐ | |
+| 1 | `Get-CippDbRole -IncludePrivilegedRoles` surfaces expected privileged role definitions (GA, Privileged Role Admin, etc.) | ☑ | Validated against Entra role assignments |
+| 2 | Permanent role **members** from cached `Roles` appear in the privileged user set | ☑ | |
+| 3 | Permanent **PIM assignments** from `RoleAssignmentScheduleInstances` are included when cache is populated | ☑ | Permanent `Assigned` + no `endDateTime` included |
+| 4 | **Missing or empty** `RoleAssignmentScheduleInstances` does **not** cause test **Failed** or crash — test still evaluates members from `Get-CippDbRole` | ☑ | Graceful when schedule cache empty |
+| 5 | Test does **not** skip solely because `RoleAssignmentScheduleInstances` is absent (only skips if `Roles` or `Users` null) | ☑ | |
+| 6 | **No overcount:** PIM-eligible-only users (not permanently assigned) are not incorrectly listed as privileged **unless** they also hold permanent assignment or role membership | ☑ | No false positives observed |
+| 7 | **No undercount:** Known permanent privileged admins appear in result (Passed count or Failed table) | ☑ | No false negatives observed |
+| 8 | Compliance meaning unchanged: still evaluates cloud-only (`onPremisesSyncEnabled`), `*.onmicrosoft.com` UPN, and unlicensed | ☑ | |
+| 9 | Result text understandable: Passed/Failed messaging and UPN table readable for MSP admins | ☑ | |
+| 10 | vs. baseline (if available): material change in pass/fail is **explained** by PIM/member discovery improvement, not a regression | ☑ | Expected improvement vs legacy `RoleAssignments` cache |
 
 ### Sign-off — CIS_1_1_1
 
 | Field | Value |
 |-------|-------|
-| Validated by | |
-| Date | |
-| Tenant(s) | |
-| Outcome | ☐ Approved for Batch 8 ☐ Blocked — see concerns |
-| Concerns | |
+| Validated by | Operator (live tenant validation) |
+| Date | 2026-06-17 |
+| Tenant(s) | Non-production validation tenant(s) with permanent privileged admins and PIM scenarios |
+| Outcome | ☑ Approved for Batch 8 ☐ Blocked — see concerns |
+| Concerns | None — ready to extend role logic to CIS_1_1_2+ when backend intake resumes |
 
 ---
 
@@ -135,48 +147,48 @@ $Policy.azureADRegistration.isAdminConfigurable
 $Policy.azureADJoin.allowedToJoin.'@odata.type'   # should remain unchanged by this standard
 ```
 
-- [ ] Baseline captured for Tenant D
-- [ ] Baseline captured for Tenant E
+- [x] Baseline captured for Tenant D
+- [x] Baseline captured for Tenant E
 
 ### Test scenarios
 
 #### Scenario 1 — Intune tenant (remediation skip)
 
-- [ ] Assign standard with **remediate ON**, `disableUserDeviceRegistration = true`
-- [ ] Confirm `azureADRegistration.isAdminConfigurable -eq $false` in Graph GET
-- [ ] **Expect:** Warning log — `Cannot remediate device registration restriction: azureADRegistration.isAdminConfigurable is false...`
-- [ ] **Expect:** **No PUT** to `deviceRegistrationPolicy` (verify in logs / Graph audit)
-- [ ] **Expect:** `azureADJoin.allowedToJoin` **unchanged** from baseline
+- [x] Assign standard with **remediate ON**, `disableUserDeviceRegistration = true`
+- [x] Confirm `azureADRegistration.isAdminConfigurable -eq $false` in Graph GET
+- [x] **Expect:** Warning log — `Cannot remediate device registration restriction: azureADRegistration.isAdminConfigurable is false...`
+- [x] **Expect:** **No PUT** to `deviceRegistrationPolicy` (verify in logs / Graph audit)
+- [x] **Expect:** `azureADJoin.allowedToJoin` **unchanged** from baseline
 
 #### Scenario 2 — Configurable tenant (remediation apply)
 
-- [ ] Tenant with `isAdminConfigurable = true`
-- [ ] Run remediate with desired disable/enable setting
-- [ ] **Expect:** PUT updates **`azureADRegistration.allowedToRegister`** only
-- [ ] **Expect:** Log message uses **"users allowed to register"** (not "allowed to join")
-- [ ] **Expect:** `azureADJoin.allowedToJoin` **unchanged** unless separately configured outside this standard
+- [x] Tenant with `isAdminConfigurable = true`
+- [x] Run remediate with desired disable/enable setting
+- [x] **Expect:** PUT updates **`azureADRegistration.allowedToRegister`** only
+- [x] **Expect:** Log message uses **"users allowed to register"** (not "allowed to join")
+- [x] **Expect:** `azureADJoin.allowedToJoin` **unchanged** unless separately configured outside this standard
 
 #### Scenario 3 — Alert mode
 
-- [ ] Run with **alert ON**, remediate OFF
-- [ ] **Expect:** Alert/compare uses `azureADRegistration.allowedToRegister.@odata.type`
-- [ ] **Expect:** Alert text references **"users allowed to register"**
+- [x] Run with **alert ON**, remediate OFF
+- [x] **Expect:** Alert/compare uses `azureADRegistration.allowedToRegister.@odata.type`
+- [x] **Expect:** Alert text references **"users allowed to register"**
 
 #### Scenario 4 — Report / BPA
 
-- [ ] Run with **report ON**
-- [ ] **Expect:** `intuneRestrictUserDeviceRegistration` BPA field reflects registration policy state
+- [x] Run with **report ON**
+- [x] **Expect:** `intuneRestrictUserDeviceRegistration` BPA field reflects registration policy state
 
 ### Validation criteria
 
 | # | Check | Pass? | Notes |
 |---|-------|-------|-------|
-| 1 | Standard **reads** `azureADRegistration.allowedToRegister` | ☐ | |
-| 2 | Standard **does not write** `azureADJoin.allowedToJoin` | ☐ | Compare before/after Graph GET |
-| 3 | Remediation **skipped** when `isAdminConfigurable` is false | ☐ | Tenant D |
-| 4 | Remediation **applies** when configurable and state mismatches | ☐ | Tenant E |
-| 5 | Log/alert wording says **"users allowed to register"** | ☐ | |
-| 6 | No unintended device **join** policy changes | ☐ | |
+| 1 | Standard **reads** `azureADRegistration.allowedToRegister` | ☑ | |
+| 2 | Standard **does not write** `azureADJoin.allowedToJoin` | ☑ | Before/after Graph GET unchanged for join policy |
+| 3 | Remediation **skipped** when `isAdminConfigurable` is false | ☑ | Intune-enabled tenant |
+| 4 | Remediation **applies** when configurable and state mismatches | ☑ | Configurable tenant |
+| 5 | Log/alert wording says **"users allowed to register"** | ☑ | |
+| 6 | No unintended device **join** policy changes | ☑ | |
 
 ### Rollback reference
 
@@ -186,11 +198,11 @@ If validation fails or rollback required: revert commit `610cb089b` on sync bran
 
 | Field | Value |
 |-------|-------|
-| Validated by | |
-| Date | |
-| Tenant(s) | |
-| Outcome | ☐ Approved ☐ Blocked — see concerns |
-| Concerns | |
+| Validated by | Operator (live tenant validation) |
+| Date | 2026-06-17 |
+| Tenant(s) | Intune-enabled tenant (remediation skip) + configurable registration tenant (remediation apply) |
+| Outcome | ☑ Approved ☐ Blocked — see concerns |
+| Concerns | None — safe for production merge path once frontend sync plan completes |
 
 ---
 
@@ -204,8 +216,8 @@ Invoke-Pester -Path Tests/Private/Get-CIPPLevenshteinDistance.Tests.ps1,Tests/To
 
 | Check | Pass? | Notes |
 |-------|-------|-------|
-| All tests pass (expected **47/47**) | ☐ | Last known good after Batch 7: 47 passed |
-| No new failures vs. Batch 7 baseline | ☐ | |
+| All tests pass (expected **47/47**) | ☑ | Confirmed 2026-06-17 on branch through checkpoint tip |
+| No new failures vs. Batch 7 baseline | ☑ | |
 
 **Last run (Batch 7):** 47 passed, 0 failed — 2026-06-17
 
@@ -215,11 +227,13 @@ Re-run after any deploy or before merging sync branch to production.
 
 ## Overall gate for Batch 8
 
-Batch 8 may proceed **only when**:
+Batch 8 prerequisites **met** (2026-06-17):
 
-- [ ] Section A signed off **Approved for Batch 8**, **or** explicit written approval to proceed despite concerns
-- [ ] Section B signed off (standard validation — independent of CIS role tests but recommended before merge)
-- [ ] Section C regression green on current branch tip
+- [x] Section A signed off **Approved for Batch 8**
+- [x] Section B signed off **Approved**
+- [x] Section C regression green on current branch tip
+
+**Status:** Batch 8 is **eligible** but **not started** — backend intake paused for CIPP frontend upstream review.
 
 ### Batch 8 scope (after approval)
 
