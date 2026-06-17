@@ -4,13 +4,15 @@ Generated: 2026-06-17
 Branch: `manage365/upstream-sync-cipp-api-20260617`  
 Backup tag: `backup/pre-upstream-sync-cipp-api-20260617`
 
+Branch tip (after Batch 8): pending commit
+
 ## Summary
 
 | Status | Count |
 |--------|-------|
 | Applied cleanly | 11 |
-| Applied with adaptation | 3 |
-| Applied with adaptation (partial) | 1 |
+| Applied with adaptation | 4 |
+| Applied with adaptation (partial) | 0 |
 | Skipped | 0 |
 | Deferred (pending decision/adaptation) | 3 |
 | Already implemented | 5 |
@@ -41,7 +43,7 @@ Backup tag: `backup/pre-upstream-sync-cipp-api-20260617`
 | `2ab0e0e27c77d146301b427365e0d305e813137d` | — | Already implemented | Equivalent logic on `master` as `76b390f1a` (`Add-Member -Force` on rerun cache entities) | `Test-CIPPRerun.ps1` | Not run | Deferred review 2026-06-17: skip cherry-pick. See `DEFERRED_REVIEW_CIPP_API_20260617.md` §E. |
 | `cbcc61b5afd8c7ea9bb9bef1da7878465afc5610` | — | Already implemented | ORCA103 test fix already present from v10.5.2 intake (`2699da195 Fixes ORCA103`) | `Invoke-CippTestORCA103.ps1` | Not run | Cherry-pick produced empty patch; skipped. |
 | `503eac5bdb6322f1e42b8e90cc48ab9f3b4c4c5b` | `29750b377` | Applied with adaptation (test-only) | CIS 1.3.4 reads `AppsAndServices` cache first with Settings fallback; cache hunk skipped — fork bulk fetch already implements `AppsAndServices` type | `Invoke-CippTestCIS_1_3_4.ps1` | Batch 7 regression: 47/47 passed | Did not modify `Set-CIPPDBCacheSettings.ps1`. See deferred review §F. |
-| `961462f346d5b8fe357dc322e550dee95a644232` | `29750b377` | Partially applied with adaptation | CIS_1_1_1 only — `Get-CippDbRole` + `RoleAssignmentScheduleInstances` privileged user discovery | `Invoke-CippTestCIS_1_1_1.ps1` | Batch 7 regression: 47/47 passed | **Remaining deferred:** `CIS_1_1_2`, `CIS_1_1_3`, `CIS_1_1_4`, `ZTNA21782`. Compliance assertion logic unchanged. |
+| `961462f346d5b8fe357dc322e550dee95a644232` | `29750b377` + Batch 8 | Applied with adaptation | Role-assignment test fixes — `RoleAssignmentScheduleInstances` + role member discovery | `Invoke-CippTestCIS_1_1_1.ps1` (Batch 7), `Invoke-CippTestCIS_1_1_2.ps1`, `Invoke-CippTestCIS_1_1_3.ps1`, `Invoke-CippTestCIS_1_1_4.ps1`, `Invoke-CippTestZTNA21782.ps1` (Batch 8) | Pester 47/47 after each file | Batch 7: CIS_1_1_1 uses `Get-CippDbRole`. Batch 8: CIS_1_1_2/3 use GA `members` + schedule instances; CIS_1_1_4 mirrors CIS_1_1_1 privileged discovery; ZTNA21782 filters privileged principals only, preserves fork markdown output. No live-tenant Pester for individual CIPPTests — requires cached Roles/Users/UserRegistrationDetails. |
 | `fd6e30f62fb209f2b706b359bd1b91f5ef368081` | `610cb089b` | Applied cleanly | Narrow standards bugfix — read/write `azureADRegistration.allowedToRegister` instead of `azureADJoin.allowedToJoin`; skip remediate when `isAdminConfigurable` is false | `Invoke-CIPPStandardintuneRestrictUserDeviceRegistration.ps1` | Batch regression: 47/47 passed | Device registration standard only. Log message wording updated. Validate intuneRestrictUserDeviceRegistration deploy in test tenant. |
 
 ## Proposed Next 10 Low-Risk Candidates
@@ -59,12 +61,21 @@ Backup tag: `backup/pre-upstream-sync-cipp-api-20260617`
 | 9 | `961462f3` | fix: role assignment checks | 5 tests | Low | Test assertion fixes | 5 files but tests-only |
 | 10 | `55ddb18b` | Update Invoke-ExecTestRun.ps1 | 1 | Low-Med | Test runner endpoint | 55-line diff — inspect before apply |
 
+## Batch 8 Validation (2026-06-17)
+
+| File | Pester after change | Live tenant |
+|------|---------------------|-------------|
+| `Invoke-CippTestCIS_1_1_2.ps1` | 47/47 passed | Requires Roles, Users, RoleAssignmentScheduleInstances cache |
+| `Invoke-CippTestCIS_1_1_3.ps1` | 47/47 passed | Requires Roles, RoleAssignmentScheduleInstances cache |
+| `Invoke-CippTestCIS_1_1_4.ps1` | 47/47 passed | Requires Get-CippDbRole, Users, RoleAssignmentScheduleInstances cache |
+| `Invoke-CippTestZTNA21782.ps1` | 47/47 passed | Requires UserRegistrationDetails, Roles, RoleAssignmentScheduleInstances cache |
+
 ## Next Steps
 
-1. **Batch 7 complete** — adapted test fixes for `ddc264a7`, `503eac5b` (test-only), partial `961462f3` (`CIS_1_1_1`).
+1. **Batch 8 complete** — all `961462f3` role-assignment test adaptations applied.
 2. **Product decisions:** `CippReportingDB` retention (`ee0b8229`/`fdf313e5`), Autopilot language (`785e71c5`), Intune template usage feature (`57b7de1f` chain).
-3. **Batch 8 candidates:** `961462f3` remaining files (`CIS_1_1_2` → `ZTNA21782`) one file at a time after CIS_1_1_1 validated in tenant.
+3. **Tenant smoke test:** Run CIS 1.1.x and ZTNA21782 against a tenant with refreshed cache to validate role member + PIM schedule discovery.
 4. **Skip permanently:** rerun commits (`64836c02`, `2ab0e0e2`), template rename (`57b7de1f`), AppsAndServices cache hunk (`503eac5b`).
 5. **Smoke test:** `intuneRestrictUserDeviceRegistration` (`610cb089b`) — checklist in deferred review doc.
-6. **Follow-up:** Mirror or remove stale `CIPPCore/Public/Standards/Invoke-CIPPStandardintuneRestrictUserDeviceRegistration.ps1` duplicate.
-7. CIPP frontend batch remains deferred.
+6. **Follow-up:** Mirror or remove stale `CIPPCore/Public/Standards/Invoke-CIPPStandardintuneRestrictUserDeviceRegistration.ps1` duplicate; stale `CIPPCore/Public/Tests/ZTNA/Identity/Invoke-CippTestZTNA21782.ps1` mirror may need sync review.
+7. CIPP frontend parked at `3c0ef6904` checkpoint — resume mini-batch 3 when ready.
