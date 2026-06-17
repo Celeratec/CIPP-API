@@ -8,10 +8,10 @@ Backup tag: `backup/pre-upstream-sync-cipp-api-20260617`
 
 | Status | Count |
 |--------|-------|
-| Applied cleanly | 6 |
+| Applied cleanly | 8 |
 | Applied with adaptation | 1 |
 | Skipped | 0 |
-| Deferred | 3 |
+| Deferred | 4 |
 | Already implemented | 1 |
 
 ## Commit Log
@@ -29,10 +29,15 @@ Backup tag: `backup/pre-upstream-sync-cipp-api-20260617`
 | `23c8994da9a523a6fbce594181f0c74e5fb1a69e` | `d1a696258` | Applied cleanly | Typo fix #5990 — Edge toolbar unpinned state `hidden` → `default_hidden` | `Invoke-CIPPStandardDeployCheckChromeExtension.ps1` | Batch regression: 47/47 passed | Single-line standards constant fix. |
 | `4214bc7de39c563d0979b2717239e9acda4752e7` | — | Already implemented | Merge commit (#2054) whose substantive change is upstream `5ccf15a9`, already applied as `5d08be470` | `Invoke-ListIntunePolicy.ps1` (same 34-line fix) | Not run | Did not cherry-pick merge commit. Superseded by prior batch 2 apply of `5ccf15a9`. |
 | `57b7de1f31bcffa3ebc3ba1f05d5d47fa1b6bffe` | — | Deferred | **Conflict:** upstream rename `usedInTemplates` → `usage` sits inside larger usage-tracking block absent/diverged in fork | `Invoke-ListIntuneTemplates.ps1` | Not run | Cherry-pick aborted. Fork file structure differs from upstream; simple rename cannot apply in isolation without reviewing full template usage feature. |
+| `ecbc9a50ac0584e0d0ce59259214ebe6d9cf525a` | `6698dded1` | Applied cleanly | Graceful skip + Warning log when standard function missing from CIPPStandards module | `CIPPActivityTriggers/.../Push-CIPPStandard.ps1` | Batch regression: 47/47 passed | Changes failure mode from invoke error to early return with Warning. **Dual-copy note:** `CIPPCore/.../Push-CIPPStandard.ps1` not updated by upstream commit — may need mirrored fix if that copy is active. |
+| `781930205c67fc17a5ca887755361987a407012a` | `b6ced9be6` | Applied cleanly | Fixes `$Item` variable shadowing in orchestrator batch retrieval loop | `CIPPActivityTriggers/.../Push-OrchestratorBatchItems.ps1` | Batch regression: 47/47 passed | Renames inner loop variable to `$BatchItem`. **Dual-copy note:** `CIPPCore/.../Push-OrchestratorBatchItems.ps1` still has shadowing bug. |
+| `785e71c530a39b46f56cea7c598f7d609d8a8518` | — | Deferred | **Conflict:** fork has custom language handling `if ($Language -in @('user-select', 'os-default')) { $Language = "$null" }` vs upstream Graph API locale/language body fix | `Set-CIPPDefaultAPDeploymentProfile.ps1` | Not run | Cherry-pick aborted. Requires product review — fork may intentionally differ for Autopilot OOBE language selection. |
 
 ## Next Steps
 
 1. Leave `ee0b8229` / `fdf313e5` deferred until explicit `CippReportingDB` cleanup review.
-2. For `57b7de1f`: compare full `Invoke-ListIntuneTemplates.ps1` upstream vs fork; apply adapted rename only if frontend expects `usage` property.
-3. Continue with other isolated bugfixes (e.g. `ecbc9a50`, `5ccf15a9`-adjacent OData fixes in other endpoints if any, `78193020`, `785e71c5`).
-4. CIPP frontend batch remains deferred.
+2. For `57b7de1f`: compare full `Invoke-ListIntuneTemplates.ps1` upstream vs fork.
+3. For `785e71c5`: review Autopilot language behavior with product — decide adapted apply vs keep fork logic.
+4. Consider mirroring `ecbc9a50` and `78193020` fixes into `CIPPCore` activity trigger copies if those are used at runtime.
+5. Continue with other isolated bugfixes (e.g. `897dfaa4`-adjacent, `23c8994d`-adjacent, `5ccf15a9`-adjacent OData fixes in other endpoints).
+6. CIPP frontend batch remains deferred.
