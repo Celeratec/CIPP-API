@@ -8,11 +8,11 @@ Backup tag: `backup/pre-upstream-sync-cipp-api-20260617`
 
 | Status | Count |
 |--------|-------|
-| Applied cleanly | 8 |
+| Applied cleanly | 10 |
 | Applied with adaptation | 1 |
 | Skipped | 0 |
-| Deferred | 4 |
-| Already implemented | 1 |
+| Deferred | 6 |
+| Already implemented | 2 |
 
 ## Commit Log
 
@@ -32,11 +32,31 @@ Backup tag: `backup/pre-upstream-sync-cipp-api-20260617`
 | `ecbc9a50ac0584e0d0ce59259214ebe6d9cf525a` | `6698dded1` | Applied cleanly | Graceful skip + Warning log when standard function missing from CIPPStandards module | `CIPPActivityTriggers/.../Push-CIPPStandard.ps1`, `CIPPCore/.../Push-CIPPStandard.ps1` (mirror) | Batch regression: 47/47 passed | Upstream cherry-pick to ActivityTriggers; **Adapted mirror fix to CIPPCore** in follow-up commit. Changes failure mode from invoke error to early return with Warning. |
 | `781930205c67fc17a5ca887755361987a407012a` | `b6ced9be6` | Applied cleanly | Fixes `$Item` variable shadowing in orchestrator batch retrieval loop | `CIPPActivityTriggers/.../Push-OrchestratorBatchItems.ps1`, `CIPPCore/.../Push-OrchestratorBatchItems.ps1` (mirror) | Batch regression: 47/47 passed | Upstream cherry-pick to ActivityTriggers; **Adapted mirror fix to CIPPCore** in follow-up commit. Renames inner loop variable to `$BatchItem`. |
 | `785e71c530a39b46f56cea7c598f7d609d8a8518` | — | Deferred | **Conflict:** fork has custom language handling `if ($Language -in @('user-select', 'os-default')) { $Language = "$null" }` vs upstream Graph API locale/language body fix | `Set-CIPPDefaultAPDeploymentProfile.ps1` | Not run | Cherry-pick aborted. Requires product review — fork may intentionally differ for Autopilot OOBE language selection. |
+| `95d48d1fe90a2e57c7459afa1330290ef659ff02` | `7bccfcdb5` | Applied cleanly | Copilot Readiness test uses correct desktop activations cache field | `Invoke-CippTestCopilotReady003.ps1` | Batch regression: 47/47 passed | Tests-only; 1 file. |
+| `f5f7ae7064404c314d6cd5694ee1260d1e543c0f` | `55e95d467` | Applied cleanly | Dedup batch table writes by PartitionKey+RowKey; scope test discovery to CIPPTests module | `Add-CIPPAzDataTableEntity.ps1`, `Invoke-CIPPTestCollection.ps1` | Batch regression: 47/47 passed | Prevents duplicate test result rows. Table dedup affects all small-entity batch writes — monitor for side effects. |
+| `ddc264a771b27807a35d12fd3645d4693b4a21f8` | — | Deferred | **Conflict** in `Invoke-CippTestGenericTest002.ps1` — fork diverged from upstream generic test logic | `Invoke-CippTestGenericTest002.ps1` | Not run | Cherry-pick aborted. Candidate #2 from proposed list. |
+| `64836c02a801a3718c2bd2e598bcf206c973541d` | — | Deferred | **Conflict** in `Test-CIPPRerun.ps1` — fork has divergent rerun/scheduled-task logic (likely from v10.5.2 intake) | `Test-CIPPRerun.ps1` | Not run | Cherry-pick aborted. Pair with `2ab0e0e2` for adapted review. |
+| `cbcc61b5afd8c7ea9bb9bef1da7878465afc5610` | — | Already implemented | ORCA103 test fix already present from v10.5.2 intake (`2699da195 Fixes ORCA103`) | `Invoke-CippTestORCA103.ps1` | Not run | Cherry-pick produced empty patch; skipped. |
+
+## Proposed Next 10 Low-Risk Candidates
+
+| Priority | SHA | Title | Files | Risk | Why safe | Dependencies |
+|----------|-----|-------|-------|------|----------|--------------|
+| 1 | `95d48d1f` | Fix desktop activations copilot ready test | 1 test | Low | Tests-only | None — **applied** |
+| 2 | `ddc264a7` | Update Invoke-CippTestGenericTest002.ps1 | 1 test | Low | Tests-only | **Deferred — conflict** |
+| 3 | `f5f7ae70` | fixes duplicate test calls | 2 (test infra) | Low | Test dedup + module-scoped discovery | None — **applied** |
+| 4 | `64836c02` | fix: rerun detection on scheduled tasks | 1 | Low | Scheduled-task rerun fix | Pair with `2ab0e0e2`; **deferred — conflict** |
+| 5 | `2ab0e0e2` | fix: rerun issue | 1 | Low | Refines Test-CIPPRerun | After `64836c02` review |
+| 6 | `0640f07c` | Fixes ORCA179 | 1 test | Low | ORCA test-only | May overlap v10.5.2 ORCA intake — verify first |
+| 7 | `503eac5b` | fix: apps and services test | 2 | Low | CIS test + cache settings | Cache touch — review diff |
+| 8 | `fd6e30f6` | fix(standards): azureADRegistration target | 1 standard | Low-Med | Isolated standards bugfix | Standards deploy behavior change |
+| 9 | `961462f3` | fix: role assignment checks | 5 tests | Low | Test assertion fixes | 5 files but tests-only |
+| 10 | `55ddb18b` | Update Invoke-ExecTestRun.ps1 | 1 | Low-Med | Test runner endpoint | 55-line diff — inspect before apply |
 
 ## Next Steps
 
 1. Leave `ee0b8229` / `fdf313e5` deferred until explicit `CippReportingDB` cleanup review.
-2. For `57b7de1f`: compare full `Invoke-ListIntuneTemplates.ps1` upstream vs fork.
-3. For `785e71c5`: review Autopilot language behavior with product — decide adapted apply vs keep fork logic.
-4. Continue with other isolated bugfixes (e.g. `897dfaa4`-adjacent, `23c8994d`-adjacent, `5ccf15a9`-adjacent OData fixes in other endpoints).
+2. Review `Test-CIPPRerun.ps1` fork vs upstream for adapted apply of `64836c02` + `2ab0e0e2`.
+3. Review `Invoke-CippTestGenericTest002.ps1` conflict for adapted apply of `ddc264a7`.
+4. Verify ORCA test commits (`0640f07c`, etc.) against v10.5.2 intake before cherry-picking.
 5. CIPP frontend batch remains deferred.
