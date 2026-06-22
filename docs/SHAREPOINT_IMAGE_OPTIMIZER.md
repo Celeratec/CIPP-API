@@ -19,8 +19,15 @@ library and shrink them with a conservative, auditable, opt-in workflow.
 
 ## 2. What it does
 
-- **Audit** — recursively scans a document library (drive) for `.jpg` / `.jpeg` files at or above
-  a size threshold and reports each candidate.
+- **Runs in the background (queued).** Scanning/compressing a real library easily exceeds the
+  ~230-second Azure HTTP gateway limit, so a run is **queued** and processed by a background worker
+  (`Start-CIPPSharePointImageOptimizer`); the UI polls for status/results. This is the same pattern
+  used by Temp File Cleanup and is what prevents the "it spins then fails" timeout.
+- **Folder targeting.** A run can be scoped to a **specific folder** (with or without subfolders)
+  instead of always scanning the whole library from the root — both for usability and to keep runs
+  well under the timeout.
+- **Audit** — recursively scans a document library (drive), or a chosen folder, for `.jpg` /
+  `.jpeg` files at or above a size threshold and reports each candidate.
 - **Compress** — downloads each eligible JPG, re-encodes it server-side at a configurable quality,
   compares sizes, and (when not a dry run) uploads the smaller copy over the original.
 - **Version cleanup** (optional, destructive) — after a successful compression, removes old file
@@ -224,6 +231,17 @@ Run: `Invoke-Pester -Path Tests/Endpoint/Invoke-SharePointImageOptimizer.Tests.p
 |---|---|---|---|
 | `/api/ListSites` (existing) | GET | `Sharepoint.Site.Read` | Site picker |
 | `/api/ListSharePointDocumentLibraries` | GET | `Sharepoint.Site.Read` | Library picker |
+| `/api/ListSharePointFolders` | GET | `Sharepoint.Site.Read` | Folder picker (scope a run to one folder) |
 | `/api/ListSharePointImageCandidates` | GET/POST | `Sharepoint.Site.Read` | Standalone audit (read-only) |
-| `/api/ExecSharePointImageOptimize` | POST | `Sharepoint.Site.ReadWrite` | Combined job: Audit / Compress / CompressAndCleanup |
+| `/api/ExecSharePointImageOptimize` | POST | `Sharepoint.Site.ReadWrite` | **Queues** a job: Audit / Compress / CompressAndCleanup. Returns `{ Queued, QueueId }`. |
+| `/api/ListImageOptimizerResults` | GET | `Sharepoint.Site.ReadWrite` | Poll a queued job by `queueId`; returns `Status` (`Running`/`Completed`) and the full result. |
 | `/api/ExecSharePointImageVersionCleanup` | POST | `Sharepoint.Site.ReadWrite` | Standalone version cleanup for selected files |
+
+### Async run flow
+
+1. UI `POST /api/ExecSharePointImageOptimize` → endpoint calls `New-CippQueueEntry` +
+   `Add-CippQueueMessage -Cmdlet 'Start-CIPPSharePointImageOptimizer'` and returns `{ Queued, QueueId }`.
+2. The `CIPPQueueTrigger` runs `Start-CIPPSharePointImageOptimizer`, which calls
+   `Invoke-CIPPSharePointImageOptimizer` and writes the result to the `CacheImageOptimizer` table.
+3. UI polls `GET /api/ListCippQueue?QueueId=...` until the queue entry is `Completed`/`Failed`, then
+   `GET /api/ListImageOptimizerResults?queueId=...` to retrieve the cached result.
