@@ -66,7 +66,21 @@ function Get-CIPPTempFileScan {
     }
 
     foreach ($Drive in $DrivesToScan) {
-        $DriveFiles = Get-TempFilesRecursive -TenantFilter $TenantFilter -DriveId $Drive.DriveId -Filters $Filters
+        # Prefer delta enumeration (flat, paginated) so very large drives finish within the
+        # worker timeout. Fall back to recursive folder walking if delta is unavailable/fails,
+        # and never let a single bad drive abort the whole scan.
+        $DriveFiles = $null
+        try {
+            $DriveFiles = Get-CIPPDriveTempFile -TenantFilter $TenantFilter -DriveId $Drive.DriveId -Filters $Filters
+        } catch {
+            Write-Warning "Get-CIPPTempFileScan: delta scan failed for drive $($Drive.DriveId), falling back to recursive scan - $($_.Exception.Message)"
+            try {
+                $DriveFiles = Get-TempFilesRecursive -TenantFilter $TenantFilter -DriveId $Drive.DriveId -Filters $Filters
+            } catch {
+                Write-Warning "Get-CIPPTempFileScan: recursive scan also failed for drive $($Drive.DriveId) - $($_.Exception.Message)"
+                continue
+            }
+        }
         foreach ($File in $DriveFiles) {
             $File.SiteName = $Drive.SiteName
             $File.SiteUrl = $Drive.SiteUrl

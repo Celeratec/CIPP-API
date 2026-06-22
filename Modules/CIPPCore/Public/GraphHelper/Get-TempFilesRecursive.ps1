@@ -62,27 +62,7 @@ function Get-TempFilesRecursive {
                     $Results.AddRange([object[]]@($SubResults))
                 }
             } elseif ($Item.file) {
-                $MatchTypes = [System.Collections.Generic.List[string]]::new()
-
-                if ($Filters.officeTemp -and $Item.name -match '^\~\$') {
-                    $MatchTypes.Add('officeTemp')
-                }
-
-                if ($Filters.tempFiles -and $Item.name -match '(?i)\.(TMP|temp)$') {
-                    $MatchTypes.Add('tempFiles')
-                }
-
-                if ($Filters.zeroByteFiles -and $Item.size -eq 0) {
-                    $MatchTypes.Add('zeroByteFiles')
-                }
-
-                if ($Filters.systemJunk -and $Item.name -in @('Thumbs.db', '.DS_Store', 'desktop.ini')) {
-                    $MatchTypes.Add('systemJunk')
-                }
-
-                if ($Filters.backupFiles -and $Item.name -match '(?i)\.(bak|old)$') {
-                    $MatchTypes.Add('backupFiles')
-                }
+                $MatchTypes = @(Test-CIPPTempFileMatch -Item $Item -Filters $Filters)
 
                 if ($MatchTypes.Count -gt 0) {
                     $ParentPath = if ($Item.parentReference.path) {
