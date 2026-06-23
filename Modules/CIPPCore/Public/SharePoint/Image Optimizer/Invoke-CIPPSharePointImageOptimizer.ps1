@@ -39,6 +39,12 @@ function Invoke-CIPPSharePointImageOptimizer {
         [string]$LibraryName,
 
         [Parameter(Mandatory = $false)]
+        [string]$FolderId,
+
+        [Parameter(Mandatory = $false)]
+        [string]$FolderPath,
+
+        [Parameter(Mandatory = $false)]
         [ValidateSet('Audit', 'Compress', 'CompressAndCleanup')]
         [string]$Mode = 'Audit',
 
@@ -87,6 +93,7 @@ function Invoke-CIPPSharePointImageOptimizer {
         SiteId  = $SiteId
         Library = $LibraryName
         DriveId = $DriveId
+        Folder  = $FolderPath
         Mode    = $Mode
         WhatIf  = $WhatIf
         Summary = [PSCustomObject]@{
@@ -157,9 +164,33 @@ function Invoke-CIPPSharePointImageOptimizer {
         return $Output
     }
 
+    # --- Resolve folder (optional) -----------------------------------------
+    # A FolderId scopes the scan to a single folder. When only a path is given,
+    # resolve it to an item id so the scan starts there instead of the root.
+    $ScanFolderId = 'root'
+    if ($FolderId) {
+        $ScanFolderId = $FolderId
+    } elseif ($FolderPath) {
+        $TrimmedPath = $FolderPath.Trim('/')
+        if ($TrimmedPath) {
+            try {
+                $EncodedPath = ($TrimmedPath -split '/' | ForEach-Object { [System.Uri]::EscapeDataString($_) }) -join '/'
+                $FolderItem = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/drives/$DriveId/root:/${EncodedPath}?`$select=id,name,webUrl,folder" -tenantid $TenantFilter -AsApp $true -NoAuthCheck $true
+                if ($FolderItem.id -and $FolderItem.folder) {
+                    $ScanFolderId = $FolderItem.id
+                    $Output.Folder = $TrimmedPath
+                } else {
+                    $Warnings.Add("Folder '$FolderPath' was not found in the library; scanning from the library root instead.")
+                }
+            } catch {
+                $Warnings.Add("Could not resolve folder '$FolderPath': $($_.Exception.Message). Scanning from the library root instead.")
+            }
+        }
+    }
+
     # --- Audit (discover candidates) ---------------------------------------
     $Audit = Get-CIPPSharePointImageCandidate -TenantFilter $TenantFilter -DriveId $DriveId `
-        -MinimumFileSizeMB $MinimumFileSizeMB -IncludeSubfolders $IncludeSubfolders -MaxFiles 0
+        -MinimumFileSizeMB $MinimumFileSizeMB -FolderId $ScanFolderId -IncludeSubfolders $IncludeSubfolders -MaxFiles 0
     $Candidates = @($Audit.Candidates)
     $Output.Summary.FilesScanned = $Audit.FilesScanned
 

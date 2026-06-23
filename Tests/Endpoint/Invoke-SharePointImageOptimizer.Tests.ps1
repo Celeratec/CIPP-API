@@ -11,11 +11,19 @@ BeforeAll {
     function New-GraphPOSTRequest { param($uri, $tenantid, $type, $AsApp, $NoAuthCheck, $scope, $Body, $ContentType, $AddedHeaders) }
     function Get-GraphToken { param($tenantid, $AsApp) }
     function Get-SharePointAdminLink { param($Public, $TenantFilter) }
+    function Set-CippQueueTask { param($QueueId, $Name, $Status, $TaskId) }
+    function Update-CippQueueEntry { param($RowKey, $Status) }
+    function Get-CippTable { param($tablename) }
+    function Add-CIPPAzDataTableEntity { param($Entity, [switch]$Force) }
+    function Write-LogMessage { param($API, $tenant, $message, $Sev, $LogData, $headers) }
+    function Get-CippException { param($Exception) }
 
     . (Join-Path $ImgDir 'Compress-CIPPImage.ps1')
     . (Join-Path $ImgDir 'Get-CIPPSharePointImageCandidate.ps1')
+    . (Join-Path $ImgDir 'Get-CIPPSharePointFolderList.ps1')
     . (Join-Path $ImgDir 'Remove-CIPPDriveItemVersion.ps1')
     . (Join-Path $ImgDir 'Invoke-CIPPSharePointImageOptimizer.ps1')
+    . (Join-Path $ImgDir 'Start-CIPPSharePointImageOptimizer.ps1')
 
     # Default sizes; individual tests override.
     $script:DownloadSize = 1000000
@@ -255,5 +263,70 @@ Describe 'Invoke-CIPPSharePointImageOptimizer' {
         $r.Summary.FilesScanned | Should -Be 0
         $r.Summary.EligibleFiles | Should -Be 0
         @($r.Results).Count | Should -Be 0
+    }
+
+    It 'scans only the chosen folder when FolderId is supplied' {
+        $r = Invoke-CIPPSharePointImageOptimizer -TenantFilter 't' -SiteId 'S' -DriveId 'D' -FolderId 'FOLDER1' -Mode 'Audit' -MinimumFileSizeMB 5
+        $r.Summary.FilesScanned | Should -Be 1
+        $r.Summary.EligibleFiles | Should -Be 1
+        Should -Invoke New-GraphGetRequest -Times 0 -ParameterFilter { $uri -match 'items/root/children' }
+    }
+
+    It 'resolves a FolderPath to a folder id before scanning' {
+        Mock New-GraphGetRequest -ParameterFilter { $uri -match 'root:/Sub' } -MockWith {
+            [PSCustomObject]@{ id = 'FOLDER1'; name = 'Sub'; folder = @{ childCount = 1 } }
+        }
+        $r = Invoke-CIPPSharePointImageOptimizer -TenantFilter 't' -SiteId 'S' -DriveId 'D' -FolderPath 'Sub' -Mode 'Audit' -MinimumFileSizeMB 5
+        $r.Summary.FilesScanned | Should -Be 1
+        $r.Folder | Should -Be 'Sub'
+    }
+}
+
+Describe 'Get-CIPPSharePointFolderList' {
+    BeforeEach {
+        Mock New-GraphGetRequest { @() }
+        Mock New-GraphGetRequest -ParameterFilter { $uri -match 'items/root/children' } -MockWith { New-RootListing }
+        Mock New-GraphGetRequest -ParameterFilter { $uri -match 'items/FOLDER1/children' } -MockWith { New-SubListing }
+    }
+
+    It 'returns folders with library-relative paths' {
+        $f = @(Get-CIPPSharePointFolderList -TenantFilter 't' -DriveId 'D')
+        $f.Count | Should -Be 1
+        $f[0].path | Should -Be 'Sub'
+        $f[0].id | Should -Be 'FOLDER1'
+    }
+}
+
+Describe 'Start-CIPPSharePointImageOptimizer' {
+    BeforeEach {
+        Mock Set-CippQueueTask { [PSCustomObject]@{ RowKey = 'task1' } }
+        Mock Update-CippQueueEntry {}
+        Mock Get-CippTable { @{ TableName = 'CacheImageOptimizer' } }
+        Mock Add-CIPPAzDataTableEntity {}
+        Mock Write-LogMessage {}
+        Mock Get-CippException { [PSCustomObject]@{ NormalizedError = $Exception.Exception.Message } }
+        Mock Invoke-CIPPSharePointImageOptimizer {
+            [PSCustomObject]@{
+                Mode     = 'Audit'
+                WhatIf   = $true
+                Summary  = [PSCustomObject]@{ FilesScanned = 2; EligibleFiles = 1; FilesCompressed = 0; FilesSkipped = 1; VersionsDeleted = 0; Errors = 0 }
+                Results  = @()
+                Warnings = @()
+            }
+        }
+    }
+
+    It 'runs the optimizer and caches a completed result' {
+        Start-CIPPSharePointImageOptimizer -QueueId 'q1' -TenantFilter 't' -SiteId 'S' -DriveId 'D' -Mode 'Audit'
+        Should -Invoke Invoke-CIPPSharePointImageOptimizer -Times 1
+        Should -Invoke Add-CIPPAzDataTableEntity -Times 1
+        Should -Invoke Update-CippQueueEntry -Times 1 -ParameterFilter { $Status -eq 'Completed' }
+    }
+
+    It 'marks the queue failed and caches the error when the optimizer throws' {
+        Mock Invoke-CIPPSharePointImageOptimizer { throw 'boom' }
+        Start-CIPPSharePointImageOptimizer -QueueId 'q1' -TenantFilter 't' -SiteId 'S' -DriveId 'D' -Mode 'Audit'
+        Should -Invoke Update-CippQueueEntry -Times 1 -ParameterFilter { $Status -eq 'Failed' }
+        Should -Invoke Add-CIPPAzDataTableEntity -Times 1
     }
 }
