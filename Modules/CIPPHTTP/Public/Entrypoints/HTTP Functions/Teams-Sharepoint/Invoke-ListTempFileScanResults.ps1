@@ -77,7 +77,7 @@ function Invoke-ListTempFileScanResults {
             Body       = @{
                 Status     = 'Completed'
                 QueueId    = $QueueId
-                Results    = @($Payload.Results)
+                Results    = @($Payload.Results | Where-Object { $null -ne $_ })
                 TotalCount = $Payload.TotalCount
                 TotalSize  = $Payload.TotalSize
             }

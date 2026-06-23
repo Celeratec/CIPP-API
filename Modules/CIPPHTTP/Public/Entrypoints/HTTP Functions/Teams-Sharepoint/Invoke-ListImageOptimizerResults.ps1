@@ -89,8 +89,8 @@ function Invoke-ListImageOptimizerResults {
                     Library  = $Payload.Library
                     Folder   = $Payload.Folder
                     Summary  = $Payload.Summary
-                    Results  = @($Payload.Results)
-                    Warnings = @($Payload.Warnings)
+                    Results  = @($Payload.Results | Where-Object { $null -ne $_ })
+                    Warnings = @($Payload.Warnings | Where-Object { $null -ne $_ })
                 }
             })
     } catch {
