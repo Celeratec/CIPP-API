@@ -57,12 +57,21 @@ function Invoke-ExecSharePointImageVersionCleanup {
     $Warnings = [System.Collections.Generic.List[string]]::new()
     $TotalDeleted = 0
     $TotalErrors = 0
+    $SuccessFiles = 0
+
+    # De-duplicate inputs so the same drive item is never processed (and its versions
+    # never deleted) more than once when callers send overlapping selections.
+    $SeenItems = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
     try {
         foreach ($File in $Files) {
             $ItemId = if ($File -is [string]) { $File } else { ($File.DriveItemId ?? $File.id) }
             $ItemDriveId = if ($File -is [string]) { $DriveId } else { ($File.DriveId ?? $DriveId) }
             $FileName = if ($File -is [string]) { $ItemId } else { ($File.FileName ?? $File.name ?? $ItemId) }
+
+            if ($ItemId -and $ItemDriveId -and -not $SeenItems.Add("$ItemDriveId/$ItemId")) {
+                continue
+            }
 
             if (-not $ItemId -or -not $ItemDriveId) {
                 $Results.Add([PSCustomObject]@{ FileName = $FileName; DriveItemId = $ItemId; VersionsDeleted = 0; Status = 'Failed'; Error = 'Missing DriveItemId or DriveId' })
@@ -74,7 +83,7 @@ function Invoke-ExecSharePointImageVersionCleanup {
             foreach ($W in $Cleanup.Warnings) { if ($Warnings -notcontains $W) { $Warnings.Add($W) } }
             $TotalDeleted += $Cleanup.VersionsDeleted
             $Status = if ($Cleanup.Errors.Count -gt 0) { 'Failed' } elseif ($WhatIf) { 'WhatIf' } else { 'Versions cleaned' }
-            if ($Cleanup.Errors.Count -gt 0) { $TotalErrors++ }
+            if ($Cleanup.Errors.Count -gt 0) { $TotalErrors++ } else { $SuccessFiles++ }
             $Results.Add([PSCustomObject]@{
                 FileName           = $FileName
                 DriveItemId        = $ItemId
@@ -86,9 +95,34 @@ function Invoke-ExecSharePointImageVersionCleanup {
             })
         }
 
-        $Sev = if ($WhatIf) { 'Info' } else { 'Warning' }
-        Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Version cleanup ($CleanupMode, WhatIf=$WhatIf): deleted $TotalDeleted versions across $($Files.Count) file(s), errors $TotalErrors." -Sev $Sev
-        $StatusCode = [HttpStatusCode]::OK
+        # $Results.Count reflects the de-duplicated set actually processed, which may be
+        # smaller than the raw $Files.Count when callers send overlapping selections.
+        $ProcessedCount = $Results.Count
+
+        # Build a message that never claims success when work failed, and never claims a
+        # deletion happened during a dry run (WhatIf removes nothing).
+        $ResultsMessage = if ($WhatIf) {
+            "Dry run ($CleanupMode): would remove old versions from $SuccessFiles of $ProcessedCount file(s). No versions were deleted."
+        } elseif ($ProcessedCount -eq 0) {
+            'No files were processed.'
+        } elseif ($TotalErrors -eq 0) {
+            "Deleted $TotalDeleted version(s) across $ProcessedCount file(s)."
+        } elseif ($SuccessFiles -eq 0) {
+            "Version cleanup failed for all $ProcessedCount file(s). See per-file errors."
+        } else {
+            "Deleted $TotalDeleted version(s) across $SuccessFiles of $ProcessedCount file(s); $TotalErrors file(s) failed."
+        }
+
+        $Sev = if ($WhatIf) { 'Info' } elseif ($TotalErrors -gt 0 -and $SuccessFiles -eq 0) { 'Error' } elseif ($TotalErrors -gt 0) { 'Warning' } else { 'Info' }
+        Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Version cleanup ($CleanupMode, WhatIf=$WhatIf): deleted $TotalDeleted versions across $ProcessedCount file(s), errors $TotalErrors." -Sev $Sev
+
+        # A live run (not a dry run) where every processed file failed is a failure, not a
+        # success; surface it with a non-OK status so the caller does not see a green result.
+        $StatusCode = if (-not $WhatIf -and $ProcessedCount -gt 0 -and $SuccessFiles -eq 0) {
+            [HttpStatusCode]::InternalServerError
+        } else {
+            [HttpStatusCode]::OK
+        }
     } catch {
         $ErrorMessage = Get-CippException -Exception $_
         Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Version cleanup failed: $($ErrorMessage.NormalizedError)" -Sev Error -LogData $ErrorMessage
@@ -101,11 +135,13 @@ function Invoke-ExecSharePointImageVersionCleanup {
     return ([HttpResponseContext]@{
         StatusCode = $StatusCode
         Body       = @{
-            Results         = "Deleted $TotalDeleted version(s) across $($Files.Count) file(s)."
+            Results         = $ResultsMessage
             WhatIf          = $WhatIf
             CleanupMode     = $CleanupMode
             VersionsDeleted = $TotalDeleted
+            Succeeded       = $SuccessFiles
             Errors          = $TotalErrors
+            ProcessedCount  = $ProcessedCount
             Warnings        = @($Warnings)
             Files           = @($Results)
         }

@@ -74,7 +74,10 @@ function Invoke-CIPPSharePointImageOptimizer {
         [string[]]$FileIds = @(),
 
         [Parameter(Mandatory = $false)]
-        [bool]$IncludeSubfolders = $true
+        [bool]$IncludeSubfolders = $true,
+
+        [Parameter(Mandatory = $false)]
+        [int]$MaxScan = 0
     )
 
     # Hard safety cap to avoid runaway batches / throttling on huge libraries.
@@ -196,8 +199,12 @@ function Invoke-CIPPSharePointImageOptimizer {
     }
 
     # --- Audit (discover candidates) ---------------------------------------
-    # Bound discovery so we don't walk an entire huge library when only a handful of
-    # files will ever be processed. A full audit (no MaxFiles) still scans everything.
+    # DiscoveryMax bounds the number of ELIGIBLE (at/above threshold) files we collect, so
+    # a capped Compress run targets up to that many real candidates rather than stopping on
+    # the first small images it happens to find. A full audit (no MaxFiles) collects every
+    # eligible file. DiscoveryScan is a hard ceiling on files inspected so a library with
+    # very few large images cannot be enumerated indefinitely while searching for them.
+    $HardScanCap = 25000
     $DiscoveryMax = if ($MaxFiles -gt 0) {
         $EffectiveMax
     } elseif ($Mode -eq 'Audit') {
@@ -205,13 +212,16 @@ function Invoke-CIPPSharePointImageOptimizer {
     } else {
         $EffectiveMax
     }
+    # A full background audit may legitimately walk a whole library; everything else is
+    # bounded so we never enumerate an unbounded number of files looking for candidates.
+    # Callers bound by the HTTP gateway window (the synchronous audit endpoint) pass a
+    # tighter MaxScan explicitly.
+    $DiscoveryScan = if ($MaxScan -gt 0) { $MaxScan } elseif ($Mode -eq 'Audit' -and $MaxFiles -le 0) { 0 } else { $HardScanCap }
     $Audit = Get-CIPPSharePointImageCandidate -TenantFilter $TenantFilter -DriveId $DriveId `
-        -MinimumFileSizeMB $MinimumFileSizeMB -FolderId $ScanFolderId -IncludeSubfolders $IncludeSubfolders -MaxFiles $DiscoveryMax
+        -MinimumFileSizeMB $MinimumFileSizeMB -FolderId $ScanFolderId -IncludeSubfolders $IncludeSubfolders `
+        -MaxFiles $DiscoveryMax -MaxScan $DiscoveryScan
     $Candidates = @($Audit.Candidates)
     $Output.Summary.FilesScanned = $Audit.FilesScanned
-    if ($DiscoveryMax -gt 0 -and $Candidates.Count -ge $DiscoveryMax) {
-        $Warnings.Add("Scan stopped after the first $DiscoveryMax image(s). Narrow the scope with a folder or raise MaxFiles to cover more of the library.")
-    }
 
     # Filter to specifically requested files if provided (ignore null/empty entries).
     $RequestedIds = @($FileIds | Where-Object { $_ })
@@ -221,6 +231,14 @@ function Invoke-CIPPSharePointImageOptimizer {
 
     $Eligible = @($Candidates | Where-Object { $_.Eligible })
     $Output.Summary.EligibleFiles = $Eligible.Count
+
+    # Warn when the eligible-file budget was filled (more eligible images likely remain) or
+    # when the scan ceiling was reached before the budget filled.
+    if ($DiscoveryMax -gt 0 -and $Eligible.Count -ge $DiscoveryMax) {
+        $Warnings.Add("Scan stopped after the first $DiscoveryMax eligible image(s). Narrow the scope with a folder or raise MaxFiles to cover more of the library.")
+    } elseif ($DiscoveryScan -gt 0 -and $Audit.FilesScanned -ge $DiscoveryScan) {
+        $Warnings.Add("Scan stopped after inspecting $DiscoveryScan files. Narrow the scope with a folder to ensure all eligible images are found.")
+    }
 
     # --- Audit-only mode: report and return --------------------------------
     if ($Mode -eq 'Audit') {

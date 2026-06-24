@@ -55,7 +55,13 @@ function Invoke-ListSharePointFolders {
     } catch {
         $ErrorMessage = Get-NormalizedError -Message $_.Exception.Message
         Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Failed to list folders: $ErrorMessage" -Sev Error
-        $StatusCode = [HttpStatusCode]::Forbidden
+        # Reserve 403 for genuine permission/authorization failures; other failures
+        # (throttling, transient Graph errors, bad input) should not masquerade as 403.
+        $StatusCode = if ($ErrorMessage -match '(?i)forbidden|denied|unauthor|insufficient|privile|consent|permission') {
+            [HttpStatusCode]::Forbidden
+        } else {
+            [HttpStatusCode]::InternalServerError
+        }
         $GraphRequest = $ErrorMessage
     }
 

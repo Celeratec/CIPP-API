@@ -26,11 +26,21 @@ function Get-CIPPSharePointImageCandidate {
     .PARAMETER IncludeSubfolders
         Recurse into subfolders. Default $true.
     .PARAMETER MaxFiles
-        Optional cap on the number of candidate files to return. 0 = no cap.
+        Optional cap on the number of ELIGIBLE (at/above threshold) candidate files to
+        collect. 0 = no cap. Below-threshold files are still reported for auditing but do
+        not consume this budget, so a capped Compress run is not starved by many small
+        images that happen to be discovered first.
+    .PARAMETER MaxScan
+        Optional hard cap on the total number of files inspected (across all subfolders).
+        0 = no cap. Bounds the folder walk so a library with very few eligible images
+        cannot be enumerated indefinitely while searching for them.
     .PARAMETER MaxDepth
         Maximum recursion depth. Default 20.
     .PARAMETER CurrentDepth
         Internal recursion counter. Do not set manually.
+    .PARAMETER State
+        Internal shared state used to enforce the MaxFiles / MaxScan caps across the whole
+        recursive walk. Do not set manually.
     #>
     [CmdletBinding()]
     param(
@@ -53,17 +63,41 @@ function Get-CIPPSharePointImageCandidate {
         [int]$MaxFiles = 0,
 
         [Parameter(Mandatory = $false)]
+        [int]$MaxScan = 0,
+
+        [Parameter(Mandatory = $false)]
         [int]$MaxDepth = 20,
 
         [Parameter(Mandatory = $false)]
-        [int]$CurrentDepth = 0
+        [int]$CurrentDepth = 0,
+
+        [Parameter(Mandatory = $false)]
+        [hashtable]$State
     )
 
-    $Candidates = [System.Collections.Generic.List[object]]::new()
-    $FilesScanned = 0
+    # Shared, by-reference state lets the eligible-file budget (MaxFiles) and the total
+    # scan cap (MaxScan) apply globally across the recursive folder walk instead of being
+    # reset per folder.
+    $IsRoot = $false
+    if (-not $State) {
+        $State = @{
+            Candidates = [System.Collections.Generic.List[object]]::new()
+            Scanned    = 0
+            Eligible   = 0
+        }
+        $IsRoot = $true
+    }
+
+    $ReturnRoot = {
+        [PSCustomObject]@{
+            Candidates   = @($State.Candidates)
+            FilesScanned = $State.Scanned
+        }
+    }
 
     if ($CurrentDepth -ge $MaxDepth) {
-        return [PSCustomObject]@{ Candidates = @(); FilesScanned = 0 }
+        if ($IsRoot) { return & $ReturnRoot }
+        return
     }
 
     $ThresholdBytes = [long]([math]::Round($MinimumFileSizeMB * 1MB))
@@ -75,26 +109,20 @@ function Get-CIPPSharePointImageCandidate {
         $Items = @($Items) | Where-Object { $_.id }
 
         foreach ($Item in $Items) {
-            if ($MaxFiles -gt 0 -and $Candidates.Count -ge $MaxFiles) { break }
+            if ($MaxFiles -gt 0 -and $State.Eligible -ge $MaxFiles) { break }
+            if ($MaxScan -gt 0 -and $State.Scanned -ge $MaxScan) { break }
 
             if ($Item.folder) {
                 if ($IncludeSubfolders) {
-                    $Sub = Get-CIPPSharePointImageCandidate -TenantFilter $TenantFilter -DriveId $DriveId `
+                    $null = Get-CIPPSharePointImageCandidate -TenantFilter $TenantFilter -DriveId $DriveId `
                         -MinimumFileSizeMB $MinimumFileSizeMB -FolderId $Item.id -IncludeSubfolders $IncludeSubfolders `
-                        -MaxFiles $MaxFiles -MaxDepth $MaxDepth -CurrentDepth ($CurrentDepth + 1)
-                    $FilesScanned += $Sub.FilesScanned
-                    if ($Sub.Candidates) {
-                        foreach ($Cand in $Sub.Candidates) {
-                            if ($MaxFiles -gt 0 -and $Candidates.Count -ge $MaxFiles) { break }
-                            $Candidates.Add($Cand)
-                        }
-                    }
+                        -MaxFiles $MaxFiles -MaxScan $MaxScan -MaxDepth $MaxDepth -CurrentDepth ($CurrentDepth + 1) -State $State
                 }
                 continue
             }
 
             if (-not $Item.file) { continue }
-            $FilesScanned++
+            $State.Scanned++
 
             # Only .jpg / .jpeg, case-insensitive.
             if ($Item.name -notmatch '(?i)\.(jpe?g)$') { continue }
@@ -110,8 +138,9 @@ function Get-CIPPSharePointImageCandidate {
             if ($SizeBytes -lt $ThresholdBytes) {
                 $SkipReason = 'Skipped: below threshold'
             }
+            $IsEligible = ($null -eq $SkipReason)
 
-            $Candidates.Add([PSCustomObject]@{
+            $State.Candidates.Add([PSCustomObject]@{
                 FileName             = $Item.name
                 Extension            = $Extension
                 DriveItemId          = $Item.id
@@ -123,16 +152,14 @@ function Get-CIPPSharePointImageCandidate {
                 SizeBytes            = $SizeBytes
                 LastModifiedDateTime = $Item.lastModifiedDateTime
                 CreatedDateTime      = $Item.createdDateTime
-                Eligible             = ($null -eq $SkipReason)
+                Eligible             = $IsEligible
                 SkipReason           = $SkipReason
             })
+            if ($IsEligible) { $State.Eligible++ }
         }
     } catch {
         Write-Warning "Get-CIPPSharePointImageCandidate: failed to list folder $FolderId in drive $DriveId - $($_.Exception.Message)"
     }
 
-    return [PSCustomObject]@{
-        Candidates   = @($Candidates)
-        FilesScanned = $FilesScanned
-    }
+    if ($IsRoot) { return & $ReturnRoot }
 }

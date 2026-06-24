@@ -54,10 +54,12 @@ function Invoke-ListSharePointImageCandidates {
     }
 
     try {
+        # This endpoint runs synchronously inside the ~230s gateway window, so cap the total
+        # number of files inspected. The queued ExecSharePointImageOptimize has no such limit.
         $Result = Invoke-CIPPSharePointImageOptimizer -TenantFilter $TenantFilter -SiteId $SiteId -SiteUrl $SiteUrl `
             -DriveId $DriveId -LibraryName $LibraryName -Mode 'Audit' `
             -MinimumFileSizeMB ([double]$MinimumFileSizeMB) -IncludeSubfolders ([bool]$IncludeSubfolders) `
-            -FolderId $FolderId -FolderPath $FolderPath -MaxFiles $MaxFiles
+            -FolderId $FolderId -FolderPath $FolderPath -MaxFiles $MaxFiles -MaxScan 5000
 
         Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Audited SharePoint library for large JPGs. Scanned $($Result.Summary.FilesScanned), eligible $($Result.Summary.EligibleFiles)." -Sev Info
         $StatusCode = [HttpStatusCode]::OK

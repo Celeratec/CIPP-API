@@ -81,6 +81,35 @@ Describe 'Get-CIPPSharePointImageCandidate' {
         $r = Get-CIPPSharePointImageCandidate -TenantFilter 't' -DriveId 'D' -MinimumFileSizeMB 5 -IncludeSubfolders $false
         ($r.Candidates | Where-Object { $_.FileName -eq 'nested.jpg' }) | Should -BeNullOrEmpty
     }
+
+    It 'MaxFiles caps the number of ELIGIBLE files collected' {
+        $r = Get-CIPPSharePointImageCandidate -TenantFilter 't' -DriveId 'D' -MinimumFileSizeMB 5 -MaxFiles 2
+        @($r.Candidates | Where-Object { $_.Eligible }).Count | Should -Be 2
+        # The third eligible image (nested.jpg, in the subfolder) is past the budget.
+        ($r.Candidates | Where-Object { $_.FileName -eq 'nested.jpg' }) | Should -BeNullOrEmpty
+    }
+
+    It 'does not let below-threshold files starve the eligible budget' {
+        # Two small (ineligible) images appear before the large ones. With the old
+        # total-candidate cap a MaxFiles of 1 would have returned only a small file.
+        Mock New-GraphGetRequest -ParameterFilter { $uri -match 'items/root/children' } -MockWith {
+            @(
+                [PSCustomObject]@{ id = 's1'; name = 's1.jpg'; size = 1048576;  file = @{ mimeType = 'image/jpeg' }; folder = $null; parentReference = @{ id = 'root'; path = '/drive/root:' }; webUrl = 'https://c/s1.jpg' }
+                [PSCustomObject]@{ id = 's2'; name = 's2.jpg'; size = 1048576;  file = @{ mimeType = 'image/jpeg' }; folder = $null; parentReference = @{ id = 'root'; path = '/drive/root:' }; webUrl = 'https://c/s2.jpg' }
+                [PSCustomObject]@{ id = 'b1'; name = 'b1.jpg'; size = 10485760; file = @{ mimeType = 'image/jpeg' }; folder = $null; parentReference = @{ id = 'root'; path = '/drive/root:' }; webUrl = 'https://c/b1.jpg' }
+                [PSCustomObject]@{ id = 'b2'; name = 'b2.jpg'; size = 10485760; file = @{ mimeType = 'image/jpeg' }; folder = $null; parentReference = @{ id = 'root'; path = '/drive/root:' }; webUrl = 'https://c/b2.jpg' }
+            )
+        }
+        $r = Get-CIPPSharePointImageCandidate -TenantFilter 't' -DriveId 'D' -MinimumFileSizeMB 5 -MaxFiles 1
+        $eligible = @($r.Candidates | Where-Object { $_.Eligible })
+        $eligible.Count | Should -Be 1
+        $eligible[0].FileName | Should -Be 'b1.jpg'
+    }
+
+    It 'MaxScan bounds the total number of files inspected' {
+        $r = Get-CIPPSharePointImageCandidate -TenantFilter 't' -DriveId 'D' -MinimumFileSizeMB 5 -MaxScan 2
+        $r.FilesScanned | Should -Be 2
+    }
 }
 
 Describe 'Compress-CIPPImage' {
