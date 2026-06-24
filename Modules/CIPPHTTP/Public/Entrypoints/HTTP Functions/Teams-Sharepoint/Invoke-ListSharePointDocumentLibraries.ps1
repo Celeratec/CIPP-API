@@ -39,15 +39,15 @@ function Invoke-ListSharePointDocumentLibraries {
                 name      = $Drive.name
                 driveType = $Drive.driveType
                 webUrl    = $Drive.webUrl
-                usedBytes = $Drive.quota.used
-                totalBytes = $Drive.quota.total
+                usedBytes  = if ($Drive.quota) { $Drive.quota.used } else { $null }
+                totalBytes = if ($Drive.quota) { $Drive.quota.total } else { $null }
             }
         }
         $GraphRequest = @($GraphRequest | Where-Object { $_.driveType -eq 'documentLibrary' } | Sort-Object -Property name)
         if (-not $GraphRequest -or $GraphRequest.Count -eq 0) {
             # Fall back to all drives if none are flagged documentLibrary.
             $GraphRequest = @($Drives | Where-Object { $_.id } | ForEach-Object {
-                    [PSCustomObject]@{ id = $_.id; name = $_.name; driveType = $_.driveType; webUrl = $_.webUrl; usedBytes = $_.quota.used; totalBytes = $_.quota.total }
+                    [PSCustomObject]@{ id = $_.id; name = $_.name; driveType = $_.driveType; webUrl = $_.webUrl; usedBytes = if ($_.quota) { $_.quota.used } else { $null }; totalBytes = if ($_.quota) { $_.quota.total } else { $null } }
                 } | Sort-Object -Property name)
         }
         $StatusCode = [HttpStatusCode]::OK

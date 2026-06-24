@@ -66,7 +66,8 @@ function Get-TempFilesRecursive {
 
                 if ($MatchTypes.Count -gt 0) {
                     $ParentPath = if ($Item.parentReference.path) {
-                        $Item.parentReference.path -replace '/drive/root:', ''
+                        # Graph returns either /drive/root: or /drives/{driveId}/root: depending on the endpoint.
+                        $Item.parentReference.path -replace '^/drive/root:', '' -replace '^/drives/[^/]+/root:', ''
                     } else { '' }
 
                     $Results.Add(@{

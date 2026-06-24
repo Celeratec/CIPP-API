@@ -23,6 +23,8 @@ function Invoke-ListSharePointImageCandidates {
     $DriveId = $Request.Body.DriveId ?? $Request.Query.DriveId
     $LibraryName = $Request.Body.LibraryName ?? $Request.Query.LibraryName
     $MinimumFileSizeMB = $Request.Body.MinimumFileSizeMB ?? $Request.Query.MinimumFileSizeMB ?? 5
+    $FolderId = $Request.Body.FolderId ?? $Request.Query.FolderId
+    $FolderPath = $Request.Body.FolderPath ?? $Request.Query.FolderPath
     $IncludeSubfoldersRaw = $Request.Body.IncludeSubfolders ?? $Request.Query.IncludeSubfolders
     $IncludeSubfolders = if ($null -eq $IncludeSubfoldersRaw) {
         $true
@@ -31,6 +33,12 @@ function Invoke-ListSharePointImageCandidates {
     } else {
         [bool]$IncludeSubfoldersRaw
     }
+
+    # This endpoint scans synchronously inside the HTTP request, which is bound by the
+    # ~230s gateway limit. Cap the scan so a large library cannot run past that limit;
+    # callers wanting a full library audit should use the queued ExecSharePointImageOptimize.
+    $MaxFilesRaw = $Request.Body.MaxFiles ?? $Request.Query.MaxFiles
+    $MaxFiles = if ($null -ne $MaxFilesRaw -and [int]$MaxFilesRaw -gt 0) { [int]$MaxFilesRaw } else { 200 }
 
     if (-not $TenantFilter) {
         return ([HttpResponseContext]@{
@@ -48,7 +56,8 @@ function Invoke-ListSharePointImageCandidates {
     try {
         $Result = Invoke-CIPPSharePointImageOptimizer -TenantFilter $TenantFilter -SiteId $SiteId -SiteUrl $SiteUrl `
             -DriveId $DriveId -LibraryName $LibraryName -Mode 'Audit' `
-            -MinimumFileSizeMB ([double]$MinimumFileSizeMB) -IncludeSubfolders ([bool]$IncludeSubfolders)
+            -MinimumFileSizeMB ([double]$MinimumFileSizeMB) -IncludeSubfolders ([bool]$IncludeSubfolders) `
+            -FolderId $FolderId -FolderPath $FolderPath -MaxFiles $MaxFiles
 
         Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Audited SharePoint library for large JPGs. Scanned $($Result.Summary.FilesScanned), eligible $($Result.Summary.EligibleFiles)." -Sev Info
         $StatusCode = [HttpStatusCode]::OK
