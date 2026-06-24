@@ -50,7 +50,7 @@ function Compress-CIPPImage {
     $Result = [PSCustomObject]@{
         Success         = $false
         Engine          = $null
-        OriginalBytes   = [long]$ImageBytes.Length
+        OriginalBytes   = if ($null -eq $ImageBytes) { [long]0 } else { [long]$ImageBytes.Length }
         CompressedBytes = [long]0
         Data            = $null
         Warning         = $null

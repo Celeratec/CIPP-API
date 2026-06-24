@@ -104,6 +104,7 @@ function Invoke-CIPPSharePointImageOptimizer {
             OriginalBytes         = [long]0
             CompressedBytes       = [long]0
             EstimatedSavingsBytes = [long]0
+            ActualSavingsBytes    = [long]0
             VersionsDeleted       = 0
             Errors                = 0
         }
@@ -140,9 +141,14 @@ function Invoke-CIPPSharePointImageOptimizer {
             $Drives = New-GraphGetRequest -uri "https://graph.microsoft.com/v1.0/sites/$SiteId/drives?`$select=id,name,driveType" -tenantid $TenantFilter -AsApp $true -NoAuthCheck $true
             $Drives = @($Drives) | Where-Object { $_.id }
             if ($LibraryName) {
+                # An explicit library was requested. If it cannot be found we must NOT
+                # silently fall back to a different library - a compress/cleanup run would
+                # otherwise target (and modify) the wrong library.
                 $Drive = $Drives | Where-Object { $_.name -eq $LibraryName } | Select-Object -First 1
                 if (-not $Drive) {
-                    $Warnings.Add("Library '$LibraryName' not found on the site. Available: $(( $Drives.name ) -join ', ').")
+                    $Warnings.Add("Library '$LibraryName' was not found on the site and no files were processed. Available: $(( $Drives.name ) -join ', ').")
+                    $Output.Warnings = @($Warnings)
+                    return $Output
                 }
             }
             if (-not $Drive) {
@@ -152,7 +158,8 @@ function Invoke-CIPPSharePointImageOptimizer {
             if ($Drive) {
                 $DriveId = $Drive.id
                 $Output.DriveId = $DriveId
-                if (-not $Output.Library) { $Output.Library = $Drive.name }
+                # Always reflect the library actually targeted, never the requested name.
+                $Output.Library = $Drive.name
             }
         } catch {
             $Warnings.Add("Failed to resolve drives for site: $($_.Exception.Message)")
@@ -189,10 +196,22 @@ function Invoke-CIPPSharePointImageOptimizer {
     }
 
     # --- Audit (discover candidates) ---------------------------------------
+    # Bound discovery so we don't walk an entire huge library when only a handful of
+    # files will ever be processed. A full audit (no MaxFiles) still scans everything.
+    $DiscoveryMax = if ($MaxFiles -gt 0) {
+        $EffectiveMax
+    } elseif ($Mode -eq 'Audit') {
+        0
+    } else {
+        $EffectiveMax
+    }
     $Audit = Get-CIPPSharePointImageCandidate -TenantFilter $TenantFilter -DriveId $DriveId `
-        -MinimumFileSizeMB $MinimumFileSizeMB -FolderId $ScanFolderId -IncludeSubfolders $IncludeSubfolders -MaxFiles 0
+        -MinimumFileSizeMB $MinimumFileSizeMB -FolderId $ScanFolderId -IncludeSubfolders $IncludeSubfolders -MaxFiles $DiscoveryMax
     $Candidates = @($Audit.Candidates)
     $Output.Summary.FilesScanned = $Audit.FilesScanned
+    if ($DiscoveryMax -gt 0 -and $Candidates.Count -ge $DiscoveryMax) {
+        $Warnings.Add("Scan stopped after the first $DiscoveryMax image(s). Narrow the scope with a folder or raise MaxFiles to cover more of the library.")
+    }
 
     # Filter to specifically requested files if provided (ignore null/empty entries).
     $RequestedIds = @($FileIds | Where-Object { $_ })
@@ -205,11 +224,18 @@ function Invoke-CIPPSharePointImageOptimizer {
 
     # --- Audit-only mode: report and return --------------------------------
     if ($Mode -eq 'Audit') {
+        $EligibleBytes = [long]0
         foreach ($Cand in $Candidates) {
             $Status = if ($Cand.Eligible) { 'Found' } else { $Cand.SkipReason }
             $Output.Summary.OriginalBytes += $Cand.SizeBytes
-            if (-not $Cand.Eligible) { $Output.Summary.FilesSkipped++ }
+            if ($Cand.Eligible) { $EligibleBytes += [long]$Cand.SizeBytes } else { $Output.Summary.FilesSkipped++ }
             $Results.Add((New-ImageOptimizerResultRow -Candidate $Cand -SiteUrl $Output.SiteUrl -Library $Output.Library -Status $Status))
+        }
+        # No files are compressed during an audit, so we can only estimate. Eligible files
+        # are only ever uploaded when they beat MinimumSavingsPercent, which makes that
+        # percentage a safe lower-bound estimate of what a real run would reclaim.
+        if ($EligibleBytes -gt 0) {
+            $Output.Summary.EstimatedSavingsBytes = [long][math]::Round($EligibleBytes * ($MinimumSavingsPercent / 100))
         }
         $Output.Results = @($Results)
         $Output.Warnings = @($Warnings)
@@ -327,6 +353,7 @@ function Invoke-CIPPSharePointImageOptimizer {
             $Output.Summary.FilesCompressed++
             $Output.Summary.CompressedBytes += $NewBytes
             $Output.Summary.EstimatedSavingsBytes += $SavingsBytes
+            $Output.Summary.ActualSavingsBytes += $SavingsBytes
             $Row.Status = 'Compressed'
 
             # 5. Optional version cleanup (only after a real, successful upload).
