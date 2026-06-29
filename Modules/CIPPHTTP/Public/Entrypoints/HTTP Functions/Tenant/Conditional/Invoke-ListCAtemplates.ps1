@@ -9,7 +9,7 @@ function Invoke-ListCAtemplates {
     #>
     [CmdletBinding()]
     param($Request, $TriggerMetadata)
-    Write-Host $Request.query.id
+    $GUID = $Request.query.id ?? $Request.query.ID ?? $Request.query.guid ?? $Request.query.GUID
     #Migrating old policies whenever you do a list
     $Table = Get-CippTable -tablename 'templates'
     $Imported = Get-CIPPAzDataTableEntity @Table -Filter "PartitionKey eq 'settings'"
@@ -31,10 +31,11 @@ function Invoke-ListCAtemplates {
     }
     #List new policies
     $Table = Get-CippTable -tablename 'templates'
-    $Filter = "PartitionKey eq 'CATemplate'"
-    $RawTemplates = @(Get-CIPPAzDataTableEntity @Table -Filter $Filter)
 
     if ($Request.query.mode -eq 'Tag') {
+        $Filter = "PartitionKey eq 'CATemplate'"
+        $RawTemplates = (Get-CIPPAzDataTableEntity @Table -Filter $Filter)
+        #when the mode is tag, show all the potential tags, return the object with: label: tag, value: tag, count: number of templates with that tag, unique only
         $Templates = @($RawTemplates | Where-Object { $_.Package } | Group-Object -Property Package | ForEach-Object {
             $package = $_.Name
             $packageTemplates = @($_.Group)
@@ -46,23 +47,30 @@ function Invoke-ListCAtemplates {
                 templateCount = $templateCount
                 templates     = @($packageTemplates | ForEach-Object {
                         try {
-                            $data = $_.JSON | ConvertFrom-Json -Depth 20 -ErrorAction Stop
+                            $data = $_.JSON | ConvertFrom-Json -Depth 100 -ErrorAction SilentlyContinue
                             $data | Add-Member -NotePropertyName 'GUID' -NotePropertyValue $_.GUID -Force
                             $data | Add-Member -NotePropertyName 'package' -NotePropertyValue $_.Package -Force
                             $data | Add-Member -NotePropertyName 'source' -NotePropertyValue $_.Source -Force
                             $data | Add-Member -NotePropertyName 'isSynced' -NotePropertyValue (![string]::IsNullOrEmpty($_.SHA)) -Force
                             $data
                         } catch {
-                            Write-Warning "Failed to process CA template package item: $($_.RowKey) - $($_.Exception.Message)"
                         }
                     })
             }
         } | Sort-Object -Property label)
     } else {
+        if ($GUID) {
+            $SafeGUID = ConvertTo-CIPPODataFilterValue -Value $GUID -Type Guid
+            $Filter = "PartitionKey eq 'CATemplate' and GUID eq '$SafeGUID'"
+            $RawTemplates = (Get-CIPPAzDataTableEntity @Table -Filter $Filter)
+        }
+        else {
+            $RawTemplates = (Get-CIPPAzDataTableEntity @Table -Filter "PartitionKey eq 'CATemplate'")
+        }
         $Templates = $RawTemplates | ForEach-Object {
             try {
                 $row = $_
-                $data = $row.JSON | ConvertFrom-Json -Depth 20 -ErrorAction Stop
+                $data = $row.JSON | ConvertFrom-Json -Depth 100 -ErrorAction Stop
                 $data | Add-Member -NotePropertyName 'GUID' -NotePropertyValue $row.GUID -Force
                 $data | Add-Member -NotePropertyName 'source' -NotePropertyValue $row.Source -Force
                 $data | Add-Member -NotePropertyName 'isSynced' -NotePropertyValue (![string]::IsNullOrEmpty($row.SHA)) -Force
@@ -74,9 +82,7 @@ function Invoke-ListCAtemplates {
         } | Sort-Object -Property displayName
     }
 
-    if ($Request.query.ID) { $Templates = $Templates | Where-Object -Property GUID -EQ $Request.query.id }
-
-    $Templates = ConvertTo-Json -InputObject @($Templates) -Depth 20
+    $Templates = ConvertTo-Json -InputObject @($Templates) -Depth 100
     return ([HttpResponseContext]@{
             StatusCode = [HttpStatusCode]::OK
             Body       = $Templates
