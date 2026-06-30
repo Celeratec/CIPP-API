@@ -81,6 +81,24 @@ function Invoke-EditUser {
                 'forceChangePasswordNextSignIn' = [bool]$UserObj.MustChangePass
             }
         }
+        # Explicit clears: the frontend lists the profile fields the user actively emptied.
+        # We re-add them as null (scalars) / empty array (collections) so Graph clears them, while
+        # untouched empty fields stay omitted. Whitelisted to safe attributes
+        # Manage365: $BodyToship is a hashtable here (fork), so assign keys directly instead of Add-Member.
+        $ClearableFields = @(
+            'givenName', 'surname', 'department', 'jobTitle', 'mobilePhone',
+            'streetAddress', 'city', 'state', 'postalCode', 'country', 'companyName',
+            'businessPhones', 'otherMails'
+        )
+        $ClearList = @($UserObj.clearProperties | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        foreach ($Prop in $ClearList) {
+            if ($Prop -notin $ClearableFields) { continue }
+            if ($Prop -in 'businessPhones', 'otherMails') {
+                $BodyToShip[$Prop] = @()
+            } else {
+                $BodyToShip[$Prop] = $null
+            }
+        }
         if ($UserObj.defaultAttributes) {
             $UserObj.defaultAttributes | Get-Member -MemberType NoteProperty | ForEach-Object {
                 if (-not [string]::IsNullOrWhiteSpace($UserObj.defaultAttributes.$($_.Name).value)) {
