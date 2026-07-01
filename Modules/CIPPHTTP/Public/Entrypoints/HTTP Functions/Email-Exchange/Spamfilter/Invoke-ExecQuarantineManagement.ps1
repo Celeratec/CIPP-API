@@ -31,10 +31,14 @@ function Invoke-ExecQuarantineManagement {
             Select-Object -Unique
     )
 
-    $Identities = if ($Request.Body.Identity -is [string]) {
-        @($Request.Body.Identity)
-    } else {
-        @($Request.Body.Identity)
+    $Identities = @(
+        $Request.Body.Identity | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+    if ($Identities.Count -eq 0) {
+        return ([HttpResponseContext]@{
+                StatusCode = [HttpStatusCode]::BadRequest
+                Body       = @{ Results = 'No quarantine message identity was provided.' }
+            })
     }
 
     $ResultsList = [System.Collections.Generic.List[object]]::new()
@@ -84,13 +88,15 @@ function Invoke-ExecQuarantineManagement {
         $AllowBlockOnly = $ActionType -in @('AllowDomain', 'BlockDomain', 'AllowSenderOnly', 'BlockSenderOnly')
         if ($AllowBlockOnly) {
             if ($Entry.AllowEntryResult -eq 'Success') {
-                return switch ($ActionType) {
-                    'AllowDomain' { 'Sender domain added to the tenant allow list.' }
-                    'BlockDomain' { 'Sender domain added to the tenant block list.' }
-                    'AllowSenderOnly' { 'Sender added to the tenant allow list.' }
-                    'BlockSenderOnly' { 'Sender added to the tenant block list.' }
-                    default { 'Allow/block entry updated successfully.' }
-                }
+                # `return switch` is a parse error in PowerShell; the switch must be
+                # wrapped in a subexpression to be used as a return value.
+                return $(switch ($ActionType) {
+                        'AllowDomain' { 'Sender domain added to the tenant allow list.' }
+                        'BlockDomain' { 'Sender domain added to the tenant block list.' }
+                        'AllowSenderOnly' { 'Sender added to the tenant allow list.' }
+                        'BlockSenderOnly' { 'Sender added to the tenant block list.' }
+                        default { 'Allow/block entry updated successfully.' }
+                    })
             }
             if (-not [string]::IsNullOrWhiteSpace($Entry.AllowEntryResult)) {
                 return $Entry.AllowEntryResult

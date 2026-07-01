@@ -27,7 +27,9 @@ function Invoke-ExecSetSharePointMember {
             if ($IsGuidGroupId) {
                 $GroupId = $RawGroupId
             } else {
-                $LookupResults = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/groups?`$filter=mail eq '$RawGroupId' or proxyAddresses/any(x:endsWith(x,'$RawGroupId')) or mailNickname eq '$RawGroupId'" -ComplexFilter -tenantid $TenantFilter
+                # Escape single quotes for the OData filter (e.g. o'brien@contoso.com)
+                $SafeGroupId = $RawGroupId -replace "'", "''"
+                $LookupResults = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/groups?`$filter=mail eq '$SafeGroupId' or proxyAddresses/any(x:endsWith(x,'$SafeGroupId')) or mailNickname eq '$SafeGroupId'" -ComplexFilter -tenantid $TenantFilter
                 $GroupId = if ($LookupResults -is [array]) { [string]($LookupResults | Select-Object -First 1).id } else { [string]$LookupResults.id }
             }
 

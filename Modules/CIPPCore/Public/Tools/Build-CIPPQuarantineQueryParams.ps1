@@ -364,24 +364,24 @@ function Get-CippQuarantinePagedResults {
         $LastPageResultCount = @($PageResults).Count
         $RawScanned += $LastPageResultCount
         $FilteredPage = @(Apply-CippQuarantinePostFilters -Messages $PageResults -PostFilters $Query.PostFilters)
+        # Always keep every match from a scanned EXO page. The next request resumes
+        # on the following EXO page, so truncating mid-page would silently drop the
+        # remaining matches on this page. The client page may therefore run slightly
+        # over TargetPageSize, which is preferable to losing rows.
         foreach ($item in $FilteredPage) {
-            if ($Collected.Count -ge $TargetPageSize) { break }
             $Collected.Add($item)
         }
         $PagesFetched++
-        if ($LastPageResultCount -lt $ExoPageSize) { break }
-        if ($Collected.Count -ge $TargetPageSize) {
-            $ExoPage++
-            break
-        }
         $ExoPage++
+        if ($LastPageResultCount -lt $ExoPageSize) { break }
     }
 
-    $HasMore = $false
-    if ($Collected.Count -ge $TargetPageSize) {
-        $HasMore = ($LastPageResultCount -eq $ExoPageSize) -or ($PagesFetched -ge $MaxRawPagesPerRequest)
-    }
-    if ($PagesFetched -ge $MaxRawPagesPerRequest -and $LastPageResultCount -eq $ExoPageSize) {
+    # More EXO pages exist whenever the last scanned page was full. Surface that as
+    # HasMore even when this client page came back short (e.g. the raw-page scan
+    # limit was hit before enough matches were found), so the UI can keep paging.
+    $MoreExoPagesExist = ($LastPageResultCount -eq $ExoPageSize -and $ExoPage -le 1000)
+    $HasMore = $MoreExoPagesExist
+    if ($MoreExoPagesExist -and $Collected.Count -lt $TargetPageSize) {
         $PostFilterLimited = $true
     }
 

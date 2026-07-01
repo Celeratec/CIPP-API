@@ -85,7 +85,11 @@ function Invoke-ExportMailQuarantine {
         $Body = $ExportBody
     } catch {
         $ErrorMessage = Get-NormalizedError -Message $_.Exception.Message
-        $StatusCode = [HttpStatusCode]::Forbidden
+        $StatusCode = if ($ErrorMessage -match 'not authorized|access.*denied|unauthorized|permission') {
+            [HttpStatusCode]::Forbidden
+        } else {
+            [HttpStatusCode]::InternalServerError
+        }
         $Body = @{ Results = $ErrorMessage }
     }
 

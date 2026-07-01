@@ -109,7 +109,14 @@ function Invoke-ListMailQuarantine {
         }
     } catch {
         $ErrorMessage = Get-NormalizedError -Message $_.Exception.Message
-        $StatusCode = [HttpStatusCode]::Forbidden
+        # Only report 403 for actual authorization failures; throttling and other
+        # transient errors were previously mislabelled as Forbidden, which stops
+        # clients and monitoring from treating them as retryable.
+        $StatusCode = if ($ErrorMessage -match 'not authorized|access.*denied|unauthorized|permission') {
+            [HttpStatusCode]::Forbidden
+        } else {
+            [HttpStatusCode]::InternalServerError
+        }
         $GraphRequest = $ErrorMessage
         $Metadata = $null
     }

@@ -140,6 +140,69 @@ Describe 'Apply-CippQuarantinePostFilters' {
     }
 }
 
+Describe 'Get-CippQuarantinePagedResults' {
+    It 'keeps every post-filter match from a scanned EXO page (no mid-page truncation)' {
+        Mock -CommandName Invoke-CippQuarantineExoRequest -MockWith {
+            param($TenantId, $Cmdlet, $CmdParams)
+            switch ($CmdParams.Page) {
+                1 {
+                    @(
+                        [pscustomobject]@{ Identity = 'keep-1'; Subject = 'keep me' },
+                        [pscustomobject]@{ Identity = 'drop-1'; Subject = 'other' }
+                    )
+                }
+                2 {
+                    @(
+                        [pscustomobject]@{ Identity = 'keep-2'; Subject = 'keep me too' },
+                        [pscustomobject]@{ Identity = 'keep-3'; Subject = 'keep me three' }
+                    )
+                }
+                default {
+                    @([pscustomobject]@{ Identity = 'keep-4'; Subject = 'keep me four' })
+                }
+            }
+        }
+
+        $query = [PSCustomObject]@{
+            CmdParams      = @{ PageSize = 2; Page = 1 }
+            PostFilters    = @{ subjectContains = 'keep' }
+            AppliedFilters = @{}
+        }
+
+        $result = Get-CippQuarantinePagedResults -TenantId 'contoso.onmicrosoft.com' -Query $query -TargetPageSize 2
+
+        # Page 2 fills the client page mid-scan; both of its matches must be kept
+        # because the next request resumes on EXO page 3.
+        $result.Results.Identity | Should -Be @('keep-1', 'keep-2', 'keep-3')
+        $result.Metadata.nextLink | Should -Be '3'
+        $result.Metadata.PostFilterPaginationLimited | Should -BeFalse
+    }
+
+    It 'reports HasMore via nextLink when the raw page scan limit is hit with few matches' {
+        Mock -CommandName Invoke-CippQuarantineExoRequest -MockWith {
+            param($TenantId, $Cmdlet, $CmdParams)
+            @(
+                [pscustomobject]@{ Identity = "drop-a-$($CmdParams.Page)"; Subject = 'other' },
+                [pscustomobject]@{ Identity = "drop-b-$($CmdParams.Page)"; Subject = 'other' }
+            )
+        }
+
+        $query = [PSCustomObject]@{
+            CmdParams      = @{ PageSize = 2; Page = 1 }
+            PostFilters    = @{ subjectContains = 'keep' }
+            AppliedFilters = @{}
+        }
+
+        $result = Get-CippQuarantinePagedResults -TenantId 'contoso.onmicrosoft.com' -Query $query -TargetPageSize 2
+
+        $result.Results.Count | Should -Be 0
+        # 25-raw-page scan limit hit while more EXO pages exist: the client must be
+        # told there is more data, and that the scan was limited by post-filters.
+        $result.Metadata.nextLink | Should -Be '26'
+        $result.Metadata.PostFilterPaginationLimited | Should -BeTrue
+    }
+}
+
 Describe 'ConvertTo-CippQuarantineDisplayObject' {
     It 'normalizes release status casing for the frontend' {
         $display = ConvertTo-CippQuarantineDisplayObject -Message ([pscustomobject]@{

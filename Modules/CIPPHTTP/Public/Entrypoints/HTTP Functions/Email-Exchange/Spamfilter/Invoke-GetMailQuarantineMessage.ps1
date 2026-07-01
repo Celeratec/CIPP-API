@@ -13,11 +13,14 @@ function Invoke-GetMailQuarantineMessage {
     $TenantFilter = $Request.Query.tenantFilter
     $Identity = $Request.Query.Identity
 
-    try {
-        if ([string]::IsNullOrWhiteSpace($Identity)) {
-            throw 'Identity is required.'
-        }
+    if ([string]::IsNullOrWhiteSpace($Identity)) {
+        return ([HttpResponseContext]@{
+                StatusCode = [HttpStatusCode]::BadRequest
+                Body       = @{ Results = 'Identity is required.' }
+            })
+    }
 
+    try {
         $Message = Invoke-CippQuarantineExoRequest -TenantId $TenantFilter -Cmdlet 'Get-QuarantineMessage' -CmdParams @{ Identity = $Identity }
         $Display = ConvertTo-CippQuarantineDisplayObject -Message $Message
 
@@ -51,7 +54,11 @@ function Invoke-GetMailQuarantineMessage {
         $StatusCode = [HttpStatusCode]::OK
     } catch {
         $ErrorMessage = Get-NormalizedError -Message $_.Exception.Message
-        $StatusCode = [HttpStatusCode]::Forbidden
+        $StatusCode = if ($ErrorMessage -match 'not authorized|access.*denied|unauthorized|permission') {
+            [HttpStatusCode]::Forbidden
+        } else {
+            [HttpStatusCode]::InternalServerError
+        }
         $Body = @{ Results = $ErrorMessage }
     }
 

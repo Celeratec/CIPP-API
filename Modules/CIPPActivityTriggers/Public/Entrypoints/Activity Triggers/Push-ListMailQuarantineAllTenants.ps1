@@ -28,9 +28,16 @@
         } while ($quarantineMessages.Count -eq $Query.CmdParams.PageSize -and $Page -le $MaxPages)
 
         foreach ($message in $AllMessages) {
+            # Deterministic RowKey (hash of tenant + quarantine Identity) so re-running
+            # the sync upserts existing rows instead of inserting duplicates that the
+            # 30-minute cache window would then return twice.
+            $RowKeySource = '{0}|{1}' -f $domainName, ([string]$message.Identity)
+            $RowKey = [System.Convert]::ToHexString(
+                [System.Security.Cryptography.SHA256]::HashData([System.Text.Encoding]::UTF8.GetBytes($RowKeySource))
+            )
             $messageData = @{
                 QuarantineMessage = [string]($message | ConvertTo-Json -Depth 10 -Compress)
-                RowKey            = [string](New-Guid).Guid
+                RowKey            = $RowKey
                 PartitionKey      = 'QuarantineMessage'
                 Tenant            = [string]$domainName
             }

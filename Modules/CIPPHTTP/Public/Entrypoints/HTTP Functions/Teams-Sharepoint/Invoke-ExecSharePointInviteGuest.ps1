@@ -66,7 +66,9 @@ function Invoke-ExecSharePointInviteGuest {
             try {
                 $GroupId = $Request.Body.groupId
                 if ($GroupId -notmatch '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$') {
-                    $GroupId = (New-GraphGetRequest -uri "https://graph.microsoft.com/beta/groups?`$filter=mail eq '$GroupId' or proxyAddresses/any(x:endsWith(x,'$GroupId')) or mailNickname eq '$GroupId'" -ComplexFilter -tenantid $TenantFilter).id
+                    # Escape single quotes for the OData filter (e.g. o'brien@contoso.com)
+                    $SafeGroupId = $GroupId -replace "'", "''"
+                    $GroupId = (New-GraphGetRequest -uri "https://graph.microsoft.com/beta/groups?`$filter=mail eq '$SafeGroupId' or proxyAddresses/any(x:endsWith(x,'$SafeGroupId')) or mailNickname eq '$SafeGroupId'" -ComplexFilter -tenantid $TenantFilter).id
                 }
 
                 if ($GroupId) {

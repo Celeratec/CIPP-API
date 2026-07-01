@@ -11,9 +11,6 @@ function Invoke-ListUserMailboxDetails {
     $TenantFilter = $Request.Query.tenantFilter
     $UserID = $Request.Query.UserID
     $UserMail = $Request.Query.userMail
-    Write-Host "TenantFilter: $TenantFilter"
-    Write-Host "UserID: $UserID"
-    Write-Host "UserMail: $UserMail"
 
     try {
         $Requests = @(
@@ -59,11 +56,9 @@ function Invoke-ListUserMailboxDetails {
                 }
             }
         )
-        $usernames = New-GraphGetRequest -tenantid $TenantFilter -uri 'https://graph.microsoft.com/beta/users?$select=id,userPrincipalName,displayName,mailNickname&$top=999'
         # Use a deterministic mailbox anchor for EXO routing; $username is not defined here.
         $AnchorIdentity = if ($UserMail) { $UserMail } else { $UserID }
         $Results = New-ExoBulkRequest -TenantId $TenantFilter -CmdletArray $Requests -returnWithCommand $true -Anchor $AnchorIdentity
-        Write-Host "First line of usernames is $($usernames[0] | ConvertTo-Json)"
 
         # Assign variables from $Results
         $MailboxDetailedRequest = $Results.'Get-Mailbox'
@@ -122,7 +117,31 @@ function Invoke-ListUserMailboxDetails {
             Write-Verbose "Could not check outbound transport rule: $($_.Exception.Message)"
         }
     } catch {
-        Write-Error "Failed Fetching Data $($_.Exception.message): $($_.InvocationInfo.ScriptLineNumber)"
+        # Without the mailbox data every downstream section would run against unset
+        # variables and return a misleading empty-but-OK payload. Surface the failure.
+        $ErrorMessage = Get-NormalizedError -Message $_.Exception.Message
+        Write-LogMessage -headers $Request.Headers -API $Request.Params.CIPPEndpoint -tenant $TenantFilter -message "Failed fetching mailbox details for $($UserID): $($_.Exception.Message)" -Sev 'Error' -LogData $_
+        return ([HttpResponseContext]@{
+                StatusCode = [HttpStatusCode]::InternalServerError
+                Body       = @{ Results = "Failed to fetch mailbox details: $ErrorMessage" }
+            })
+    }
+
+    # Resolve display names only when something actually references other users;
+    # fetching the whole tenant user list on every request is expensive.
+    $usernames = @()
+    $RawForwardingAddress = $MailboxDetailedRequest.ForwardingAddress
+    $NeedsUserLookup = [bool]$MailboxDetailedRequest.GrantSendOnBehalfTo -or (
+        -not $MailboxDetailedRequest.ForwardingSmtpAddress -and
+        $RawForwardingAddress -and
+        $RawForwardingAddress -notmatch '@'
+    )
+    if ($NeedsUserLookup) {
+        try {
+            $usernames = New-GraphGetRequest -tenantid $TenantFilter -uri 'https://graph.microsoft.com/beta/users?$select=id,userPrincipalName,displayName,mailNickname&$top=999'
+        } catch {
+            Write-LogMessage -headers $Request.Headers -API $Request.Params.CIPPEndpoint -tenant $TenantFilter -message "Could not resolve user display names: $($_.Exception.Message)" -Sev 'Warning'
+        }
     }
 
     # Parse permissions

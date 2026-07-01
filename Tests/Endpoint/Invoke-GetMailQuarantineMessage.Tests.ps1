@@ -60,7 +60,7 @@ Describe 'Invoke-GetMailQuarantineMessage' {
         $response.Body.Results.ReleaseStatus | Should -Be 'NOTRELEASED'
     }
 
-    It 'returns Forbidden when Identity is missing' {
+    It 'returns BadRequest when Identity is missing' {
         $request = [pscustomobject]@{
             Query = @{
                 tenantFilter = 'contoso.onmicrosoft.com'
@@ -69,7 +69,7 @@ Describe 'Invoke-GetMailQuarantineMessage' {
 
         $response = Invoke-GetMailQuarantineMessage -Request $request -TriggerMetadata $null
 
-        $response.StatusCode | Should -Be ([System.Net.HttpStatusCode]::Forbidden)
+        $response.StatusCode | Should -Be ([System.Net.HttpStatusCode]::BadRequest)
         $response.Body.Results | Should -Match 'Identity is required'
     }
 }
