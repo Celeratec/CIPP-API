@@ -15,7 +15,7 @@ function Set-CIPPIntunePolicy {
         [array]$ReusableSettings
     )
 
-    $RawJSON = Get-CIPPTextReplacement -TenantFilter $TenantFilter -Text $RawJSON
+    $RawJSON = Get-CIPPTextReplacement -TenantFilter $TenantFilter -Text $RawJSON -EscapeForJson
 
     try {
         switch ($TemplateType) {
