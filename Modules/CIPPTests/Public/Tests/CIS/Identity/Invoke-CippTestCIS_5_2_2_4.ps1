@@ -7,25 +7,26 @@ function Invoke-CippTestCIS_5_2_2_4 {
 
     try {
         $CA = Get-CIPPTestData -TenantFilter $Tenant -Type 'ConditionalAccessPolicies'
-        $Roles = Get-CIPPTestData -TenantFilter $Tenant -Type 'Roles'
+        $Roles = Get-CippDbRole -TenantFilter $Tenant -IncludePrivilegedRoles
 
         if (-not $CA -or -not $Roles) {
             Add-CippTestResult -TenantFilter $Tenant -TestId 'CIS_5_2_2_4' -TestType 'Identity' -Status 'Skipped' -ResultMarkdown 'Required cache (ConditionalAccessPolicies or Roles) not found.' -Risk 'Medium' -Name 'Sign-in frequency for administrative users is configured' -UserImpact 'Medium' -ImplementationEffort 'Low' -Category 'Session Management'
             return
         }
 
-        $PrivRoleIds = ($Roles | Where-Object { $_.isPrivileged -eq $true }).id
+        # Conditional Access includeRoles reference role template IDs, not directory role instance IDs.
+        $PrivRoleIds = [System.Collections.Generic.HashSet[string]]::new([string[]]@($Roles | ForEach-Object { if ($_.roleTemplateId) { [string]$_.roleTemplateId } elseif ($_.RoletemplateId) { [string]$_.RoletemplateId } }))
 
-        $Matching = $CA | Where-Object {
+        $Matching = $CA.Where({
             $_.state -eq 'enabled' -and
             $_.conditions.users.includeRoles -and
-            (@($_.conditions.users.includeRoles) | Where-Object { $_ -in $PrivRoleIds }).Count -gt 0 -and
+            ([string[]]$_.conditions.users.includeRoles).Where({ $PrivRoleIds.Contains($_) }, 'First', 1).Count -gt 0 -and
             $_.sessionControls -and
             $_.sessionControls.signInFrequency -and
             $_.sessionControls.signInFrequency.isEnabled -eq $true -and
             $_.sessionControls.persistentBrowser -and
             $_.sessionControls.persistentBrowser.mode -eq 'never'
-        }
+        })
 
         if ($Matching) {
             $Status = 'Passed'
