@@ -17,10 +17,11 @@ Function Invoke-ExecRemoveMailboxRule {
     $RuleName = $Request.Query.ruleName ?? $Request.Body.ruleName
     $RuleId = $Request.Query.ruleId ?? $Request.Body.ruleId
     $Username = $Request.Query.userPrincipalName ?? $Request.Body.userPrincipalName
+    $MailboxObjectId = $RuleId.Split('\\')[0]
 
     try {
         # Remove the rule
-        $Results = Remove-CIPPMailboxRule -username $Username -TenantFilter $TenantFilter -APIName $APIName -Headers $Headers -RuleId $RuleId -RuleName $RuleName
+        $Results = Remove-CIPPMailboxRule -username $Username -TenantFilter $TenantFilter -APIName $APIName -Headers $Headers -RuleId $RuleId -RuleName $RuleName -MailboxObjectId $MailboxObjectId
         $StatusCode = [HttpStatusCode]::OK
     } catch {
         $Results = "Failed to remove mailbox rule: $((Get-CippException -Exception $_).NormalizedError)"

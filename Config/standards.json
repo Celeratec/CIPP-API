@@ -3433,12 +3433,10 @@
         "defaultValue": false
       },
       {
-        "type": "autoComplete",
-        "multiple": true,
-        "creatable": true,
+        "type": "LanguageCodeMultiSelect",
         "required": false,
         "name": "standards.SpamFilterPolicy.LanguageBlockList",
-        "label": "Languages to block (uppercase ISO 639-1 two-letter)",
+        "label": "Languages to block (ISO 639-1 two-letter)",
         "condition": {
           "field": "standards.SpamFilterPolicy.EnableLanguageBlockList",
           "compareType": "is",
@@ -3452,12 +3450,10 @@
         "defaultValue": false
       },
       {
-        "type": "autoComplete",
-        "multiple": true,
-        "creatable": true,
+        "type": "CountryCodeMultiSelect",
         "required": false,
         "name": "standards.SpamFilterPolicy.RegionBlockList",
-        "label": "Regions to block (uppercase ISO 3166-1 two-letter)",
+        "label": "Regions to block (ISO 3166-1 two-letter)",
         "condition": {
           "field": "standards.SpamFilterPolicy.EnableRegionBlockList",
           "compareType": "is",
@@ -4222,7 +4218,7 @@
     "name": "standards.SPFileRequests",
     "cat": "SharePoint Standards",
     "tag": [],
-    "helpText": "Enables or disables File Requests for SharePoint and OneDrive, allowing users to create secure upload-only links. Optionally sets the maximum number of days for the link to remain active before expiring.",
+    "helpText": "*Requires 'Sharing Level for OneDrive and SharePoint' to be set to Anyone* Enables or disables File Requests for SharePoint and OneDrive, allowing users to create secure upload-only links. Optionally sets the maximum number of days for the link to remain active before expiring.",
     "docsDescription": "File Requests allow users to create secure upload-only share links where uploads are hidden from other people using the link. This creates a secure and private way for people to upload files to a folder. This feature is not enabled by default on new tenants and requires PowerShell configuration. This standard enables or disables this feature and optionally configures link expiration settings for both SharePoint and OneDrive.",
     "executiveText": "Enables secure file upload functionality that allows external users to submit files directly to company folders without seeing other submissions or folder contents. This provides a professional and secure way to collect documents from clients, vendors, and partners while maintaining data privacy and security.",
     "addedComponent": [

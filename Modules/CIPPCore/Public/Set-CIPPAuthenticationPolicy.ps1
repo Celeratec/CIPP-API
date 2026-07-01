@@ -13,6 +13,8 @@ function Set-CIPPAuthenticationPolicy {
         [Parameter()][string[]]$GroupIds,
         [Parameter()][ValidateRange(1, 395)]$QRCodeLifetimeInDays = 365,
         [Parameter()][ValidateRange(8, 20)]$QRCodePinLength = 8,
+        [Parameter()][ValidateSet('default', 'enabled', 'disabled')]$EmailAllowExternalIdToUseEmailOtp,
+        [Parameter()][string[]]$EmailExcludeGroupIds,
         $APIName = 'Set Authentication Policy',
         $Headers
     )
@@ -97,8 +99,21 @@ function Set-CIPPAuthenticationPolicy {
         # Email OTP
         'Email' {
             if ($State -eq 'enabled') {
-                Write-LogMessage -headers $Headers -API $APIName -tenant $Tenant -message "Setting $AuthenticationMethodId to enabled is not allowed" -sev Error
-                throw "Setting $AuthenticationMethodId to enabled is not allowed"
+                if ($EmailAllowExternalIdToUseEmailOtp) {
+                    $CurrentInfo.allowExternalIdToUseEmailOtp = $EmailAllowExternalIdToUseEmailOtp
+                    $OptionalLogMessage = "with allowExternalIdToUseEmailOtp set to $EmailAllowExternalIdToUseEmailOtp"
+                }
+                if ($EmailExcludeGroupIds) {
+                    $CurrentInfo.excludeTargets = @(
+                        foreach ($id in $EmailExcludeGroupIds) {
+                            [pscustomobject]@{
+                                targetType = 'group'
+                                id         = $id
+                            }
+                        }
+                    )
+                    $OptionalLogMessage += " and excluded groups set to $($EmailExcludeGroupIds -join ', ')"
+                }
             }
         }
 
