@@ -14,6 +14,13 @@ Function Invoke-EditQuarantinePolicy {
 
     $TenantFilter = $Request.Query.TenantFilter ?? $Request.Body.TenantFilter
 
+    # Built-in policies (e.g. the global settings policy) report an all-zeros Guid that
+    # Set-QuarantinePolicy cannot resolve as an objectId, so fall back to the policy name.
+    $Identity = $Request.Body.Identity
+    if ($Identity -eq '00000000-0000-0000-0000-000000000000') {
+        $Identity = $Request.Body.Name ?? $Identity
+    }
+
     if ($Request.Query.Type -eq "GlobalQuarantinePolicy") {
 
         $Frequency = $Request.Body.EndUserSpamNotificationFrequency.value ?? $Request.Body.EndUserSpamNotificationFrequency
@@ -27,7 +34,7 @@ Function Invoke-EditQuarantinePolicy {
         }
 
         $Params = @{
-            Identity = $Request.Body.Identity
+            Identity = $Identity
             # Convert the requested frequency from ISO 8601 to a TimeSpan object
             EndUserSpamNotificationFrequency = [System.Xml.XmlConvert]::ToTimeSpan($EndUserSpamNotificationFrequency)
             EndUserSpamNotificationCustomFromAddress = $Request.Body.EndUserSpamNotificationCustomFromAddress
@@ -47,7 +54,7 @@ Function Invoke-EditQuarantinePolicy {
         }
 
         $Params = @{
-            Identity = $Request.Body.Identity
+            Identity = $Identity
             EndUserQuarantinePermissions = $EndUserQuarantinePermissions
             ESNEnabled = $Request.Body.QuarantineNotification
             IncludeMessagesFromBlockedSenderAddress = $Request.Body.IncludeMessagesFromBlockedSenderAddress
