@@ -104,6 +104,9 @@ function Invoke-ExecEmailTroubleshoot {
         $QuarantineResults = @($Filtered | ConvertTo-CippQuarantineDisplayObject)
     } catch {
         $QuarantineError = "Quarantine search failed: $((Get-CippException -Exception $_).NormalizedError)"
+        if ($_.Exception.Message -match 'is not recognized') {
+            $QuarantineError += " Quarantine access requires the SAM user to hold a role that includes Exchange quarantine permissions in this tenant - typically the Security Administrator GDAP role (or an Exchange role group containing the Quarantine role). If the standalone Quarantine Management page works for this tenant, this was a transient Exchange Online error - run the search again."
+        }
         Write-LogMessage -headers $Request.Headers -API $APIName -tenant $TenantFilter -message "Quarantine search failed: $($_.Exception.Message)" -Sev 'Error'
     }
 

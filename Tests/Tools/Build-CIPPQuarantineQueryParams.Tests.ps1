@@ -2,8 +2,9 @@
 
 BeforeAll {
     $RepoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSCommandPath))
-    $FunctionPath = Join-Path $RepoRoot 'Modules/CIPPCore/Public/Tools/Build-CIPPQuarantineQueryParams.ps1'
-    . $FunctionPath
+    # Quarantine helpers are one-function-per-file (required for module export); load them all.
+    $ToolsDir = Join-Path $RepoRoot 'Modules/CIPPCore/Public/Tools'
+    Get-ChildItem -Path $ToolsDir -Filter '*Quarantine*.ps1' | ForEach-Object { . $_.FullName }
 }
 
 Describe 'ConvertTo-CippQuarantineStringArray' {

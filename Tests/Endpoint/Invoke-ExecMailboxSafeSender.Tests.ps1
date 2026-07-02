@@ -3,7 +3,7 @@
 BeforeAll {
     $RepoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSCommandPath))
     $FunctionPath = Join-Path $RepoRoot 'Modules/CIPPHTTP/Public/Entrypoints/HTTP Functions/Email-Exchange/Spamfilter/Invoke-ExecMailboxSafeSender.ps1'
-    $ToolsPath = Join-Path $RepoRoot 'Modules/CIPPCore/Public/Tools/Build-CIPPQuarantineQueryParams.ps1'
+    $ToolsDir = Join-Path $RepoRoot 'Modules/CIPPCore/Public/Tools'
 
     class HttpResponseContext {
         [int]$StatusCode
@@ -21,7 +21,7 @@ BeforeAll {
     function Get-CippException { param($Exception) @{ NormalizedError = $Exception.Message } }
     function New-ExoRequest { param($tenantid, $cmdlet, $cmdParams) $true }
 
-    . $ToolsPath
+    Get-ChildItem -Path $ToolsDir -Filter '*Quarantine*.ps1' | ForEach-Object { . $_.FullName }
     . $FunctionPath
 }
 

@@ -59,6 +59,15 @@ Purpose: Protected areas that must not be overwritten during upstream sync.
 
 **CIPP-API files:**
 - `Modules/CIPPCore/Public/Tools/Build-CIPPQuarantineQueryParams.ps1`
+- `Modules/CIPPCore/Public/Tools/Get-CippQuarantineInputValue.ps1`
+- `Modules/CIPPCore/Public/Tools/ConvertTo-CippQuarantineStringArray.ps1`
+- `Modules/CIPPCore/Public/Tools/ConvertTo-CippQuarantineReleaseStatusApiValue.ps1`
+- `Modules/CIPPCore/Public/Tools/ConvertTo-CippQuarantineDisplayObject.ps1`
+- `Modules/CIPPCore/Public/Tools/Invoke-CippQuarantineExoRequest.ps1`
+- `Modules/CIPPCore/Public/Tools/Get-CippQuarantinePagedResults.ps1`
+- `Modules/CIPPCore/Public/Tools/Apply-CippQuarantinePostFilters.ps1`
+  (helpers split one-function-per-file 2026-07-01: CIPPCore exports by file basename,
+  so co-located functions were invisible to CIPPHTTP/CIPPActivityTriggers callers)
 - `Tests/Tools/Build-CIPPQuarantineQueryParams.Tests.ps1`
 - `Modules/CIPPHTTP/Public/Entrypoints/HTTP Functions/Email-Exchange/Spamfilter/Invoke-ListMailQuarantine.ps1`
 - `Modules/CIPPHTTP/Public/Entrypoints/HTTP Functions/Email-Exchange/Spamfilter/Invoke-GetMailQuarantineMessage.ps1`
