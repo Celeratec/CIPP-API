@@ -122,6 +122,15 @@ function Invoke-CIPPStandardConditionalAccessTemplate {
             $Policy | Add-Member -NotePropertyName 'state' -NotePropertyValue $Settings.state -Force
         }
 
+        if ($Policy.sessionControls) {
+            if ($Policy.sessionControls.disableResilienceDefaults -ne $true) {
+                $Policy.sessionControls.PSObject.Properties.Remove('disableResilienceDefaults')
+            }
+            if (@($Policy.sessionControls.PSObject.Properties).Count -eq 0) {
+                $Policy.PSObject.Properties.Remove('sessionControls')
+            }
+        }
+
         # Resolve the template's location GUIDs to display names so they compare like-for-like
         # with the deployed policy. The template's own LocationInfo carries the id->name map
         # (the GUID is the source tenant's id); fall back to this tenant's named-location cache.

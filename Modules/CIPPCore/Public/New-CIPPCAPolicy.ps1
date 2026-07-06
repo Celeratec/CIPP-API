@@ -1,4 +1,3 @@
-
 function New-CIPPCAPolicy {
     [CmdletBinding()]
     param (
@@ -115,6 +114,14 @@ function New-CIPPCAPolicy {
         $JSONobj.templateId ? $JSONobj.PSObject.Properties.Remove('templateId') : $null
         if ($JSONobj.conditions.users.excludeGuestsOrExternalUsers.externalTenants.Members) {
             $JSONobj.conditions.users.excludeGuestsOrExternalUsers.externalTenants.PSObject.Properties.Remove('@odata.context')
+        }
+        if ($JSONobj.sessionControls) {
+            if ($JSONobj.sessionControls.disableResilienceDefaults -ne $true) {
+                $JSONobj.sessionControls.PSObject.Properties.Remove('disableResilienceDefaults')
+            }
+            if (@($JSONobj.sessionControls.PSObject.Properties).Count -eq 0) {
+                $JSONobj.PSObject.Properties.Remove('sessionControls')
+            }
         }
         if ($State -and $State -ne 'donotchange') {
             $JSONobj | Add-Member -NotePropertyName 'state' -NotePropertyValue $State -Force
