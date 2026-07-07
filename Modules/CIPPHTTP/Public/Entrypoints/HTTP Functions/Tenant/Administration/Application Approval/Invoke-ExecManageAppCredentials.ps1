@@ -20,9 +20,7 @@ function Invoke-ExecManageAppCredentials {
     $Id = $Request.Body.Id
     $DisplayName = $Request.Body.DisplayName
     $EndDateTime = $Request.Body.EndDateTime
-    # ExpiryMonths may arrive as a plain number or a frontend autocomplete object { value, label }.
     $ExpiryMonths = $Request.Body.ExpiryMonths.value ?? $Request.Body.ExpiryMonths
-    # ExpiryDate is the frontend date picker value, a Unix timestamp in seconds.
     $ExpiryDate = $Request.Body.ExpiryDate
     $AppRef = $Id ?? $AppId
 
@@ -71,7 +69,6 @@ function Invoke-ExecManageAppCredentials {
                         displayName = if ([string]::IsNullOrWhiteSpace($DisplayName)) { 'CIPP-Generated Secret' } else { $DisplayName }
                     }
 
-                    # Requested expiry precedence: explicit ISO end date > custom date > month preset (default 12).
                     $Now = (Get-Date).ToUniversalTime()
                     if ($EndDateTime) {
                         $RequestedEnd = ([System.DateTimeOffset]$EndDateTime).UtcDateTime
