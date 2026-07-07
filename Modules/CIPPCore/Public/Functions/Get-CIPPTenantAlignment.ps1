@@ -259,6 +259,21 @@ function Get-CIPPTenantAlignment {
                         }
                     }
                 }
+                # Handle Reusable Settings templates — TemplateList is multi-select, one key per template id
+                elseif ($StandardKey -eq 'ReusableSettingsTemplate' -and $StandardConfig) {
+                    foreach ($RSTemplate in @($StandardConfig)) {
+                        $RSActions = if ($RSTemplate.action) { $RSTemplate.action } else { @() }
+                        $RSReportingEnabled = ($RSActions | Where-Object { $_.value -and ($_.value.ToLower() -eq 'report' -or $_.value.ToLower() -eq 'remediate') }).Count -gt 0
+                        foreach ($RSTemplateId in @($RSTemplate.TemplateList.value)) {
+                            if ($RSTemplateId) {
+                                [PSCustomObject]@{
+                                    StandardId       = "standards.ReusableSettingsTemplate.$RSTemplateId"
+                                    ReportingEnabled = $RSReportingEnabled
+                                }
+                            }
+                        }
+                    }
+                }
                 # Handle QuarantineTemplate — each policy is keyed by hex-encoded display name
                 elseif ($StandardKey -eq 'QuarantineTemplate' -and $StandardConfig -is [array]) {
                     foreach ($QTemplate in $StandardConfig) {

@@ -76,6 +76,21 @@ function Get-CIPPDrift {
         }
     }
 
+    # Load reusable settings templates for display name lookup
+    $RawReusableSettingTemplates = Get-CIPPAzDataTableEntity @IntuneTable -Filter "PartitionKey eq 'IntuneReusableSettingTemplate'"
+    $ReusableSettingTemplatesByGuid = @{}
+    foreach ($RawTemplate in $RawReusableSettingTemplates) {
+        try {
+            $data = $RawTemplate.JSON | ConvertFrom-Json -Depth 100 -ErrorAction SilentlyContinue
+            $ReusableSettingTemplatesByGuid[$RawTemplate.RowKey] = [PSCustomObject]@{
+                displayName = $data.DisplayName ?? $data.displayName ?? $RawTemplate.RowKey
+                description = $data.Description ?? $data.description
+            }
+        } catch {
+            # Skip invalid templates
+        }
+    }
+
     try {
         $AlignmentData = Get-CIPPTenantAlignment -TenantFilter $TenantFilter -TemplateId $TemplateId | Where-Object -Property standardType -EQ 'drift'
 
@@ -132,6 +147,15 @@ function Get-CIPPDrift {
                             if ($CompareGuid -and $CATemplatesByGuid.ContainsKey($CompareGuid)) {
                                 $Template = $CATemplatesByGuid[$CompareGuid]
                                 $displayName = $Template.displayName
+                                $standardDescription = $Template.description
+                            }
+                        }
+                        # Handle Reusable Settings templates
+                        if ($ComparisonItem.StandardName -like 'standards.ReusableSettingsTemplate.*') {
+                            $CompareGuid = $ComparisonItem.StandardName.Substring('standards.ReusableSettingsTemplate.'.Length)
+                            if ($CompareGuid -and $ReusableSettingTemplatesByGuid.ContainsKey($CompareGuid)) {
+                                $Template = $ReusableSettingTemplatesByGuid[$CompareGuid]
+                                $displayName = "Reusable Setting - $($Template.displayName)"
                                 $standardDescription = $Template.description
                             }
                         }
