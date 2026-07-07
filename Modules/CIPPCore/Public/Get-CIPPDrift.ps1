@@ -123,6 +123,13 @@ function Get-CIPPDrift {
         }
 
         $Results = [System.Collections.Generic.List[object]]::new()
+        # Tracks every StandardName that is still valid (live deviations + standards present in the
+        # template, whether assigned directly or via a package) so stale tenantDrift rows can be pruned.
+        $ValidDriftKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        # Policy rows are only pruned when the matching Graph collection succeeded, so a transient
+        # failure or missing license never wipes accepted/customer-specific statuses.
+        $IntunePoliciesCollected = $false
+        $CAPoliciesCollected = $false
         foreach ($Alignment in $AlignmentData) {
             # Initialize deviation collections
             $StandardsDeviations = [System.Collections.Generic.List[object]]::new()
@@ -182,6 +189,7 @@ function Get-CIPPDrift {
                         }
                         $reason = if ($ExistingDriftStates.ContainsKey($ComparisonItem.StandardName)) { $ExistingDriftStates[$ComparisonItem.StandardName].Reason }
                         $User = if ($ExistingDriftStates.ContainsKey($ComparisonItem.StandardName)) { $ExistingDriftStates[$ComparisonItem.StandardName].User }
+                        $IsLicenseMissing = $ComparisonItem.ComplianceStatus -eq 'License Missing'
                         $StandardsDeviations.Add([PSCustomObject]@{
                                 standardName        = $ComparisonItem.StandardName
                                 standardDisplayName = $displayName
@@ -191,7 +199,8 @@ function Get-CIPPDrift {
                                 Status              = $Status
                                 Reason              = $reason
                                 lastChangedByUser   = $User
-                                LicenseAvailable    = $ComparisonItem.LicenseAvailable
+                                ComplianceStatus    = $ComparisonItem.ComplianceStatus
+                                LicenseAvailable    = if ($IsLicenseMissing) { $false } else { $ComparisonItem.LicenseAvailable }
                                 CurrentValue        = $ComparisonItem.CurrentValue
                                 ExpectedValue       = $ComparisonItem.ExpectedValue
                             })
@@ -265,6 +274,7 @@ function Get-CIPPDrift {
                             }
                         }
                     }
+                    $IntunePoliciesCollected = $true
                 } catch {
                     Write-Warning "Failed to get Intune policies: $($_.Exception.Message)"
                 }
@@ -281,6 +291,7 @@ function Get-CIPPDrift {
                     )
                     $CAGraphRequest = New-GraphBulkRequest -Requests $CARequests -tenantid $TenantFilter -asapp $true
                     $TenantCAPolicies = ($CAGraphRequest | Where-Object { $_.id -eq 'policies' }).body.value
+                    $CAPoliciesCollected = $true
                 } catch {
                     Write-Warning "Failed to get Conditional Access policies: $($_.Exception.Message)"
                     $TenantCAPolicies = @()
@@ -313,9 +324,15 @@ function Get-CIPPDrift {
                         if ($Template.TemplateList.value) {
                             $CATemplateIds.Add($Template.TemplateList.value)
                         }
-                        if ($Template.'TemplateList-Tags'.rawData.templates) {
-                            foreach ($TagTemplate in $Template.'TemplateList-Tags'.rawData.templates) {
-                                $CATemplateIds.Add($TagTemplate.GUID)
+                        if ($Template.'TemplateList-Tags') {
+                            foreach ($Tag in $Template.'TemplateList-Tags') {
+                                $TagValue = if ($Tag.value) { $Tag.value } else { $Tag }
+                                $ResolvedCATagTemplates = if ($TagValue -and $CATemplatesByPackage.ContainsKey($TagValue)) { $CATemplatesByPackage[$TagValue] } else { @() }
+                                foreach ($ResolvedTemplate in $ResolvedCATagTemplates) {
+                                    if ($ResolvedTemplate.RowKey -and $ResolvedTemplate.RowKey -notin $CATemplateIds) {
+                                        $CATemplateIds.Add($ResolvedTemplate.RowKey)
+                                    }
+                                }
                             }
                         }
                     }
@@ -424,6 +441,17 @@ function Get-CIPPDrift {
             $AllDeviations.AddRange($StandardsDeviations)
             $AllDeviations.AddRange($PolicyDeviations)
 
+            # Record which drift keys are still valid: live deviations and every standard in the
+            # template (compliant ones keep their row so an accepted status survives re-drift).
+            foreach ($Deviation in $AllDeviations) {
+                $KeyName = [string]$Deviation.standardName
+                if (-not [string]::IsNullOrWhiteSpace($KeyName)) { $null = $ValidDriftKeys.Add($KeyName) }
+            }
+            foreach ($ComparisonItem in $Alignment.ComparisonDetails) {
+                $KeyName = [string]$ComparisonItem.StandardName
+                if (-not [string]::IsNullOrWhiteSpace($KeyName)) { $null = $ValidDriftKeys.Add($KeyName) }
+            }
+
             # Persist newly detected deviations to the tenantDrift table so the summary page can count them
             $NewDriftEntities = [System.Collections.Generic.List[object]]::new()
             foreach ($Deviation in $AllDeviations) {
@@ -446,14 +474,19 @@ function Get-CIPPDrift {
                 }
             }
 
+            # License-missing standards are excluded from the deviation buckets so the counts match
+            # the alignment score, which tracks them separately; they surface via licenseMissingDeviations.
+            $LicenseMissingDeviations = $AllDeviations | Where-Object { $_.ComplianceStatus -eq 'License Missing' }
+            $CountableDeviations = $AllDeviations | Where-Object { $_.ComplianceStatus -ne 'License Missing' }
+
             # Filter deviations by status for counting
-            $NewDeviations = $AllDeviations | Where-Object { $_.Status -eq 'New' }
-            $AcceptedDeviations = $AllDeviations | Where-Object { $_.Status -eq 'Accepted' }
-            $DeniedDeviations = $AllDeviations | Where-Object { $_.Status -like 'Denied*' }
-            $CustomerSpecificDeviations = $AllDeviations | Where-Object { $_.Status -eq 'CustomerSpecific' }
+            $NewDeviations = $CountableDeviations | Where-Object { $_.Status -eq 'New' }
+            $AcceptedDeviations = $CountableDeviations | Where-Object { $_.Status -eq 'Accepted' }
+            $DeniedDeviations = $CountableDeviations | Where-Object { $_.Status -like 'Denied*' }
+            $CustomerSpecificDeviations = $CountableDeviations | Where-Object { $_.Status -eq 'CustomerSpecific' }
 
             # Current deviations are New + Denied (not accepted or customer specific)
-            $CurrentDeviations = $AllDeviations | Where-Object { $_.Status -in @('New', 'Denied') }
+            $CurrentDeviations = $CountableDeviations | Where-Object { $_.Status -in @('New', 'Denied') }
 
             $Result = [PSCustomObject]@{
                 tenantFilter                    = $TenantFilter
@@ -465,17 +498,45 @@ function Get-CIPPDrift {
                 deniedDeviationsCount           = $DeniedDeviations.Count
                 customerSpecificDeviationsCount = $CustomerSpecificDeviations.Count
                 newDeviationsCount              = $NewDeviations.Count
+                licenseMissingDeviationsCount   = $LicenseMissingDeviations.Count
                 alignedCount                    = $Alignment.CompliantStandards - $AcceptedDeviations.Count - $CustomerSpecificDeviations.Count
                 currentDeviations               = @($CurrentDeviations)
                 acceptedDeviations              = @($AcceptedDeviations)
                 customerSpecificDeviations      = @($CustomerSpecificDeviations)
                 deniedDeviations                = @($DeniedDeviations)
+                licenseMissingDeviations        = @($LicenseMissingDeviations)
                 allDeviations                   = @($AllDeviations)
                 latestDataCollection            = $Alignment.LatestDataCollection
                 driftSettings                   = $AlignmentData
             }
 
             $Results.Add($Result)
+        }
+
+        # Prune stale tenantDrift rows so the alignment score only counts real deviations.
+        # A row goes stale when its policy was deleted/recreated in the tenant, or its template was
+        # removed from the drift standard (directly or via a package). Policy rows require a
+        # successful Graph collection this run before they are eligible for deletion.
+        $StaleDriftEntities = foreach ($Entity in $DriftEntities) {
+            $EntityName = [string]$Entity.StandardName
+            if ([string]::IsNullOrWhiteSpace($EntityName) -or $ValidDriftKeys.Contains($EntityName)) { continue }
+            if ($EntityName -like 'IntuneTemplates.*') {
+                if ($IntunePoliciesCollected) { $Entity }
+            } elseif ($EntityName -like 'ConditionalAccessTemplates.*') {
+                if ($CAPoliciesCollected) { $Entity }
+            } else {
+                $Entity
+            }
+        }
+        if ($StaleDriftEntities) {
+            try {
+                foreach ($StaleEntity in $StaleDriftEntities) {
+                    Remove-AzDataTableEntity @DriftTable -Entity $StaleEntity
+                }
+                Write-Information "Removed $(@($StaleDriftEntities).Count) stale drift deviation entries for $TenantFilter"
+            } catch {
+                Write-Warning "Failed to remove stale drift deviation entries for $($TenantFilter): $($_.Exception.Message)"
+            }
         }
 
         return @($Results)
