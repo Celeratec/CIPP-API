@@ -7,11 +7,6 @@ function Invoke-AddScheduledItem {
     #>
     [CmdletBinding()]
     param($Request, $TriggerMetadata)
-    if ($null -eq $Request.Query.hidden) {
-        $hidden = $false
-    } else {
-        $hidden = $true
-    }
 
     $DisallowDuplicateName = $Request.Query.DisallowDuplicateName ?? $Request.Body.DisallowDuplicateName
 
@@ -23,6 +18,16 @@ function Invoke-AddScheduledItem {
     if ($Request.Body.RowKey) {
         $Filter = "PartitionKey eq 'ScheduledTask' and RowKey eq '$($Request.Body.RowKey)'"
         $ExistingTask = (Get-CIPPAzDataTableEntity @Table -Filter $Filter)
+    }
+
+    if ($null -eq $Request.Query.hidden) {
+        if ($ExistingTask -and $null -ne $ExistingTask.Hidden) {
+            $hidden = [bool]$ExistingTask.Hidden
+        } else {
+            $hidden = $false
+        }
+    } else {
+        $hidden = $true
     }
 
     if ($ExistingTask -and $Request.Body.RunNow -eq $true) {
