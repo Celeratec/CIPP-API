@@ -102,7 +102,7 @@ function Test-CippApiClientRoleGrant {
         # Effective permissions a client holding this role would receive, computed the
         # same way Test-CIPPAccess evaluates an API client (single role, no base ceiling).
         $RolePermissions = @(Get-CippAllowedPermissions -UserRoles @($TargetRole))
-        $Escalation = @($RolePermissions | Where-Object { $CallerPermissions -notcontains $_ })
+        $Escalation = @($RolePermissions | Where-Object { $CallerPermissions -notcontains $_ -and $_ -notmatch 'None$' })
 
         if ($Escalation.Count -gt 0) {
             return (New-Denial "You do not have sufficient permissions to manage an API client with the '$TargetRole' role; it grants permissions beyond your own.")
