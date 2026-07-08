@@ -120,6 +120,11 @@ function Invoke-CIPPStandardIntuneTemplate {
             $JSONTemplate = $RawJSON | ConvertFrom-Json
             $Compare = Compare-CIPPIntuneObject -ReferenceObject $JSONTemplate -DifferenceObject $JSONExistingPolicy -compareType $TemplateType -ErrorAction SilentlyContinue
         } catch {
+            Write-LogMessage -API 'Standards' -tenant $Tenant -message "Failed to compare Intune Template $displayname against the existing policy: $($_.Exception.Message)" -sev 'Error'
+            $Compare = [pscustomobject]@{
+                MatchFailed = $true
+                Difference  = "Comparison failed: $($_.Exception.Message)"
+            }
         }
         Write-Information "[IntuneTemplate][$Tenant] Compare '$displayname': $([int]($sw.Elapsed - $lap).TotalMilliseconds)ms"
         $lap = $sw.Elapsed
