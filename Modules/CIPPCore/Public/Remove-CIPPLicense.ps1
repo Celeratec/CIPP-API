@@ -10,6 +10,28 @@ function Remove-CIPPLicense {
     )
 
     if ($Schedule.IsPresent) {
+        # Record which licenses the user holds right now, so the offboarding result (and any
+        # ticket/webhook/email it feeds) documents what was removed - useful for auditing and
+        # for restoring the account to its previous state. Sku names come from the cached
+        # license overview, which resolves the best available display name for the tenant.
+        $LicenseSuffix = ''
+        try {
+            $LicenseOverview = @(New-CIPPDbRequest -TenantFilter $TenantFilter -Type 'LicenseOverview')
+            $UserLicenseState = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/users/$($userid)?`$select=licenseAssignmentStates" -tenantid $TenantFilter
+            $ActiveSkuIds = @(($UserLicenseState.licenseAssignmentStates | Where-Object { $_.state -eq 'Active' }).skuId | Select-Object -Unique)
+            $LicenseNames = foreach ($SkuId in $ActiveSkuIds) {
+                $Sku = $LicenseOverview | Where-Object { $_.skuId -eq $SkuId } | Select-Object -First 1
+                if ($Sku.License) { $Sku.License } else { $SkuId }
+            }
+            if ($LicenseNames) {
+                $LicenseSuffix = " Licenses currently assigned that will be removed: $(@($LicenseNames | Sort-Object -Unique) -join ', ')."
+            } else {
+                $LicenseSuffix = ' The user currently has no licenses assigned.'
+            }
+        } catch {
+            Write-Information "Could not enumerate current licenses for the scheduled removal message: $($_.Exception.Message)"
+        }
+
         $ScheduledTask = @{
             TenantFilter  = $TenantFilter
             Name          = "Remove License: $Username"
@@ -30,7 +52,7 @@ function Remove-CIPPLicense {
             }
         }
         Add-CIPPScheduledTask -Task $ScheduledTask -hidden $false -DisallowDuplicateName $true
-        return "Scheduled license removal for $username"
+        return "Scheduled license removal for $username.$LicenseSuffix"
     } else {
         try {
             $ConvertTable = [System.IO.File]::ReadAllText((Join-Path $env:CIPPRootPath 'Config\ConversionTable.csv')) | ConvertFrom-Csv
