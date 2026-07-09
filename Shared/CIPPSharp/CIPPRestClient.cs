@@ -601,7 +601,12 @@ namespace CIPP
             HttpResponseMessage response;
             try
             {
-                response = await client.SendAsync(request, token).ConfigureAwait(false);
+                // ResponseHeadersRead: do NOT buffer the body inside SendAsync. With the
+                // default (ResponseContentRead) the body is downloaded and auto-decompressed
+                // here, so a mislabeled Content-Encoding (EXO error responses declare gzip on
+                // a plain body) throws InvalidDataException from SendAsync and bypasses the
+                // defensive body read below — masking the HTTP status the caller needs.
+                response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
             }
             catch
             {
