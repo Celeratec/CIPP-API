@@ -255,7 +255,7 @@ function Send-CIPPScheduledTaskAlert {
                         }
 
                         if ($ShouldSplit -and $Results -is [array] -and $Results.Count -gt 0 -and $Results[0] -isnot [string]) {
-                            $UpnFieldCandidates = @('UserPrincipalName', 'userPrincipalName', 'UPN', 'userId', 'Userkey')
+                            $UpnFieldCandidates = @('UserPrincipalName', 'userPrincipalName', 'UPN', 'userId', 'Userkey', 'Member')
                             $RowProperties = $Results[0].PSObject.Properties.Name
                             $UpnField = $UpnFieldCandidates | Where-Object { $_ -in $RowProperties } | Select-Object -First 1
 
