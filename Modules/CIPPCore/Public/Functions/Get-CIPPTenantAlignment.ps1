@@ -218,7 +218,10 @@ function Get-CIPPTenantAlignment {
                                 $TagValue = if ($Tag.value) { $Tag.value } else { $Tag }
                                 $TagTemplate = if ($TagValue -and $TemplatesByPackage.ContainsKey($TagValue)) { $TemplatesByPackage[$TagValue] } else { @() }
                                 $TagTemplate | ForEach-Object {
-                                    $TagStandardId = "standards.IntuneTemplate.$($_.GUID)"
+                                    # RowKey, not the GUID column: the standards engine deploys tag members with
+                                    # TemplateList.value = RowKey and writes the compare row under that id, so the
+                                    # expected id must match it. The GUID column can be missing or stale.
+                                    $TagStandardId = "standards.IntuneTemplate.$($_.RowKey)"
                                     [PSCustomObject]@{
                                         StandardId       = $TagStandardId
                                         ReportingEnabled = $IntuneReportingEnabled
@@ -249,7 +252,9 @@ function Get-CIPPTenantAlignment {
                                 $CAReportingEnabled = ($CAActions | Where-Object { $_.value -and ($_.value.ToLower() -eq 'report' -or $_.value.ToLower() -eq 'remediate') }).Count -gt 0
                                 $TagTemplate = $TagTemplates | Where-Object -Property package -EQ $Tag.value
                                 $TagTemplate | ForEach-Object {
-                                    $TagStandardId = "standards.ConditionalAccessTemplate.$($_.GUID)"
+                                    # RowKey, not the GUID column - must match the id the standards engine
+                                    # deploys with and writes the compare row under (see Intune block above)
+                                    $TagStandardId = "standards.ConditionalAccessTemplate.$($_.RowKey)"
                                     [PSCustomObject]@{
                                         StandardId       = $TagStandardId
                                         ReportingEnabled = $CAReportingEnabled

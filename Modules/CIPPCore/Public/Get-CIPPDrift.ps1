@@ -56,6 +56,11 @@ function Get-CIPPDrift {
             $data | Add-Member -NotePropertyName 'Type' -NotePropertyValue $JSONData.Type -Force
             $data | Add-Member -NotePropertyName 'GUID' -NotePropertyValue $RawTemplate.RowKey -Force
             $IntuneTemplatesByGuid[$RawTemplate.RowKey] = $data
+            # Built-in templates are seeded with RowKey = '<guid>.IntuneTemplate.json'; also index
+            # by the bare guid so display-name lookups that extract the guid from a standard key hit
+            if ($RawTemplate.RowKey -match '^([0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12})\.' -and -not $IntuneTemplatesByGuid.ContainsKey($Matches[1])) {
+                $IntuneTemplatesByGuid[$Matches[1]] = $data
+            }
             $data
         } catch {
             # Skip invalid templates
@@ -70,6 +75,11 @@ function Get-CIPPDrift {
             $data = $RawTemplate.JSON | ConvertFrom-Json -Depth 100 -ErrorAction SilentlyContinue
             $data | Add-Member -NotePropertyName 'GUID' -NotePropertyValue $RawTemplate.RowKey -Force
             $CATemplatesByGuid[$RawTemplate.RowKey] = $data
+            # Built-in templates are seeded with RowKey = '<guid>.CATemplate.json'; also index
+            # by the bare guid so display-name lookups that extract the guid from a standard key hit
+            if ($RawTemplate.RowKey -match '^([0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12})\.' -and -not $CATemplatesByGuid.ContainsKey($Matches[1])) {
+                $CATemplatesByGuid[$Matches[1]] = $data
+            }
             $data
         } catch {
             # Skip invalid templates
