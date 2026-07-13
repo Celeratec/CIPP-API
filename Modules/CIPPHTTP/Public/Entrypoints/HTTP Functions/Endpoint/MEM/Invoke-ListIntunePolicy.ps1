@@ -223,6 +223,11 @@ function Invoke-ListIntunePolicy {
                     method = 'GET'
                     url    = "/deviceManagement/intents?`$top=1000"
                 }
+                @{
+                    id     = 'ManagedAppPolicies'
+                    method = 'GET'
+                    url    = '/deviceAppManagement/managedAppPolicies?$orderby=displayName'
+                }
             )
 
             $BulkResults = New-GraphBulkRequest -Requests $BulkRequests -tenantid $TenantFilter
@@ -234,6 +239,7 @@ function Invoke-ListIntunePolicy {
                 $URLName = $_.Id
                 $_.body.Value | ForEach-Object {
                     $AssignmentContext = $_.'assignments@odata.context'
+                    $PolicyODataType = $_.'@odata.type'
                     $policyTypeName = switch -Wildcard ($AssignmentContext) {
                         '*microsoft.graph.windowsIdentityProtectionConfiguration*' { 'Identity Protection' }
                         '*microsoft.graph.windows10EndpointProtectionConfiguration*' { 'Endpoint Protection' }
@@ -262,6 +268,14 @@ function Invoke-ListIntunePolicy {
                         $policyTypeName = switch ($URLName) {
                             'deviceCompliancePolicies' { 'Compliance Policy' }
                             'Intents' { 'Endpoint Security' }
+                            'ManagedAppPolicies' {
+                                switch -Wildcard ($PolicyODataType) {
+                                    '*iosManagedAppProtection*' { 'iOS App Protection' }
+                                    '*androidManagedAppProtection*' { 'Android App Protection' }
+                                    '*windowsManagedAppProtection*' { 'Windows App Protection' }
+                                    default { 'App Protection' }
+                                }
+                            }
                             default { $AssignmentContext }
                         }
                     }
