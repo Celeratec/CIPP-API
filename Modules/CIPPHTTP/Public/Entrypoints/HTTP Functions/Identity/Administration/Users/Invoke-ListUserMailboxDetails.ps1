@@ -288,6 +288,7 @@ function Invoke-ListUserMailboxDetails {
         MailboxImapEnabled       = $CASRequest.ImapEnabled
         MailboxPopEnabled        = $CASRequest.PopEnabled
         MailboxActiveSyncEnabled = $CASRequest.ActiveSyncEnabled
+        SmtpClientAuthenticationDisabled = $CASRequest.SmtpClientAuthenticationDisabled
         Permissions              = @($ParsedPerms)
         ProhibitSendQuota        = $ProhibitSendQuota
         ProhibitSendReceiveQuota = $ProhibitSendReceiveQuota

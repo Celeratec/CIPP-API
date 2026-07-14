@@ -7,7 +7,7 @@ function Invoke-CippTestZTNA21782 {
 
     try {
         $UserRegistrationDetails = Get-CIPPTestData -TenantFilter $Tenant -Type 'UserRegistrationDetails'
-        $Roles = Get-CIPPTestData -TenantFilter $Tenant -Type 'Roles'
+        $Roles = Get-CippDbRole -TenantFilter $Tenant -IncludePrivilegedRoles
         $RoleAssignmentScheduleInstances = Get-CIPPTestData -TenantFilter $Tenant -Type 'RoleAssignmentScheduleInstances'
 
         if ($null -eq $UserRegistrationDetails -or $null -eq $Roles) {
@@ -17,17 +17,19 @@ function Invoke-CippTestZTNA21782 {
 
         $PhishResistantMethods = @('passKeyDeviceBound', 'passKeyDeviceBoundAuthenticator', 'windowsHelloForBusiness')
 
+        # RoleAssignmentScheduleInstances.roleDefinitionId is a role template ID, so key the privileged role set by template ID.
         $PrivilegedRoleIds = [System.Collections.Generic.HashSet[string]]::new()
         $RoleNamesById = @{}
-        foreach ($Role in @($Roles | Where-Object { $_.isPrivileged -eq $true })) {
-            if ($Role.id) {
-                [void]$PrivilegedRoleIds.Add([string]$Role.id)
-                $RoleNamesById[[string]$Role.id] = $Role.displayName
+        foreach ($Role in @($Roles)) {
+            $RoleTemplateId = if ($Role.roleTemplateId) { [string]$Role.roleTemplateId } elseif ($Role.RoletemplateId) { [string]$Role.RoletemplateId } else { $null }
+            if ($RoleTemplateId) {
+                [void]$PrivilegedRoleIds.Add($RoleTemplateId)
+                $RoleNamesById[$RoleTemplateId] = $Role.displayName
             }
         }
 
         $PrivilegedPrincipalsById = @{}
-        foreach ($Role in @($Roles | Where-Object { $_.isPrivileged -eq $true })) {
+        foreach ($Role in @($Roles)) {
             foreach ($Member in @($Role.members)) {
                 if (-not $Member.id) { continue }
                 $principalId = [string]$Member.id
@@ -51,12 +53,11 @@ function Invoke-CippTestZTNA21782 {
             }
         }
 
-        # Join user registration details with privileged role assignments
-        $results = @($UserRegistrationDetails | Where-Object { $PrivilegedPrincipalsById.ContainsKey($_.id) } | ForEach-Object {
-            $user = $_
+        $results = [System.Collections.Generic.List[object]]::new()
+        foreach ($user in $UserRegistrationDetails) {
+            if (-not $PrivilegedPrincipalsById.ContainsKey($user.id)) { continue }
             $userRoles = $PrivilegedPrincipalsById[$user.id]
             $hasPhishResistant = $false
-
             if ($user.methodsRegistered) {
                 foreach ($method in $PhishResistantMethods) {
                     if ($user.methodsRegistered -contains $method) {
@@ -65,21 +66,20 @@ function Invoke-CippTestZTNA21782 {
                     }
                 }
             }
+            $results.Add([PSCustomObject]@{
+                    id                       = $user.id
+                    userDisplayName          = $user.userDisplayName
+                    roleDisplayName          = ($userRoles | Sort-Object | Select-Object -Unique) -join ', '
+                    methodsRegistered        = $user.methodsRegistered
+                    phishResistantAuthMethod = $hasPhishResistant
+                })
+        }
 
-            [PSCustomObject]@{
-                id                       = $user.id
-                userDisplayName          = $user.userDisplayName
-                roleDisplayName          = ($userRoles | Sort-Object | Select-Object -Unique) -join ', '
-                methodsRegistered        = $user.methodsRegistered
-                phishResistantAuthMethod = $hasPhishResistant
-            }
-        })
+        $totalUserCount = $results.Count
+        $phishResistantPrivUsers = $results.Where({ $_.phishResistantAuthMethod })
+        $phishablePrivUsers = $results.Where({ !$_.phishResistantAuthMethod })
 
-        $totalUserCount = $results.Length
-        $phishResistantPrivUsers = $results | Where-Object { $_.phishResistantAuthMethod }
-        $phishablePrivUsers = $results | Where-Object { !$_.phishResistantAuthMethod }
-
-        $phishResistantPrivUserCount = $phishResistantPrivUsers.Length
+        $phishResistantPrivUserCount = $phishResistantPrivUsers.Count
 
         $passed = $totalUserCount -eq $phishResistantPrivUserCount
 

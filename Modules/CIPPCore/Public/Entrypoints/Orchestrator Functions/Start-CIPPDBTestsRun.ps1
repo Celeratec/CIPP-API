@@ -15,7 +15,12 @@ function Start-CIPPDBTestsRun {
         [string]$TenantFilter = 'allTenants',
 
         [Parameter(Mandatory = $false)]
-        [switch]$Force
+        [switch]$Force,
+
+        # Optional subset of suites to run (e.g. 'Custom'). Omit to run every suite.
+        # Suite names must match the ValidateSet in Invoke-CIPPTestCollection.
+        [Parameter(Mandatory = $false)]
+        [string[]]$Suites
     )
 
     Write-Information "Starting tests run for tenant: $TenantFilter"
@@ -62,10 +67,15 @@ function Start-CIPPDBTestsRun {
 
         # Phase 1: Build per-tenant list activities (discover tests per tenant)
         $Batch = foreach ($Tenant in $AllTenantsList) {
-            @{
+            $ListItem = @{
                 FunctionName = 'CIPPTestsList'
                 TenantFilter = $Tenant
             }
+            # Propagate an optional suite filter so Phase 1 emits only the requested suites.
+            if ($Suites) {
+                $ListItem.Suites = @($Suites)
+            }
+            $ListItem
         }
 
         Write-Information "Built batch of $($Batch.Count) tenant test list activities"

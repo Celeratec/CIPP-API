@@ -81,6 +81,24 @@ function Invoke-EditUser {
                 'forceChangePasswordNextSignIn' = [bool]$UserObj.MustChangePass
             }
         }
+        # Explicit clears: the frontend lists the profile fields the user actively emptied.
+        # We re-add them as null (scalars) / empty array (collections) so Graph clears them, while
+        # untouched empty fields stay omitted. Whitelisted to safe attributes
+        # Manage365: $BodyToship is a hashtable here (fork), so assign keys directly instead of Add-Member.
+        $ClearableFields = @(
+            'givenName', 'surname', 'department', 'jobTitle', 'mobilePhone',
+            'streetAddress', 'city', 'state', 'postalCode', 'country', 'companyName',
+            'businessPhones', 'otherMails'
+        )
+        $ClearList = @($UserObj.clearProperties | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        foreach ($Prop in $ClearList) {
+            if ($Prop -notin $ClearableFields) { continue }
+            if ($Prop -in 'businessPhones', 'otherMails') {
+                $BodyToShip[$Prop] = @()
+            } else {
+                $BodyToShip[$Prop] = $null
+            }
+        }
         if ($UserObj.defaultAttributes) {
             $UserObj.defaultAttributes | Get-Member -MemberType NoteProperty | ForEach-Object {
                 if (-not [string]::IsNullOrWhiteSpace($UserObj.defaultAttributes.$($_.Name).value)) {
@@ -248,12 +266,13 @@ function Invoke-EditUser {
         $AddToGroups | ForEach-Object {
 
             $GroupType = $_.addedFields.groupType
+            $CalculatedGroupType = $_.addedFields.calculatedGroupType ?? $null
             $GroupID = $_.value
             $GroupName = $_.label
             Write-Host "About to add $($UserObj.userPrincipalName) to $GroupName. Group ID is: $GroupID and type is: $GroupType"
 
             try {
-                if ($GroupType -eq 'distributionList' -or $GroupType -eq 'security') {
+                if ($GroupType -eq 'distributionList' -or $GroupType -eq 'security' -and ($calculatedGroupType -ne 'generic' )) {
                     Write-Host 'Adding to group via Add-DistributionGroupMember'
                     $Params = @{ Identity = $GroupID; Member = $UserObj.id; BypassSecurityGroupManagerCheck = $true }
                     $null = New-ExoRequest -tenantid $UserObj.tenantFilter -cmdlet 'Add-DistributionGroupMember' -cmdParams $params -UseSystemMailbox $true
@@ -280,12 +299,13 @@ function Invoke-EditUser {
         $RemoveFromGroups | ForEach-Object {
 
             $GroupType = $_.addedFields.groupType
+            $CalculatedGroupType = $_.addedFields.calculatedGroupType ?? $null
             $GroupID = $_.value
             $GroupName = $_.label
             Write-Host "About to remove $($UserObj.userPrincipalName) from $GroupName. Group ID is: $GroupID and type is: $GroupType"
 
             try {
-                if ($GroupType -eq 'distributionList' -or $GroupType -eq 'security') {
+                if ($GroupType -eq 'distributionList' -or $GroupType -eq 'security' -and ($calculatedGroupType -ne 'generic' )) {
                     Write-Host 'Removing From group via Remove-DistributionGroupMember'
                     $Params = @{ Identity = $GroupID; Member = $UserObj.id; BypassSecurityGroupManagerCheck = $true }
                     $null = New-ExoRequest -tenantid $UserObj.tenantFilter -cmdlet 'Remove-DistributionGroupMember' -cmdParams $params -UseSystemMailbox $true

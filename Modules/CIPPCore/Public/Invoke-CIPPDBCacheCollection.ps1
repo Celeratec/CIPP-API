@@ -141,6 +141,7 @@ function Invoke-CIPPDBCacheCollection {
             'CsExternalAccessPolicy'
             'CsTenantFederationConfiguration'
             'CsTeamsMessagingPolicy'
+            'CsTeamsMessagingConfiguration'
             'CsTeamsAppPermissionPolicy'
         )
     }

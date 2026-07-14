@@ -39,6 +39,7 @@ function Invoke-ListSnoozedAlerts {
                     RowKey         = $_.RowKey
                     CmdletName     = $_.PartitionKey
                     Tenant         = $_.Tenant
+                    ContentHash    = $_.ContentHash
                     ContentPreview = $_.ContentPreview
                     SnoozedBy      = $_.SnoozedBy
                     SnoozedAt      = $_.SnoozedAt
