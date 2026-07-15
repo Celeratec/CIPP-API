@@ -73,7 +73,23 @@ function Push-CIPPDBCacheData {
             Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message "Compliance license check failed: $($_.Exception.Message)" -sev Warning -LogData $ErrorMessage
         }
 
-        Write-Information "License capabilities for $TenantFilter - Intune: $IntuneCapable, CA: $ConditionalAccessCapable, P2: $AzureADPremiumP2Capable, Exchange: $ExchangeCapable, MDO: $DefenderForOffice365Capable, Compliance: $ComplianceCapable"
+        $SharePointCapable = $false
+        try {
+            $SharePointCapable = Test-CIPPStandardLicense -StandardName 'SharePointLicenseCheck' -TenantFilter $TenantFilter -Preset SharePoint -SkipLog
+        } catch {
+            $ErrorMessage = Get-CippException -Exception $_
+            Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message "SharePoint license check failed: $($_.Exception.Message)" -sev Warning -LogData $ErrorMessage
+        }
+
+        $SharePointCapable = $false
+        try {
+            $SharePointCapable = Test-CIPPStandardLicense -StandardName 'SharePointLicenseCheck' -TenantFilter $TenantFilter -Preset SharePoint -SkipLog
+        } catch {
+            $ErrorMessage = Get-CippException -Exception $_
+            Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message "SharePoint license check failed: $($_.Exception.Message)" -sev Warning -LogData $ErrorMessage
+        }
+
+        Write-Information "License capabilities for $TenantFilter - Intune: $IntuneCapable, CA: $ConditionalAccessCapable, P2: $AzureADPremiumP2Capable, Exchange: $ExchangeCapable, MDO: $DefenderForOffice365Capable, Compliance: $ComplianceCapable, SharePoint: $SharePointCapable"
 
         # Build grouped collection tasks — one activity per license category instead of one per cache type
         $Tasks = [System.Collections.Generic.List[object]]::new()
@@ -170,6 +186,27 @@ function Push-CIPPDBCacheData {
                 })
         } else {
             Write-Host "Skipping Intune data collection for $TenantFilter - no required license"
+        }
+
+        if ($SharePointCapable) {
+            $Tasks.Add(@{
+                    FunctionName   = 'ExecCIPPDBCache'
+                    CollectionType = 'SharePoint'
+                    TenantFilter   = $TenantFilter
+                    QueueId        = $QueueId
+                    QueueName      = "DB Cache SharePoint - $TenantFilter"
+                })
+            # SharePointSharingLinks runs as its own activity - it's heavy (scans every drive) and
+            # spawns a child orchestrator (one activity per site) that needs its own time budget.
+            $Tasks.Add(@{
+                    FunctionName = 'ExecCIPPDBCache'
+                    Name         = 'SharePointSharingLinks'
+                    TenantFilter = $TenantFilter
+                    QueueId      = $QueueId
+                    QueueName    = "DB Cache SharePointSharingLinks - $TenantFilter"
+                })
+        } else {
+            Write-Host "Skipping SharePoint data collection for $TenantFilter - no required license"
         }
 
         if ($ComplianceCapable) {

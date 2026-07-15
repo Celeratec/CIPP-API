@@ -218,6 +218,15 @@ function Push-CIPPDBCacheData {
                     QueueId        = $QueueId
                     QueueName      = "DB Cache SharePoint - $TenantFilter"
                 })
+            # SharePointSharingLinks runs as its own activity — it's heavy (scans every drive) and
+            # spawns a child orchestrator (one activity per site) that needs its own time budget.
+            $Tasks.Add(@{
+                    FunctionName = 'ExecCIPPDBCache'
+                    Name         = 'SharePointSharingLinks'
+                    TenantFilter = $TenantFilter
+                    QueueId      = $QueueId
+                    QueueName    = "DB Cache SharePointSharingLinks - $TenantFilter"
+                })
         } else {
             Write-Host "Skipping SharePoint data collection for $TenantFilter - no required license"
         }
