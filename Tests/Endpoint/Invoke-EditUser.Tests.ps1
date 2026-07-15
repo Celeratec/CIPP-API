@@ -6,6 +6,8 @@
 BeforeAll {
     $RepoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSCommandPath))
     $FunctionPath = Join-Path $RepoRoot 'Modules/CIPPHTTP/Public/Entrypoints/HTTP Functions/Identity/Administration/Users/Invoke-EditUser.ps1'
+    # The endpoint now delegates the actual edit to Set-CIPPUser (shared with scheduled tasks).
+    $SetUserPath = Join-Path $RepoRoot 'Modules/CIPPCore/Public/Set-CIPPUser.ps1'
 
     class HttpResponseContext {
         [object]$StatusCode
@@ -45,6 +47,7 @@ BeforeAll {
     }
 
     . $FunctionPath
+    . $SetUserPath
 }
 
 Describe 'Invoke-EditUser body construction' {
