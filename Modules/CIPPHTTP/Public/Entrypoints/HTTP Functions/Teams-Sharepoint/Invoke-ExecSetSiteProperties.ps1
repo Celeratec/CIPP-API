@@ -90,13 +90,36 @@ function Invoke-ExecSetSiteProperties {
             throw 'No valid properties were provided to set.'
         }
 
+        # Group-connected sites only accept a small subset of tenant site properties; SPO
+        # rejects the whole request if any other property is included. Filter to the
+        # supported set and report what was skipped.
+        $Site = Get-CIPPSPOSite -TenantFilter $TenantFilter -SiteUrl $SiteUrl
+        $IsGroupSite = $Site.GroupId -and $Site.GroupId -notmatch '^0{8}-'
+        $Skipped = [System.Collections.Generic.List[string]]::new()
+        if ($IsGroupSite) {
+            $GroupSiteAllowed = @('SharingCapability', 'DefaultSharingLinkType', 'DefaultLinkPermission', 'LockState', 'StorageMaximumLevel', 'StorageWarningLevel')
+            foreach ($Key in @($Properties.Keys)) {
+                if ($Key -notin $GroupSiteAllowed) {
+                    $Properties.Remove($Key)
+                    $Skipped.Add($Key)
+                }
+            }
+            if ($Properties.Count -eq 0) {
+                throw "None of the selected properties can be changed on a group-connected site. Supported: $($GroupSiteAllowed -join ', ')."
+            }
+        }
+
         $Response = Set-CIPPSPOSite -TenantFilter $TenantFilter -SiteUrl $SiteUrl -Properties $Properties
         $CsomError = ($Response | Where-Object { $_.ErrorInfo } | Select-Object -First 1).ErrorInfo.ErrorMessage
         if ($CsomError) {
             throw $CsomError
         }
 
-        $Results = "Successfully updated site properties for $($SiteUrl): $($Changes -join ', ')"
+        $AppliedChanges = $Changes | Where-Object { ($_ -split '=')[0] -in $Properties.Keys }
+        $Results = "Successfully updated site properties for $($SiteUrl): $($AppliedChanges -join ', ')"
+        if ($Skipped.Count -gt 0) {
+            $Results += " Skipped (not supported on group-connected sites): $($Skipped -join ', ')."
+        }
         Write-LogMessage -Headers $Headers -API $APIName -tenant $TenantFilter -message $Results -sev Info
         $StatusCode = [HttpStatusCode]::OK
     } catch {

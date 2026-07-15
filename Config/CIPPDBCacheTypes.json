@@ -290,6 +290,11 @@
     "description": "SharePoint site usage statistics"
   },
   {
+    "type": "SharePointSharingLinks",
+    "friendlyName": "SharePoint & OneDrive Sharing Links",
+    "description": "Sharing links and external grants on SharePoint and OneDrive files and folders"
+  },
+  {
     "type": "OfficeActivations",
     "friendlyName": "Office Activations",
     "description": "Microsoft 365 app activation counts per user per platform (Windows, Mac, Mobile)"
@@ -348,11 +353,6 @@
     "type": "DetectedApps",
     "friendlyName": "Detected Apps",
     "description": "All detected applications with devices where each app is installed"
-  },
-  {
-    "type": "SharePointSiteUsage",
-    "friendlyName": "SharePoint Site Usage",
-    "description": "SharePoint site usage statistics and storage details"
   },
   {
     "type": "SharePointQuota",

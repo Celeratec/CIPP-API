@@ -35,13 +35,18 @@ function Push-ExecDeleteSharepointSite {
 
     $SharePointInfo = Get-SharePointAdminLink -Public $false -tenantFilter $TenantFilter
     $SiteInfoUri = "$($SharePointInfo.AdminUrl)/_api/SPO.Tenant/sites('$SiteId')"
-    $ExtraHeaders = @{
-        'accept'         = 'application/json'
-        'content-type'    = 'application/json'
-        'odata-version'   = '4.0'
+    # The SPO.Tenant vroute GET needs odata-version 4.0; the manager POST endpoints must
+    # NOT receive it - sending it flips them onto a pipeline that rejects the call with
+    # 'Elevated context should be used only to create service asserted level PoP'.
+    $GetHeaders = @{
+        'accept'        = 'application/json'
+        'odata-version' = '4.0'
+    }
+    $PostHeaders = @{
+        'accept' = 'application/json'
     }
 
-    $SiteInfo = New-GraphGETRequest -scope "$($SharePointInfo.AdminUrl)/.default" -uri $SiteInfoUri -tenantid $TenantFilter -extraHeaders $ExtraHeaders
+    $SiteInfo = New-GraphGETRequest -scope "$($SharePointInfo.AdminUrl)/.default" -uri $SiteInfoUri -tenantid $TenantFilter -extraHeaders $GetHeaders -UseCertificate -AsApp $true
     if (-not $SiteInfo) { throw "Could not retrieve site information from SharePoint Admin API" }
 
     $SiteTemplate = $SiteInfo.Template
@@ -55,7 +60,7 @@ function Push-ExecDeleteSharepointSite {
         try {
             $UnregisterUri = "$($SharePointInfo.AdminUrl)/_api/SPO.Tenant/UnregisterHubSite"
             $UnregisterBody = @{ siteUrl = $SiteUrl }
-            $null = New-GraphPOSTRequest -scope "$($SharePointInfo.AdminUrl)/.default" -uri $UnregisterUri -body (ConvertTo-Json -InputObject $UnregisterBody) -tenantid $TenantFilter -extraHeaders $ExtraHeaders
+            $null = New-GraphPOSTRequest -scope "$($SharePointInfo.AdminUrl)/.default" -uri $UnregisterUri -body (ConvertTo-Json -InputObject $UnregisterBody) -tenantid $TenantFilter -contentType 'application/json' -AddedHeaders $PostHeaders
         } catch {
             Write-Host "Warning: Could not unregister hub site, proceeding with deletion attempt: $($_.Exception.Message)"
         }
@@ -68,7 +73,7 @@ function Push-ExecDeleteSharepointSite {
         $body = @{ siteUrl = $SiteUrl }
         $DeleteUri = "$($SharePointInfo.AdminUrl)/_api/GroupSiteManager/Delete"
         try {
-            $null = New-GraphPOSTRequest -scope "$($SharePointInfo.AdminUrl)/.default" -uri $DeleteUri -body (ConvertTo-Json -Depth 10 -InputObject $body) -tenantid $TenantFilter -extraHeaders $ExtraHeaders
+            $null = New-GraphPOSTRequest -scope "$($SharePointInfo.AdminUrl)/.default" -uri $DeleteUri -body (ConvertTo-Json -Depth 10 -InputObject $body) -tenantid $TenantFilter -contentType 'application/json' -AddedHeaders $PostHeaders
             $DeleteAttempted = $true
         } catch {
             Write-Host "GroupSiteManager/Delete failed, trying RemoveSite API: $($_.Exception.Message)"
@@ -80,14 +85,16 @@ function Push-ExecDeleteSharepointSite {
             $body = @{ siteUrl = $SiteUrl }
             $DeleteUri = "$($SharePointInfo.AdminUrl)/_api/SPO.Tenant/RemoveSite"
             try {
-                $null = New-GraphPOSTRequest -scope "$($SharePointInfo.AdminUrl)/.default" -uri $DeleteUri -body (ConvertTo-Json -Depth 10 -InputObject $body) -tenantid $TenantFilter -extraHeaders $ExtraHeaders
+                $null = New-GraphPOSTRequest -scope "$($SharePointInfo.AdminUrl)/.default" -uri $DeleteUri -body (ConvertTo-Json -Depth 10 -InputObject $body) -tenantid $TenantFilter -contentType 'application/json' -AddedHeaders $PostHeaders
                 $DeleteAttempted = $true
             } catch {
                 $RemoveSiteError = $_.Exception.Message
                 $body = @{ siteId = $SiteId }
                 $DeleteUri = "$($SharePointInfo.AdminUrl)/_api/SPSiteManager/delete"
                 try {
-                    $null = New-GraphPOSTRequest -scope "$($SharePointInfo.AdminUrl)/.default" -uri $DeleteUri -body (ConvertTo-Json -Depth 10 -InputObject $body) -tenantid $TenantFilter -extraHeaders $ExtraHeaders
+                    # SPSiteManager/delete denies delegated tokens (even with a certificate assertion)
+                    # with E_ACCESSDENIED - it requires app-only certificate auth.
+                    $null = New-GraphPOSTRequest -scope "$($SharePointInfo.AdminUrl)/.default" -uri $DeleteUri -body (ConvertTo-Json -Depth 10 -InputObject $body) -tenantid $TenantFilter -contentType 'application/json' -AddedHeaders $PostHeaders -UseCertificate -AsApp $true
                     $DeleteAttempted = $true
                 } catch {
                     $SPSiteManagerError = $_.Exception.Message
