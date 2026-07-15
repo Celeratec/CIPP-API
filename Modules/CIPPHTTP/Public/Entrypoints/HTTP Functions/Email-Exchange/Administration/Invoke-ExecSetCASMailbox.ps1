@@ -35,6 +35,9 @@ function Invoke-ExecSetCASMailbox {
                 'IMAP'       = 'ImapEnabled'
                 'POP'        = 'PopEnabled'
                 'ActiveSync' = 'ActiveSyncEnabled'
+                # SMTP client auth is inverted in EXO: the parameter disables it, so enable=false
+                # from the UI maps to SmtpClientAuthenticationDisabled=true.
+                'SMTP'       = 'SmtpClientAuthenticationDisabled'
             }
 
             foreach ($Protocol in $ProtocolList) {
@@ -48,7 +51,7 @@ function Invoke-ExecSetCASMailbox {
             }
             foreach ($Protocol in $ProtocolList) {
                 $ParamName = $ProtocolMap[$Protocol]
-                $CmdParams[$ParamName] = $Enable
+                $CmdParams[$ParamName] = $Protocol -eq 'SMTP' ? (-not $Enable) : $Enable
             }
 
             $Results = try {
