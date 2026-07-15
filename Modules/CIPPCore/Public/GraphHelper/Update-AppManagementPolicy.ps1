@@ -124,9 +124,19 @@ function Update-AppManagementPolicy {
             $DefaultPolicyBlocksCredentials = ($DefaultPolicy.applicationRestrictions.passwordCredentials | Where-Object { $_.restrictionType -in @('passwordAddition', 'symmetricKeyAddition') -and $_.state -eq 'enabled' }).Count -gt 0
         }
 
+        # Determine if default policy restricts key credentials: asymmetricKeyLifetime caps
+        # certificate validity (blocks the 1 year SAM certificate), trustedCertificateAuthority
+        # blocks self-signed certificates entirely
+        $DefaultKeyRestrictions = @()
+        $DefaultPolicyBlocksKeyCredentials = $false
+        if ($DefaultPolicy.applicationRestrictions.keyCredentials) {
+            $DefaultKeyRestrictions = @($DefaultPolicy.applicationRestrictions.keyCredentials | Where-Object { $_.restrictionType -in @('asymmetricKeyLifetime', 'trustedCertificateAuthority') -and $_.state -eq 'enabled' })
+            $DefaultPolicyBlocksKeyCredentials = $DefaultKeyRestrictions.Count -gt 0
+        }
+
         # If default policy blocks credentials and CIPP app doesn't have an exemption, create/update policy
         $PolicyAction = $null
-        if ($DefaultPolicyBlocksCredentials -and $CIPPApp) {
+        if (($DefaultPolicyBlocksCredentials -or $DefaultPolicyBlocksKeyCredentials) -and $CIPPApp) {
             # Check if a CIPP-SAM Exemption Policy already exists
             $ExistingExemptionPolicy = $AppPolicies | Where-Object { $_.displayName -eq 'CIPP Exemption Policy' } | Select-Object -First 1
 
@@ -140,6 +150,14 @@ function Update-AppManagementPolicy {
                 } else {
                     # No password restrictions means it allows credentials
                     $CIPPHasExemption = $true
+                }
+                # When the default policy restricts key credentials, the exemption must explicitly
+                # disable those restriction types - otherwise certificate rotation stays blocked
+                if ($CIPPHasExemption -and $DefaultPolicyBlocksKeyCredentials) {
+                    foreach ($Restriction in $DefaultKeyRestrictions) {
+                        $ExplicitlyDisabled = $CIPPPolicy.restrictions.keyCredentials | Where-Object { $_.restrictionType -eq $Restriction.restrictionType -and $_.state -eq 'disabled' }
+                        if (-not $ExplicitlyDisabled) { $CIPPHasExemption = $false }
+                    }
                 }
             }
 
@@ -164,7 +182,18 @@ function Update-AppManagementPolicy {
                                     restrictForAppsCreatedAfterDateTime = '0001-01-01T00:00:00Z'
                                 }
                             )
-                            keyCredentials      = @()
+                            keyCredentials      = @(
+                                @{
+                                    restrictionType                     = 'asymmetricKeyLifetime'
+                                    state                               = 'disabled'
+                                    restrictForAppsCreatedAfterDateTime = '0001-01-01T00:00:00Z'
+                                }
+                                @{
+                                    restrictionType                     = 'trustedCertificateAuthority'
+                                    state                               = 'disabled'
+                                    restrictForAppsCreatedAfterDateTime = '0001-01-01T00:00:00Z'
+                                }
+                            )
                         }
                     }
 
@@ -174,7 +203,7 @@ function Update-AppManagementPolicy {
                         $PolicyAction = "Updated existing policy $CIPPAppPolicyId to allow credentials"
                     } elseif ($ExistingExemptionPolicy) {
                         # Exemption policy exists but not assigned to app - update and assign it
-                        $null = New-GraphPostRequest -uri "https://graph.microsoft.com/v1.0/policies/appManagementPolicies/$($ExistingExemptionPolicy.id)" -type PATCH -body ($PolicyBody | ConvertTo-Json -Depth 10) -asapp $true -NoAuthCheck $true -headers $headers
+                        $null = New-GraphPostRequest -uri "https://graph.microsoft.com/v1.0/policies/appManagementPolicies/$($ExistingExemptionPolicy.id)" -type PATCH -body ($PolicyBody | ConvertTo-Json -Depth 10) -asapp $true -NoAuthCheck $true -tenantid $TenantFilter -headers $headers
 
                         if ($CIPPApp.id) {
                             # Assign existing policy to CIPP-SAM application
@@ -190,14 +219,14 @@ function Update-AppManagementPolicy {
                         }
                     } else {
                         # Create new policy and assign to CIPP-SAM app
-                        $CreatedPolicy = New-GraphPostRequest -uri 'https://graph.microsoft.com/v1.0/policies/appManagementPolicies' -type POST -body ($PolicyBody | ConvertTo-Json -Depth 10) -asapp $true -NoAuthCheck $true -headers $headers
+                        $CreatedPolicy = New-GraphPostRequest -uri 'https://graph.microsoft.com/v1.0/policies/appManagementPolicies' -type POST -body ($PolicyBody | ConvertTo-Json -Depth 10) -asapp $true -NoAuthCheck $true -tenantid $TenantFilter -headers $headers
 
                         if ($CIPPApp.id) {
                             # Assign policy to CIPP-SAM application using beta endpoint
                             $AssignBody = @{
                                 '@odata.id' = "https://graph.microsoft.com/beta/policies/appManagementPolicies/$($CreatedPolicy.id)"
                             }
-                            $null = New-GraphPostRequest -uri "https://graph.microsoft.com/beta/applications/$($CIPPApp.id)/appManagementPolicies/`$ref" -type POST -body ($AssignBody | ConvertTo-Json) -asapp $true -NoAuthCheck $true -headers $headers
+                            $null = New-GraphPostRequest -uri "https://graph.microsoft.com/beta/applications/$($CIPPApp.id)/appManagementPolicies/`$ref" -type POST -body ($AssignBody | ConvertTo-Json) -asapp $true -NoAuthCheck $true -tenantid $TenantFilter -headers $headers
                             $PolicyAction = "Created new policy $($CreatedPolicy.id) and assigned to CIPP-SAM"
                             $CIPPAppPolicyId = $CreatedPolicy.id
                             $CIPPAppTargeted = $true
