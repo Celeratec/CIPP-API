@@ -19,6 +19,7 @@ function New-GraphPOSTRequest {
         $returnHeaders = $false,
         $maxRetries = 3,
         $ScheduleRetry = $false,
+        [switch]$UseCertificate,
         $headers
     )
 
@@ -26,7 +27,9 @@ function New-GraphPOSTRequest {
         if ($Headers) {
             $Headers = $Headers
         } else {
-            $Headers = Get-GraphToken -tenantid $tenantid -scope $scope -AsApp $asapp -SkipCache $skipTokenCache
+            # -UseCertificate authenticates the app with the SAM certificate instead of the
+            # client secret: delegated (refresh token) by default, app-only with -AsApp $true
+            $Headers = Get-GraphToken -tenantid $tenantid -scope $scope -AsApp $asapp -SkipCache $skipTokenCache -UseCertificate:$UseCertificate
         }
         if ($AddedHeaders) {
             foreach ($header in $AddedHeaders.GetEnumerator()) {
@@ -46,6 +49,7 @@ function New-GraphPOSTRequest {
 
         $RetryCount = 0
         $RequestSuccessful = $false
+        $RawErrorBody = $null
         do {
             try {
                 Write-Information "$($type.ToUpper()) [ $uri ] | tenant: $tenantid | user-agent: $($headers['User-Agent']) | attempt: $($RetryCount + 1) of $maxRetries"
@@ -117,6 +121,7 @@ function New-GraphPOSTRequest {
                 if ($IgnoreErrors) { $RetryParameters.IgnoreErrors = $IgnoreErrors }
                 if ($returnHeaders) { $RetryParameters.ReturnHeaders = $returnHeaders }
                 if ($maxRetries) { $RetryParameters.maxRetries = $maxRetries }
+                if ($UseCertificate) { $RetryParameters.UseCertificate = $true }
 
                 # Create the scheduled task object
                 $TaskObject = [PSCustomObject]@{
@@ -140,6 +145,11 @@ function New-GraphPOSTRequest {
         }
 
         if ($RequestSuccessful -eq $false) {
+            if ($RawErrorBody) {
+                $GraphException = [System.Exception]::new($Message)
+                $GraphException.Data['RawErrorBody'] = $RawErrorBody
+                throw $GraphException
+            }
             throw $Message
         }
 
