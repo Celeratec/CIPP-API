@@ -9,6 +9,7 @@ function Invoke-ListLogs {
     param($Request, $TriggerMetadata)
     $Table = Get-CIPPTable
     $TzId = if ($env:CIPP_TIMEZONE) { $env:CIPP_TIMEZONE } else { 'UTC' }
+    $NextLink = $null
 
     $TemplatesTable = Get-CIPPTable -tablename 'templates'
     $Templates = Get-CIPPAzDataTableEntity @TemplatesTable
@@ -100,8 +101,30 @@ function Invoke-ListLogs {
             $EndDate = if ($Request.Query.EndDate ?? $Request.Query.DateFilter) { ConvertTo-CIPPODataFilterValue -Value ($Request.Query.EndDate ?? $Request.Query.DateFilter) -Type Date } else { $null }
 
             if ($StartDate -and $EndDate) {
-                # Collect logs for date range
-                $Filter = "PartitionKey ge '$StartDate' and PartitionKey le '$EndDate'"
+                # Multi-day ranges are served in small day batches, newest first, so each
+                # request finishes well under the Azure Static Web Apps ~45s backend limit
+                # (a single scan of 30 daily partitions returns "Backend call failure").
+                # The client follows Metadata.nextLink (yyyyMMdd of the next older day).
+                $DaysPerPage = 3
+                $Culture = [System.Globalization.CultureInfo]::InvariantCulture
+                $RangeStart = [DateTime]::ParseExact(($StartDate -replace '\D', '').Substring(0, 8), 'yyyyMMdd', $Culture)
+                $RangeEnd = [DateTime]::ParseExact(($EndDate -replace '\D', '').Substring(0, 8), 'yyyyMMdd', $Culture)
+
+                $PageEnd = if ($Request.Query.nextLink) {
+                    $SafeNextLink = ConvertTo-CIPPODataFilterValue -Value $Request.Query.nextLink -Type Date
+                    [DateTime]::ParseExact(($SafeNextLink -replace '\D', '').Substring(0, 8), 'yyyyMMdd', $Culture)
+                } else {
+                    $RangeEnd
+                }
+                if ($PageEnd -gt $RangeEnd) { $PageEnd = $RangeEnd }
+
+                $PageStart = $PageEnd.AddDays(-($DaysPerPage - 1))
+                if ($PageStart -lt $RangeStart) { $PageStart = $RangeStart }
+
+                $Filter = "PartitionKey ge '{0}' and PartitionKey le '{1}'" -f $PageStart.ToString('yyyyMMdd'), $PageEnd.ToString('yyyyMMdd')
+                if ($PageStart -gt $RangeStart) {
+                    $NextLink = $PageStart.AddDays(-1).ToString('yyyyMMdd')
+                }
             } elseif ($StartDate) {
                 $Filter = "PartitionKey eq '{0}'" -f $StartDate
             } else {
@@ -179,9 +202,19 @@ function Invoke-ListLogs {
         }
     }
 
+    $Body = if ($Request.Query.ListLogs -or $Request.Query.logentryid) {
+        @($ReturnedLog | Sort-Object -Property DateTime -Descending)
+    } else {
+        # List queries return a Results/Metadata envelope so the frontend table can
+        # follow Metadata.nextLink across day-batched pages (same as ListGraphRequest).
+        $Envelope = @{ Results = @($ReturnedLog | Sort-Object -Property DateTime -Descending) }
+        if ($NextLink) { $Envelope.Metadata = @{ nextLink = $NextLink } }
+        [PSCustomObject]$Envelope
+    }
+
     return [HttpResponseContext]@{
         StatusCode = [HttpStatusCode]::OK
-        Body       = @($ReturnedLog | Sort-Object -Property DateTime -Descending)
+        Body       = $Body
     }
 
 }
