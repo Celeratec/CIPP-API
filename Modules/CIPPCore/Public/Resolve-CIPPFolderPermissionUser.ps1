@@ -163,6 +163,11 @@ function Resolve-CIPPFolderPermissionUser {
         $DisplayNameForSearch = $UserString
     }
 
+    # Exchange often only removes the ACE when -User matches the ACL display name string
+    if ($DisplayNameForSearch -and $DisplayNameForSearch -ne $UserString) {
+        & $AddCandidate $DisplayNameForSearch
+    }
+
     # Graph users by display name (catches duplicate-name siblings even when UI passed a bad SMTP)
     if ($DisplayNameForSearch) {
         $EscapedName = $DisplayNameForSearch -replace "'", "''"

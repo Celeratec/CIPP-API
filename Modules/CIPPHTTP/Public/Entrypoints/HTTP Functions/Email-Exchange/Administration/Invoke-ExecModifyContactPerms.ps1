@@ -90,6 +90,7 @@ function Invoke-ExecModifyContactPerms {
                     LoggingName            = $TargetUser
                     Permissions            = $PermissionLevel
                     SendNotificationToUser = $SendNotificationToUser
+                    AclUserName            = ($Permission.UserAclName ?? $Permission.AclUserName ?? $null)
                 }
 
                 # Write-Host "Request params: $($Params | ConvertTo-Json)"
