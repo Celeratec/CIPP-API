@@ -108,6 +108,7 @@ function Invoke-CIPPMailboxFolderPermissionAttempt {
             foreach ($Candidate in $UniqueCandidates) { [void]$CandidateSet.Add([string]$Candidate) }
 
             $AclTryKeys = [System.Collections.Generic.List[string]]::new()
+            $AclUserObjects = [System.Collections.Generic.List[object]]::new()
             foreach ($Perm in @($LivePermissions)) {
                 $AclKeys = Get-CIPPFolderPermissionAclUserKeys -PermUser $Perm.User
                 $AclDisplay = $AclKeys | Select-Object -First 1
@@ -119,10 +120,37 @@ function Invoke-CIPPMailboxFolderPermissionAttempt {
                 }
                 if (-not $MatchesTarget) { continue }
 
+                if ($Perm.User -and $Perm.User -isnot [string]) {
+                    $AclUserObjects.Add($Perm.User)
+                }
                 foreach ($AclKey in $AclKeys) {
                     if ($AclKey -notin $SystemUsers -and -not $AclTryKeys.Contains($AclKey)) {
                         $AclTryKeys.Add($AclKey)
                     }
+                }
+            }
+
+            # Prefer raw ACE User objects (works for orphaned Unknown UserType entries in native EXO)
+            foreach ($UserObj in $AclUserObjects) {
+                try {
+                    $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Remove-MailboxFolderPermission' -cmdParams @{
+                        Identity = $ThisFolder
+                        User     = $UserObj
+                    } -Anchor $Anchor -UseSystemMailbox $true
+                    return [PSCustomObject]@{
+                        Success      = $true
+                        UsedUser     = ([string]($UserObj.DisplayName ?? $UserObj))
+                        UsedFolder   = $ThisFolder
+                        TriedUser    = @($UniqueCandidates)
+                        TriedFolders = @($TriedFolders)
+                    }
+                } catch {
+                    $LastError = $_
+                    $Normalized = (Get-CippException -Exception $_).NormalizedError
+                    if ($Normalized -notmatch $RetryablePattern) {
+                        throw
+                    }
+                    Write-Information "Remove with ACE User object failed on '$ThisFolder': $Normalized"
                 }
             }
 

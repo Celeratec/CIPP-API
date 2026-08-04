@@ -65,10 +65,28 @@ function Set-CIPPCalendarPermission {
 
         if ($RemoveAccess) {
             if ($PSCmdlet.ShouldProcess("$UserID\$FolderName", "Remove permissions for $LoggingName")) {
-                $Attempt = Invoke-CIPPMailboxFolderPermissionAttempt -Action Remove -TenantFilter $TenantFilter -FolderIdentities $FolderIdentities -Candidates $MergedCandidates -AclUserNames @($AclUserName) -Anchor $UserID
-                $Result = "Successfully removed access for $LoggingName from calendar $($Attempt.UsedFolder)"
-                if ($Attempt.UsedUser -and $Attempt.UsedUser -ne $RemoveAccess) {
-                    $Result += " (resolved as $($Attempt.UsedUser))"
+                try {
+                    $Attempt = Invoke-CIPPMailboxFolderPermissionAttempt -Action Remove -TenantFilter $TenantFilter -FolderIdentities $FolderIdentities -Candidates $MergedCandidates -AclUserNames @($AclUserName) -Anchor $UserID
+                    $Result = "Successfully removed access for $LoggingName from calendar $($Attempt.UsedFolder)"
+                    if ($Attempt.UsedUser -and $Attempt.UsedUser -ne $RemoveAccess) {
+                        $Result += " (resolved as $($Attempt.UsedUser))"
+                    }
+                } catch {
+                    $ExoError = (Get-CippException -Exception $_).NormalizedError
+                    Write-Information "EXO calendar permission remove failed, trying Graph/collision fallbacks: $ExoError"
+
+                    $GraphResult = Remove-CIPPGraphCalendarPermission -TenantFilter $TenantFilter -MailboxUserId $UserID -MatchValues $MergedCandidates
+                    if ($GraphResult.Success) {
+                        $Result = $GraphResult.Message
+                    } else {
+                        Write-Information "Graph calendar permission remove: $($GraphResult.Message)"
+                        $Collision = Invoke-CIPPCalendarPermissionCollisionRemove -TenantFilter $TenantFilter -FolderIdentity ($FolderIdentities | Select-Object -First 1) -AclDisplayName ($AclUserName ?? $LoggingName) -ProtectedEmails $MergedCandidates -Anchor $UserID
+                        if ($Collision.Success) {
+                            $Result = $Collision.Message
+                        } else {
+                            throw "Failed after Exchange, Graph, and display-name collision remove attempts. EXO: $ExoError | Graph: $($GraphResult.Message) | Collision: $($Collision.Message). Manual workaround: temporarily rename the live account that shares this display name, remove the calendar permission, then rename it back."
+                        }
+                    }
                 }
                 Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message $Result -sev Info
 
