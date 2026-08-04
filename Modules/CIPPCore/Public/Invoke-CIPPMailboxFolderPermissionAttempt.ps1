@@ -4,9 +4,8 @@ function Invoke-CIPPMailboxFolderPermissionAttempt {
         Run Remove/Set/Add-MailboxFolderPermission trying each resolved identity candidate.
 
     .DESCRIPTION
-        Tries each identity candidate until one Exchange cmdlet succeeds. For Remove, also
-        tries multiple folder Identity forms (name vs FolderId, GUID vs UPN) and matches
-        live ACL entries using every key on the User object.
+        Optimized for Azure Function / UI timeouts. Remove is ACL-first: load live permissions
+        once per folder, remove matching ACE keys, then try a short candidate list.
     #>
     [CmdletBinding()]
     param(
@@ -44,22 +43,25 @@ function Invoke-CIPPMailboxFolderPermissionAttempt {
 
     $LastError = $null
     $SystemUsers = @('Default', 'Anonymous', 'NT AUTHORITY\SELF')
-    $UniqueCandidates = [System.Collections.Generic.List[string]]::new()
-    foreach ($Value in @($AclUserNames) + @($Candidates)) {
-        if ([string]::IsNullOrWhiteSpace($Value)) { continue }
-        if (-not $UniqueCandidates.Contains($Value)) {
-            $UniqueCandidates.Add($Value)
-        }
+    $UniqueCandidates = @(
+        @($AclUserNames) + @($Candidates) |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+        Select-Object -Unique
+    )
+    if ($UniqueCandidates.Count -gt 8) {
+        $UniqueCandidates = @($UniqueCandidates | Select-Object -First 8)
     }
-
     if ($UniqueCandidates.Count -eq 0) {
         throw 'No identity candidates available for mailbox folder permission operation'
     }
 
-    $FolderList = [System.Collections.Generic.List[string]]::new()
-    foreach ($Value in @($FolderIdentities) + @($FolderIdentity)) {
-        if ([string]::IsNullOrWhiteSpace($Value)) { continue }
-        if (-not $FolderList.Contains($Value)) { $FolderList.Add($Value) }
+    $FolderList = @(
+        @($FolderIdentities) + @($FolderIdentity) |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+        Select-Object -Unique
+    )
+    if ($FolderList.Count -gt 3) {
+        $FolderList = @($FolderList | Select-Object -First 3)
     }
     if ($FolderList.Count -eq 0) {
         throw 'No folder identity available for mailbox folder permission operation'
@@ -90,133 +92,98 @@ function Invoke-CIPPMailboxFolderPermissionAttempt {
         $TriedFolders.Add($ThisFolder)
         Write-Information "Folder permission $Action trying folder identity '$ThisFolder'"
 
-        foreach ($Candidate in $UniqueCandidates) {
+        if ($Action -eq 'Remove') {
+            $LivePermissions = $null
             try {
-                switch ($Action) {
-                    'Remove' {
-                        $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Remove-MailboxFolderPermission' -cmdParams @{
-                            Identity = $ThisFolder
-                            User     = $Candidate
-                        } -Anchor $Anchor
-                    }
-                    'Set' {
-                        $CmdParams = @{
-                            Identity               = $ThisFolder
-                            User                   = $Candidate
-                            AccessRights           = @($AccessRights)
-                            SendNotificationToUser = $SendNotificationToUser
-                        }
-                        if ($SharingPermissionFlags) {
-                            $CmdParams['SharingPermissionFlags'] = $SharingPermissionFlags
-                        }
-                        $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Set-MailboxFolderPermission' -cmdParams $CmdParams -Anchor $Anchor
-                    }
-                    'Add' {
-                        $CmdParams = @{
-                            Identity               = $ThisFolder
-                            User                   = $Candidate
-                            AccessRights           = @($AccessRights)
-                            SendNotificationToUser = $SendNotificationToUser
-                        }
-                        if ($SharingPermissionFlags) {
-                            $CmdParams['SharingPermissionFlags'] = $SharingPermissionFlags
-                        }
-                        $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Add-MailboxFolderPermission' -cmdParams $CmdParams -Anchor $Anchor
+                $LivePermissions = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Get-MailboxFolderPermission' -cmdParams @{
+                    Identity = $ThisFolder
+                } -Anchor $Anchor -UseSystemMailbox $true
+            } catch {
+                $LastError = $_
+                Write-Information "Get-MailboxFolderPermission failed for '$ThisFolder': $((Get-CippException -Exception $_).NormalizedError)"
+                continue
+            }
+
+            $CandidateSet = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+            foreach ($Candidate in $UniqueCandidates) { [void]$CandidateSet.Add([string]$Candidate) }
+
+            $AclTryKeys = [System.Collections.Generic.List[string]]::new()
+            foreach ($Perm in @($LivePermissions)) {
+                $AclKeys = Get-CIPPFolderPermissionAclUserKeys -PermUser $Perm.User
+                $AclDisplay = $AclKeys | Select-Object -First 1
+                if (-not $AclDisplay -or $AclDisplay -in $SystemUsers) { continue }
+
+                $MatchesTarget = $false
+                foreach ($AclKey in $AclKeys) {
+                    if ($CandidateSet.Contains([string]$AclKey)) { $MatchesTarget = $true; break }
+                }
+                if (-not $MatchesTarget) { continue }
+
+                foreach ($AclKey in $AclKeys) {
+                    if ($AclKey -notin $SystemUsers -and -not $AclTryKeys.Contains($AclKey)) {
+                        $AclTryKeys.Add($AclKey)
                     }
                 }
+            }
+
+            foreach ($UserKey in @($AclTryKeys) + @($UniqueCandidates)) {
+                if ([string]::IsNullOrWhiteSpace($UserKey) -or $UserKey -in $SystemUsers) { continue }
+                try {
+                    $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Remove-MailboxFolderPermission' -cmdParams @{
+                        Identity = $ThisFolder
+                        User     = $UserKey
+                    } -Anchor $Anchor -UseSystemMailbox $true
+                    return [PSCustomObject]@{
+                        Success      = $true
+                        UsedUser     = $UserKey
+                        UsedFolder   = $ThisFolder
+                        TriedUser    = @($UniqueCandidates)
+                        TriedFolders = @($TriedFolders)
+                    }
+                } catch {
+                    $LastError = $_
+                    $Normalized = (Get-CippException -Exception $_).NormalizedError
+                    if ($Normalized -notmatch $RetryablePattern) {
+                        throw
+                    }
+                    Write-Information "Remove failed for '$UserKey' on '$ThisFolder': $Normalized"
+                }
+            }
+            continue
+        }
+
+        foreach ($Candidate in $UniqueCandidates) {
+            try {
+                $CmdParams = @{
+                    Identity               = $ThisFolder
+                    User                   = $Candidate
+                    AccessRights           = @($AccessRights)
+                    SendNotificationToUser = $SendNotificationToUser
+                }
+                if ($SharingPermissionFlags) {
+                    $CmdParams['SharingPermissionFlags'] = $SharingPermissionFlags
+                }
+                $Cmdlet = if ($Action -eq 'Set') { 'Set-MailboxFolderPermission' } else { 'Add-MailboxFolderPermission' }
+                $null = New-ExoRequest -tenantid $TenantFilter -cmdlet $Cmdlet -cmdParams $CmdParams -Anchor $Anchor
                 return [PSCustomObject]@{
-                    Success        = $true
-                    UsedUser       = $Candidate
-                    UsedFolder     = $ThisFolder
-                    TriedUser      = @($UniqueCandidates)
-                    TriedFolders   = @($TriedFolders)
+                    Success      = $true
+                    UsedUser     = $Candidate
+                    UsedFolder   = $ThisFolder
+                    TriedUser    = @($UniqueCandidates)
+                    TriedFolders = @($TriedFolders)
                 }
             } catch {
                 $Normalized = (Get-CippException -Exception $_).NormalizedError
-                $Retryable = $Normalized -match $RetryablePattern
                 $LastError = $_
-                if (-not $Retryable) {
+                if ($Normalized -notmatch $RetryablePattern) {
                     throw
                 }
                 Write-Information "Folder permission $Action failed for candidate '$Candidate' on '$ThisFolder': $Normalized — trying next"
             }
         }
-
-        # Remove fallback: match live ACL entries on this folder identity
-        if ($Action -eq 'Remove') {
-            try {
-                $LivePermissions = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Get-MailboxFolderPermission' -cmdParams @{
-                    Identity = $ThisFolder
-                } -Anchor $Anchor -UseSystemMailbox $true
-
-                $CandidateSet = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-                foreach ($Candidate in $UniqueCandidates) { [void]$CandidateSet.Add($Candidate) }
-
-                $AclTryList = [System.Collections.Generic.List[string]]::new()
-                foreach ($Perm in @($LivePermissions)) {
-                    $AclKeys = Get-CIPPFolderPermissionAclUserKeys -PermUser $Perm.User
-                    $AclDisplay = $AclKeys | Select-Object -First 1
-                    if (-not $AclDisplay -or $AclDisplay -in $SystemUsers) { continue }
-
-                    $ShouldTry = $false
-                    foreach ($AclKey in $AclKeys) {
-                        if ($CandidateSet.Contains($AclKey)) { $ShouldTry = $true; break }
-                    }
-
-                    if (-not $ShouldTry) {
-                        try {
-                            $AclResolved = Resolve-CIPPFolderPermissionUser -User $AclDisplay -TenantFilter $TenantFilter
-                            foreach ($AclCandidate in @($AclResolved.Candidates) + @($AclResolved.UserEmail) + @($AclResolved.UserId) + @($AclResolved.CandidateEmails) + $AclKeys) {
-                                if ($AclCandidate -and $CandidateSet.Contains([string]$AclCandidate)) {
-                                    $ShouldTry = $true
-                                    break
-                                }
-                            }
-                        } catch {
-                            Write-Information "Could not resolve ACL user '$AclDisplay' for remove fallback: $($_.Exception.Message)"
-                        }
-                    }
-
-                    if ($ShouldTry) {
-                        foreach ($AclKey in $AclKeys) {
-                            if ($AclKey -notin $SystemUsers -and -not $AclTryList.Contains($AclKey)) {
-                                $AclTryList.Add($AclKey)
-                            }
-                        }
-                    }
-                }
-
-                Write-Information "ACL fallback on '$ThisFolder' will try: $($AclTryList -join ', ')"
-                foreach ($AclUser in $AclTryList) {
-                    try {
-                        $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Remove-MailboxFolderPermission' -cmdParams @{
-                            Identity = $ThisFolder
-                            User     = $AclUser
-                        } -Anchor $Anchor
-                        return [PSCustomObject]@{
-                            Success      = $true
-                            UsedUser     = $AclUser
-                            UsedFolder   = $ThisFolder
-                            TriedUser    = @($UniqueCandidates) + @($AclTryList)
-                            TriedFolders = @($TriedFolders)
-                        }
-                    } catch {
-                        $Normalized = (Get-CippException -Exception $_).NormalizedError
-                        $LastError = $_
-                        if ($Normalized -notmatch $RetryablePattern) {
-                            throw
-                        }
-                        Write-Information "ACL fallback remove failed for '$AclUser' on '$ThisFolder': $Normalized"
-                    }
-                }
-            } catch {
-                $LastError = $_
-                Write-Information "ACL remove fallback failed on '$ThisFolder': $((Get-CippException -Exception $_).NormalizedError)"
-            }
-        }
     }
 
-    $Tried = (@($UniqueCandidates) -join ', ')
+    $Tried = ($UniqueCandidates -join ', ')
     $FoldersTried = (@($TriedFolders) -join ', ')
     $Msg = if ($LastError) { (Get-CippException -Exception $LastError).NormalizedError } else { 'No matching permission entry could be removed' }
     throw "Failed after trying identities [$Tried] on folders [$FoldersTried]: $Msg"
