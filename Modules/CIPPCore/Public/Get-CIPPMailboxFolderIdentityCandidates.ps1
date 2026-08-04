@@ -4,9 +4,8 @@ function Get-CIPPMailboxFolderIdentityCandidates {
         Build Exchange folder Identity strings to try for folder-permission ops.
 
     .DESCRIPTION
-        ListCalendarPermissions uses "id:\FolderName". Remove previously switched to FolderId,
-        which can fail to address the same ACL. Return both forms (and UPN variants) in
-        preference order.
+        Prefer the same Identity shape ListCalendarPermissions uses (id:\FolderName).
+        Optionally include FolderId / UPN variants. Keep the list small to avoid API timeouts.
     #>
     [CmdletBinding()]
     param(
@@ -21,7 +20,13 @@ function Get-CIPPMailboxFolderIdentityCandidates {
 
         [Parameter(Mandatory = $false)]
         [ValidateSet('Calendar', 'Contacts')]
-        [string]$FolderScope = 'Calendar'
+        [string]$FolderScope = 'Calendar',
+
+        [Parameter(Mandatory = $false)]
+        [switch]$IncludeFolderId,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$IncludeUpnVariants
     )
 
     $Identities = [System.Collections.Generic.List[string]]::new()
@@ -51,11 +56,13 @@ function Get-CIPPMailboxFolderIdentityCandidates {
         Write-Information "Could not get folder statistics for $UserID : $($_.Exception.Message)"
     }
 
-    try {
-        $Mailbox = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Get-Mailbox' -cmdParams @{ Identity = $UserID } -Anchor $UserID
-        $MailboxUPN = $Mailbox.UserPrincipalName ?? $Mailbox.PrimarySmtpAddress
-    } catch {
-        Write-Information "Could not get mailbox for $UserID : $($_.Exception.Message)"
+    if ($IncludeUpnVariants) {
+        try {
+            $Mailbox = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Get-Mailbox' -cmdParams @{ Identity = $UserID } -Anchor $UserID
+            $MailboxUPN = $Mailbox.UserPrincipalName ?? $Mailbox.PrimarySmtpAddress
+        } catch {
+            Write-Information "Could not get mailbox for $UserID : $($_.Exception.Message)"
+        }
     }
 
     # Prefer the same Identity shape ListCalendarPermissions uses
@@ -63,24 +70,26 @@ function Get-CIPPMailboxFolderIdentityCandidates {
     if ($FolderName -and $FolderName -ne $ResolvedName) {
         & $Add "$UserID`:\$FolderName"
     }
-    if ($FolderId) {
-        & $Add "$UserID`:$FolderId"
-    }
-    if ($MailboxUPN) {
+
+    if ($IncludeUpnVariants -and $MailboxUPN) {
         & $Add "$MailboxUPN`:\$ResolvedName"
         if ($FolderName -and $FolderName -ne $ResolvedName) {
             & $Add "$MailboxUPN`:\$FolderName"
         }
-        if ($FolderId) {
+    }
+
+    if ($IncludeFolderId -and $FolderId) {
+        & $Add "$UserID`:$FolderId"
+        if ($IncludeUpnVariants -and $MailboxUPN) {
             & $Add "$MailboxUPN`:$FolderId"
         }
     }
 
     return @{
-        Identities   = @($Identities)
-        FolderName   = $ResolvedName
-        FolderId     = $FolderId
-        MailboxUPN   = $MailboxUPN
+        Identities = @($Identities)
+        FolderName = $ResolvedName
+        FolderId   = $FolderId
+        MailboxUPN = $MailboxUPN
     }
 }
 
@@ -109,25 +118,16 @@ function Get-CIPPFolderPermissionAclUserKeys {
             return
         }
         if ($Value -is [psobject]) {
-            foreach ($Name in @('UserSmtpAddress', 'SmtpAddress', 'PrimarySmtpAddress', 'DisplayName', 'UserId', 'Name', 'Identity', 'RecipientPrincipal', 'RawIdentity')) {
+            foreach ($Name in @('UserSmtpAddress', 'SmtpAddress', 'PrimarySmtpAddress', 'DisplayName', 'UserId', 'Name', 'Identity', 'RawIdentity')) {
                 if ($Value.PSObject.Properties.Name -contains $Name) {
                     & $Add $Value.$Name
                 }
             }
-            # Nested RecipientPrincipal / ADRecipient
             foreach ($Name in @('RecipientPrincipal', 'ADRecipient')) {
                 if ($Value.PSObject.Properties.Name -contains $Name -and $Value.$Name) {
                     & $Add $Value.$Name
                 }
             }
-            # UserType value if present
-            if ($Value.PSObject.Properties.Name -contains 'UserType') {
-                $Ut = $Value.UserType
-                if ($Ut -and $Ut.PSObject.Properties.Name -contains 'Value') {
-                    # Don't add UserType as remove identity — informational only
-                }
-            }
-            # Fallback ToString if still empty
             if ($Keys.Count -eq 0) {
                 & $Add ([string]$Value)
             }

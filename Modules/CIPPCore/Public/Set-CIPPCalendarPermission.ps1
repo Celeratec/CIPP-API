@@ -29,7 +29,18 @@ function Set-CIPPCalendarPermission {
 
         $TargetUser = if ($RemoveAccess) { $RemoveAccess } else { $UserToGetPermissions }
         $Resolved = Resolve-CIPPFolderPermissionUser -User $TargetUser -TenantFilter $TenantFilter
-        if (-not [string]::IsNullOrWhiteSpace($AclUserName) -and $AclUserName -ne $TargetUser) {
+        # Keep remove candidate list short to stay under UI timeout
+        if ($RemoveAccess) {
+            $MergedCandidates = @(
+                $AclUserName
+                $RemoveAccess
+                $Resolved.UserEmail
+                $Resolved.UserId
+            ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
+            if ($MergedCandidates.Count -eq 0) {
+                $MergedCandidates = @($Resolved.Candidates | Select-Object -First 4)
+            }
+        } elseif (-not [string]::IsNullOrWhiteSpace($AclUserName) -and $AclUserName -ne $TargetUser) {
             $AclResolved = Resolve-CIPPFolderPermissionUser -User $AclUserName -TenantFilter $TenantFilter
             $MergedCandidates = @($AclUserName) + @($Resolved.Candidates) + @($AclResolved.Candidates) | Select-Object -Unique
         } else {
