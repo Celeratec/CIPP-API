@@ -84,7 +84,24 @@ function Invoke-CIPPMailboxFolderPermissionAttempt {
             }
         } catch {
             $Normalized = (Get-CippException -Exception $_).NormalizedError
-            $Retryable = $Normalized -match 'UserNotFoundInPermissionEntryException|InvalidExternalUserIdException|Couldn.?t find user|couldn.?t be found|no existing permission entry'
+            # Include SMTP/recipient resolution failures so we keep trying sibling accounts
+            # (e.g. licensed vs unlicensed duplicate display names).
+            $RetryablePattern = @(
+                'UserNotFoundInPermissionEntryException'
+                'InvalidExternalUserIdException'
+                'Couldn.?t find user'
+                'couldn.?t be found'
+                'no existing permission entry'
+                'not valid SMTP'
+                'no matching information'
+                'isn.?t a valid'
+                'is not a valid'
+                'Cannot find recipient'
+                'couldn.?t resolve'
+                'could not be found'
+                'doesn.?t exist'
+            ) -join '|'
+            $Retryable = $Normalized -match $RetryablePattern
             $LastError = $_
             if (-not $Retryable) {
                 throw
