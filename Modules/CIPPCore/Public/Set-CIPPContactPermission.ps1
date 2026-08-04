@@ -15,23 +15,15 @@ function Set-CIPPContactPermission {
     )
 
     try {
-        # If a pretty logging name is not provided, use the ID instead
         if ([string]::IsNullOrWhiteSpace($LoggingName) -and $RemoveAccess) {
             $LoggingName = $RemoveAccess
         } elseif ([string]::IsNullOrWhiteSpace($LoggingName) -and $UserToGetPermissions) {
             $LoggingName = $UserToGetPermissions
         }
 
-        # Prefer locale-independent FolderId for removes
-        if ($RemoveAccess) {
-            $ContactFolderStats = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Get-MailboxFolderStatistics' -cmdParams @{
-                Identity    = $UserID
-                FolderScope = 'Contacts'
-            } -Anchor $UserID | Where-Object { $_.FolderType -eq 'Contacts' }
-            $FolderIdentity = if ($ContactFolderStats) { "$($UserID):$($ContactFolderStats.FolderId)" } else { "$($UserID):\$FolderName" }
-        } else {
-            $FolderIdentity = "$($UserID):\$FolderName"
-        }
+        $FolderMeta = Get-CIPPMailboxFolderIdentityCandidates -TenantFilter $TenantFilter -UserID $UserID -FolderName ($FolderName ?? 'Contacts') -FolderScope Contacts
+        $FolderIdentities = $FolderMeta.Identities
+        $FolderIdentity = $FolderIdentities | Select-Object -First 1
 
         $TargetUser = if ($RemoveAccess) { $RemoveAccess } else { $UserToGetPermissions }
         $Resolved = Resolve-CIPPFolderPermissionUser -User $TargetUser -TenantFilter $TenantFilter
@@ -55,8 +47,8 @@ function Set-CIPPContactPermission {
 
         if ($RemoveAccess) {
             if ($PSCmdlet.ShouldProcess("$UserID\$FolderName", "Remove permissions for $LoggingName")) {
-                $Attempt = Invoke-CIPPMailboxFolderPermissionAttempt -Action Remove -TenantFilter $TenantFilter -FolderIdentity $FolderIdentity -Candidates $MergedCandidates -AclUserNames @($AclUserName) -Anchor $UserID
-                $Result = "Successfully removed access for $LoggingName from contact folder $FolderIdentity"
+                $Attempt = Invoke-CIPPMailboxFolderPermissionAttempt -Action Remove -TenantFilter $TenantFilter -FolderIdentities $FolderIdentities -Candidates $MergedCandidates -AclUserNames @($AclUserName) -Anchor $UserID
+                $Result = "Successfully removed access for $LoggingName from contact folder $($Attempt.UsedFolder)"
                 if ($Attempt.UsedUser -and $Attempt.UsedUser -ne $RemoveAccess) {
                     $Result += " (resolved as $($Attempt.UsedUser))"
                 }
@@ -65,13 +57,13 @@ function Set-CIPPContactPermission {
         } else {
             if ($PSCmdlet.ShouldProcess("$UserID\$FolderName", "Set permissions for $LoggingName to $Permissions")) {
                 try {
-                    $null = Invoke-CIPPMailboxFolderPermissionAttempt -Action Set -TenantFilter $TenantFilter -FolderIdentity $FolderIdentity -Candidates $MergedCandidates -Anchor $UserID -AccessRights @($Permissions) -SendNotificationToUser $SendNotificationToUser
+                    $null = Invoke-CIPPMailboxFolderPermissionAttempt -Action Set -TenantFilter $TenantFilter -FolderIdentities $FolderIdentities -Candidates $MergedCandidates -Anchor $UserID -AccessRights @($Permissions) -SendNotificationToUser $SendNotificationToUser
                 } catch {
                     $SetError = Get-CippException -Exception $_
                     if ($SetError.NormalizedError -match 'InvalidExternalUserIdException|Couldn.?t find user|not a valid Exchange recipient|isn.?t a valid user|not valid SMTP|no matching information') {
                         throw
                     }
-                    $null = Invoke-CIPPMailboxFolderPermissionAttempt -Action Add -TenantFilter $TenantFilter -FolderIdentity $FolderIdentity -Candidates $MergedCandidates -Anchor $UserID -AccessRights @($Permissions) -SendNotificationToUser $SendNotificationToUser
+                    $null = Invoke-CIPPMailboxFolderPermissionAttempt -Action Add -TenantFilter $TenantFilter -FolderIdentities $FolderIdentities -Candidates $MergedCandidates -Anchor $UserID -AccessRights @($Permissions) -SendNotificationToUser $SendNotificationToUser
                 }
 
                 $Result = "Successfully set permissions on contact folder $FolderIdentity. The user $LoggingName now has $Permissions permissions on this folder."
@@ -89,8 +81,8 @@ function Set-CIPPContactPermission {
         Write-Information $_.InvocationInfo.PositionMessage
         if ($ErrorMessage.NormalizedError -match 'InvalidExternalUserIdException') {
             $Result = "Failed to set contact permissions for $LoggingName on $UserID : The user '$LoggingName' is not a valid Exchange recipient. Ensure they have an Exchange Online mailbox or are a valid mail-enabled object."
-        } elseif ($ErrorMessage.NormalizedError -match 'no existing permission entry|UserNotFoundInPermissionEntryException|Failed after trying identities') {
-            $Result = "Failed to set contact permissions for $LoggingName on $UserID : $($ErrorMessage.NormalizedError) If the ACL still shows this person, refresh and retry — orphaned ACE entries sometimes only match the original display name."
+        } elseif ($ErrorMessage.NormalizedError -match 'no existing permission entry|UserNotFoundInPermissionEntryException|Failed after trying identities|matches multiple entries') {
+            $Result = "Failed to set contact permissions for $LoggingName on $UserID : $($ErrorMessage.NormalizedError)"
         } else {
             $Result = "Failed to set contact permissions for $LoggingName on $UserID : $($ErrorMessage.NormalizedError)"
         }

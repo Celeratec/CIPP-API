@@ -60,13 +60,20 @@ Function Invoke-ListCalendarPermissions {
 
             [PSCustomObject]@{
                 Identity          = $Perm.Identity
-                User              = $Resolved.User ?? $Perm.User
+                User              = $Resolved.User ?? $(if ($Perm.User -is [string]) { $Perm.User } else { $Perm.User.DisplayName ?? [string]$Perm.User })
                 UserEmail         = $Resolved.UserEmail
                 UserId            = $Resolved.UserId
                 UserAmbiguous     = [bool]$Resolved.UserAmbiguous
                 CandidateEmails   = $Resolved.CandidateEmails
+                UserType          = $(
+                    if ($Perm.User -is [psobject] -and ($Perm.User.PSObject.Properties.Name -contains 'UserType')) {
+                        $Ut = $Perm.User.UserType
+                        if ($Ut -is [psobject] -and ($Ut.PSObject.Properties.Name -contains 'Value')) { $Ut.Value } else { [string]$Ut }
+                    } else { $null }
+                )
                 AccessRights      = $Perm.AccessRights
                 FolderName        = $Perm.FolderName
+                FolderIdentity    = $CalParam.Identity
                 MailboxInfo       = $Mailbox
             }
         }
