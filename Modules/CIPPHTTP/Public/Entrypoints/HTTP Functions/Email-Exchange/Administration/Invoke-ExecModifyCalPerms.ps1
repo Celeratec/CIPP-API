@@ -91,6 +91,7 @@ function Invoke-ExecModifyCalPerms {
                     Permissions            = $PermissionLevel
                     CanViewPrivateItems    = $CanViewPrivateItems
                     SendNotificationToUser = $SendNotificationToUser
+                    AclUserName            = ($Permission.UserAclName ?? $Permission.AclUserName ?? $null)
                 }
 
                 # Write-Host "Request params: $($Params | ConvertTo-Json)"
