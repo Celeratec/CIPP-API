@@ -9,20 +9,31 @@ function Invoke-ExecQuarantineManagement {
     param($Request, $TriggerMetadata)
 
     $APIName = $Request.Params.CIPPEndpoint
-    $TenantFilter = $Request.Body.tenantFilter | Select-Object -First 1
-    $ActionType = $Request.Body.Type | Select-Object -First 1
+
+    # multiPost bulk Release POSTs an array of message objects. Reading flags off the
+    # array root (e.g. [boolean]$Request.Body.AllowSender) casts Object[] to $true even
+    # when values are $null/$false — always take scalars from the first item.
+    $Items = if ($Request.Body -is [array]) { @($Request.Body) } else { @($Request.Body) }
+    $First = $Items | Select-Object -First 1
+
+    $TenantFilter = $First.tenantFilter
+    $ActionType = $First.Type
     # Both AllowSender and AddAllowEntry are routed through the Tenant Allow/Block List
     # because Release-QuarantineMessage -AllowSender chains to Get-HostedContentFilterPolicy
     # on Microsoft's backend, which intermittently fails with a CommandNotFoundException.
-    $AllowEntry = [boolean]$Request.Body.AllowSender -or [boolean]$Request.Body.AddAllowEntry
-    $AllowDomain = [boolean]$Request.Body.AllowDomain
-    $BlockDomain = [boolean]$Request.Body.BlockDomain
-    $ReportFalsePositive = [boolean]$Request.Body.ReportFalsePositive
+    $AllowEntry = [boolean]$First.AllowSender -or [boolean]$First.AddAllowEntry
+    $AllowDomain = [boolean]$First.AllowDomain
+    $BlockDomain = [boolean]$First.BlockDomain
+    $ReportFalsePositive = [boolean]$First.ReportFalsePositive
     $ReleaseToUsers = @(
-        ConvertTo-CippQuarantineStringArray $Request.Body.releaseToUsers |
+        ConvertTo-CippQuarantineStringArray $First.releaseToUsers |
             Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
     )
-    $RecipientAddresses = @($Request.Body.RecipientAddress | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $RecipientAddresses = @(
+        $Items |
+            ForEach-Object { $_.RecipientAddress } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
     $UserRecipients = @(
         $RecipientAddresses |
             ForEach-Object { $_ -split '[,;]' } |
@@ -32,7 +43,9 @@ function Invoke-ExecQuarantineManagement {
     )
 
     $Identities = @(
-        $Request.Body.Identity | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        $Items |
+            ForEach-Object { $_.Identity } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
     )
     if ($Identities.Count -eq 0) {
         return ([HttpResponseContext]@{

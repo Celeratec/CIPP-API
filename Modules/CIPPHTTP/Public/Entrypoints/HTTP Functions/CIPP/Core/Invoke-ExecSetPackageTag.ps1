@@ -14,8 +14,20 @@ function Invoke-ExecSetPackageTag {
     $Table = Get-CippTable -tablename 'templates'
 
     try {
-        $GUIDS = $Request.body.GUID
-        $Remove = $Request.body.Remove
+        # multiPost bulk actions POST an array of template objects. Do not read
+        # $Request.Body.Remove on an array — that resolves to Array.Remove (method),
+        # not the NoteProperty, so Remove bulk incorrectly takes the Add path.
+        $Items = if ($Request.Body -is [array]) { @($Request.Body) } else { @($Request.Body) }
+        $First = $Items | Select-Object -First 1
+        $GUIDS = @(
+            $Items |
+                ForEach-Object { $_.GUID } |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        )
+        $Remove = $false
+        if ($null -ne $First -and ($First.PSObject.Properties.Name -contains 'Remove')) {
+            $Remove = [boolean]$First.Remove
+        }
 
         if ($Remove -eq $true) {
             # Remove package tag by setting it to null/empty
@@ -24,7 +36,7 @@ function Invoke-ExecSetPackageTag {
             $SuccessMessage = 'Successfully removed package tag from template(s)'
         } else {
             # Add package tag (existing logic)
-            $PackageValue = [string]($Request.body.Package | Select-Object -First 1)
+            $PackageValue = [string]$First.Package
             $LogMessage = 'Successfully updated template with GUID'
             $SuccessMessage = "Successfully updated template(s) with package tag: $PackageValue"
         }
