@@ -101,5 +101,18 @@
       "/cipp/advanced/super-admin/function-offloading"
     ],
     "Hidden": true
+  },
+  {
+    "Id": "Baselines",
+    "Name": "Baselines",
+    "Description": "The drift-first baseline engine (preview). Enables the scheduled baseline run; the baseline pages and on-demand runs work regardless.",
+    "Enabled": false,
+    "AllowUserToggle": true,
+    "Timers": [
+      "9f2c7b1e-4a6d-4c3f-8b9a-5e1d2f7c0a44"
+    ],
+    "Endpoints": [],
+    "Pages": [],
+    "Hidden": true
   }
 ]

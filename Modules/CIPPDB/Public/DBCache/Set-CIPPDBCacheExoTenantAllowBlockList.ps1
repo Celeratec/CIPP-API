@@ -19,35 +19,18 @@ function Set-CIPPDBCacheExoTenantAllowBlockList {
     try {
         Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message 'Caching Tenant Allow/Block List items' -sev Debug
 
-        $SenderItems = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Get-TenantAllowBlockListItems' -cmdParams @{ListType = 'Sender' }
-        $UrlItems = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Get-TenantAllowBlockListItems' -cmdParams @{ListType = 'Url' }
-        $FileHashItems = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Get-TenantAllowBlockListItems' -cmdParams @{ListType = 'FileHash' }
-
-        # Combine all list types into a single collection
-        $AllItems = @()
-        if ($SenderItems) {
-            $AllItems += $SenderItems
-        }
-        if ($UrlItems) {
-            $AllItems += $UrlItems
-        }
-        if ($FileHashItems) {
-            $AllItems += $FileHashItems
-        }
+        # Every list type in one batched request, ListType-stamped. Same helper the live
+        # ListTenantAllowBlockList path uses, so the cache and the live view agree.
+        $AllItems = @(Get-CIPPTenantAllowBlockListItems -TenantFilter $TenantFilter)
 
         if ($AllItems.Count -gt 0) {
-            Add-CIPPDbItem -TenantFilter $TenantFilter -Type 'ExoTenantAllowBlockList' -Data $AllItems
-            Add-CIPPDbItem -TenantFilter $TenantFilter -Type 'ExoTenantAllowBlockList' -Data $AllItems -Count
+            Add-CIPPDbItem -TenantFilter $TenantFilter -Type 'ExoTenantAllowBlockList' -Data $AllItems -AddCount
             Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message "Cached $($AllItems.Count) Tenant Allow/Block List items" -sev Debug
         } else {
             # Even if empty, store an empty array so test knows cache was populated
-            Add-CIPPDbItem -TenantFilter $TenantFilter -Type 'ExoTenantAllowBlockList' -Data @()
-            Add-CIPPDbItem -TenantFilter $TenantFilter -Type 'ExoTenantAllowBlockList' -Data @() -Count
+            Add-CIPPDbItem -TenantFilter $TenantFilter -Type 'ExoTenantAllowBlockList' -Data @() -AddCount
             Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message 'Cached empty Tenant Allow/Block List' -sev Debug
         }
-        $SenderItems = $null
-        $UrlItems = $null
-        $FileHashItems = $null
         $AllItems = $null
 
     } catch {
