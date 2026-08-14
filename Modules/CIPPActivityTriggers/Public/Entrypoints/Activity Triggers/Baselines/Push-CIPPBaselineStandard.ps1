@@ -27,8 +27,5 @@ function Push-CIPPBaselineStandard {
         Write-LogMessage -API 'Baselines' -tenant $Item.Item.TenantFilter -message "Baseline activity failed for $($Item.Item.Standard): $($_.Exception.Message)" -Sev 'Error'
     } finally {
         Set-CippBaselineRunContext -RunId $null
-        if ($Item.QueueId) {
-            $null = Update-CippQueueEntry -RowKey $Item.QueueId -Status 'Running' -Name $Item.QueueName
-        }
     }
 }
